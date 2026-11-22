@@ -1,4 +1,252 @@
 
+// ==========================================================================
+// SISTEMA DO DONO DO SERVIDOR (OWNER POWERS) 👑
+// ==========================================================================
+
+function updateOwnerUI() {
+    const badge = document.getElementById('btn-owner-badge');
+    const label = document.getElementById('owner-badge-label');
+    const authBox = document.getElementById('owner-auth-box');
+    const powersBox = document.getElementById('owner-powers-box');
+    
+    if (badge) {
+        if (state.isOwner) {
+            badge.style.background = 'linear-gradient(135deg, #f1c40f, #e67e22)';
+            badge.style.color = '#000';
+            if (label) label.textContent = 'Dono Ativo 👑';
+        } else {
+            badge.style.background = '#2b2d31';
+            badge.style.color = '#949ba4';
+            if (label) label.textContent = 'Modo Dono';
+        }
+    }
+
+    if (authBox && powersBox) {
+        authBox.style.display = state.isOwner ? 'none' : 'block';
+        powersBox.style.display = state.isOwner ? 'block' : 'none';
+    }
+
+    // Atualiza botões de adicionar canal
+    const addTextBtn = document.getElementById('btn-add-text-channel');
+    const addVoiceBtn = document.getElementById('btn-add-voice-channel');
+    if (addTextBtn) addTextBtn.style.display = state.isOwner ? 'block' : 'none';
+    if (addVoiceBtn) addVoiceBtn.style.display = state.isOwner ? 'block' : 'none';
+
+    renderBannedList();
+}
+
+function openOwnerModal() {
+    const m = document.getElementById('modal-owner-panel');
+    if (m) {
+        m.style.display = 'flex';
+        updateOwnerUI();
+    }
+}
+
+function closeOwnerModal() {
+    const m = document.getElementById('modal-owner-panel');
+    if (m) m.style.display = 'none';
+}
+
+function renderBannedList() {
+    const listEl = document.getElementById('owner-banned-list');
+    if (!listEl) return;
+    if (!state.bannedUsers || state.bannedUsers.length === 0) {
+        listEl.innerHTML = '<div style="padding: 8px; color: #949ba4;">Nenhum usuário banido no momento.</div>';
+        return;
+    }
+    listEl.innerHTML = '';
+    state.bannedUsers.forEach(uid => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #2b2d31;';
+        row.innerHTML = `
+            <span style="font-family:monospace;color:#f23f43;">ID: ${escapeHtml(uid)}</span>
+            <button style="background:#5865F2;color:#fff;border:none;padding:4px 10px;border-radius:3px;font-size:11px;font-weight:700;cursor:pointer;">Desbanir</button>
+        `;
+        row.querySelector('button').onclick = () => adminUnbanUser(uid);
+        listEl.appendChild(row);
+    });
+}
+
+function adminAuth(key) {
+    sendWs({
+        type: 'admin_auth',
+        key: key
+    });
+}
+
+function adminStopStream(targetUserId) {
+    sendWs({
+        type: 'admin_stop_stream',
+        targetUserId: targetUserId
+    });
+    showToast('👑 Solicitado desligamento da transmissão...');
+}
+
+function adminStopChannelStreams(channelId) {
+    sendWs({
+        type: 'admin_stop_stream',
+        channelId: channelId
+    });
+    showToast(`👑 Desligando transmissões na sala <b>${channelId}</b>...`);
+}
+
+function adminDisconnectVoice(targetUserId) {
+    sendWs({
+        type: 'admin_disconnect_voice',
+        targetUserId: targetUserId
+    });
+    showToast('👑 Usuário desconectado da sala de voz.');
+}
+
+function adminKickUser(targetUserId) {
+    sendWs({
+        type: 'admin_kick_user',
+        targetUserId: targetUserId
+    });
+    showToast('👑 Usuário expulso do servidor.');
+}
+
+function adminBanUser(targetUserId) {
+    sendWs({
+        type: 'admin_ban_user',
+        targetUserId: targetUserId
+    });
+    showToast('🔨 Usuário BANIDO permanentemente.');
+}
+
+function adminUnbanUser(targetUserId) {
+    sendWs({
+        type: 'admin_unban_user',
+        targetUserId: targetUserId
+    });
+    state.bannedUsers = (state.bannedUsers || []).filter(u => u !== targetUserId);
+    renderBannedList();
+    showToast('✅ Usuário desbanido.');
+}
+
+function adminCreateChannel(type, name) {
+    sendWs({
+        type: 'admin_create_channel',
+        channelType: type,
+        name: name
+    });
+}
+
+function adminDeleteChannel(channelId, type) {
+    sendWs({
+        type: 'admin_delete_channel',
+        channelId: channelId,
+        channelType: type
+    });
+}
+
+// Renderização Dinâmica de Canais (Texto e Voz)
+function renderChannels() {
+    const textContainer = document.getElementById('text-channels-container');
+    const voiceContainer = document.getElementById('voice-channels-container');
+    if (!textContainer || !voiceContainer) return;
+
+    textContainer.innerHTML = '';
+    voiceContainer.innerHTML = '';
+
+    const textChannels = state.channels?.text || [
+        { id: 'geral', name: 'geral' },
+        { id: 'clips-e-lives', name: 'clips-e-lives' },
+        { id: 'jogos', name: 'jogos' },
+        { id: 'memes', name: 'memes' }
+    ];
+
+    const voiceChannels = state.channels?.voice || [
+        { id: 'geral', name: '🔊 Geral', type: 'voice', icon: 'fa-volume-high' },
+        { id: 'jogos-60fps', name: '🎮 Jogos 60FPS', type: 'voice', icon: 'fa-gamepad' },
+        { id: 'cinema-1', name: '🎬 Cinema 1 • Filmes', type: 'cinema', icon: 'fa-film' },
+        { id: 'cinema-2', name: '🍿 Cinema 2 • Séries', type: 'cinema', icon: 'fa-tv' },
+        { id: 'cinema-3', name: '⚽ Cinema 3 • Futebol & TV', type: 'cinema', icon: 'fa-futbol' },
+        { id: 'competitivo', name: '🏆 Competitivo / Ranked', type: 'voice', icon: 'fa-trophy' },
+        { id: 'bate-papo', name: '☕ Bate-papo & Chill', type: 'voice', icon: 'fa-mug-hot' },
+        { id: 'afk', name: '💤 AFK / Ausente', type: 'voice', icon: 'fa-bed' }
+    ];
+
+    // Renderiza Canais de Texto
+    textChannels.forEach(ch => {
+        const item = document.createElement('div');
+        item.className = `channel-item ${state.currentTextChannel === ch.id ? 'active' : ''}`;
+        item.setAttribute('data-type', 'text');
+        item.setAttribute('data-channel', ch.id);
+        item.innerHTML = `
+            <i class="fa-solid fa-hashtag"></i>
+            <span>${escapeHtml(ch.name)}</span>
+            ${(state.isOwner && ch.id !== 'geral') ? `<button class="btn-del-channel" title="Excluir Canal"><i class="fa-solid fa-xmark"></i></button>` : ''}
+        `;
+        item.onclick = (e) => {
+            if (e.target.closest('.btn-del-channel')) {
+                e.stopPropagation();
+                if (confirm(`👑 Deseja realmente excluir o canal de texto #${ch.name}?`)) {
+                    adminDeleteChannel(ch.id, 'text');
+                }
+                return;
+            }
+            document.querySelectorAll('.channel-item[data-type="text"]').forEach(c => c.classList.remove('active'));
+            item.classList.add('active');
+            state.currentTextChannel = ch.id;
+            const titleEl = document.getElementById('current-channel-title');
+            if (titleEl) titleEl.textContent = ch.name;
+            const inputEl = document.getElementById('chat-input');
+            if (inputEl) inputEl.placeholder = `Conversar em #${ch.name}...`;
+        };
+        textContainer.appendChild(item);
+    });
+
+    // Renderiza Canais de Voz
+    voiceChannels.forEach(ch => {
+        const vItem = document.createElement('div');
+        vItem.className = `voice-channel ${state.currentVoiceChannel === ch.id ? 'active' : ''}`;
+        vItem.setAttribute('data-channel', ch.id);
+        const iconClass = ch.icon || (ch.id.startsWith('cinema-') ? 'fa-film text-green' : 'fa-volume-high');
+        
+        vItem.innerHTML = `
+            <div class="voice-header">
+                <i class="fa-solid ${iconClass}"></i>
+                <span>${escapeHtml(ch.name.replace(/^[🔊🎮🎬🍿⚽🏆☕💤]\s*/, ''))}</span>
+                <span class="live-pill" id="live-tag-${ch.id}" style="display: none;">AO VIVO</span>
+                ${(state.isOwner && !['geral', 'jogos-60fps', 'cinema-1', 'cinema-2', 'cinema-3', 'afk'].includes(ch.id)) ? `<button class="btn-del-channel" title="Excluir Sala"><i class="fa-solid fa-xmark"></i></button>` : ''}
+            </div>
+            <div class="voice-users" id="voice-users-${ch.id}"></div>
+        `;
+
+        vItem.onclick = (e) => {
+            if (e.target.closest('.btn-del-channel') || e.target.closest('.btn-admin-kill-stream')) return;
+            switchVoiceChannel(ch.id);
+        };
+
+        const delBtn = vItem.querySelector('.btn-del-channel');
+        if (delBtn) {
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (confirm(`👑 Deseja realmente excluir a sala de voz ${ch.name}?`)) {
+                    adminDeleteChannel(ch.id, 'voice');
+                }
+            };
+        }
+
+        vItem.ondragover = (e) => { e.preventDefault(); vItem.classList.add('drag-over'); };
+        vItem.ondragleave = () => { vItem.classList.remove('drag-over'); };
+        vItem.ondrop = (e) => {
+            e.preventDefault();
+            vItem.classList.remove('drag-over');
+            const uid = e.dataTransfer.getData('text/plain');
+            if (uid) moveUserToChannel(uid, ch.id);
+        };
+
+        voiceContainer.appendChild(vItem);
+    });
+
+    renderVoiceUsers();
+    updateOwnerUI();
+}
+
+
 
 // Modal de Convidar Amigos com link visível e cópia à prova de falhas
 function openInviteModal() {
@@ -212,8 +460,76 @@ async function handleServerMessage(data) {
             if (data.onlineIds) {
                 state.onlineUserIds = new Set(data.onlineIds);
             }
-            renderVoiceUsers();
+            if (data.channels) {
+                state.channels = data.channels;
+            }
+            if (data.banned) {
+                state.bannedUsers = data.banned;
+            }
+            if (data.isOwner !== undefined) {
+                state.isOwner = data.isOwner || (localStorage.getItem('discord_is_owner') === 'true');
+                updateOwnerUI();
+            }
+            renderChannels();
             renderMembersSidebar();
+            break;
+
+        case 'admin_auth_success':
+            state.isOwner = true;
+            localStorage.setItem('discord_is_owner', 'true');
+            updateOwnerUI();
+            renderChannels();
+            showToast('👑 <b>Modo Dono ativado com sucesso!</b> Você possui todos os poderes do servidor.', 5000);
+            closeOwnerModal();
+            break;
+
+        case 'admin_auth_failed':
+            showToast(`❌ ${data.message || 'Senha incorreta!'}`, 4000);
+            break;
+
+        case 'channel_created':
+            if (!state.channels) state.channels = { text: [], voice: [] };
+            const chGroup = data.channel.type === 'voice' ? 'voice' : 'text';
+            state.channels[chGroup] = state.channels[chGroup] || [];
+            // Se ainda não estiver na lista, adiciona
+            if (!state.channels[chGroup].some(c => c.id === data.channel.id)) {
+                state.channels[chGroup].push(data.channel);
+            }
+            renderChannels();
+            showToast(`📁 Novo canal criado: <b>${escapeHtml(data.channel.name)}</b>`);
+            break;
+
+        case 'channel_deleted':
+            if (state.channels) {
+                if (data.channelType === 'voice') {
+                    state.channels.voice = (state.channels.voice || []).filter(c => c.id !== data.channelId);
+                    if (state.currentVoiceChannel === data.channelId) {
+                        leaveVoiceChannel(false);
+                        showToast('ℹ️ O canal de voz onde você estava foi excluído pelo Dono.');
+                    }
+                } else {
+                    state.channels.text = (state.channels.text || []).filter(c => c.id !== data.channelId);
+                    if (state.currentTextChannel === data.channelId) {
+                        state.currentTextChannel = 'geral';
+                    }
+                }
+            }
+            renderChannels();
+            showToast('🗑️ Um canal foi excluído pelo Dono.');
+            break;
+
+        case 'all_streams_stopped':
+            state.activeStreams.clear();
+            state.currentlyWatchingUserId = null;
+            if (!state.currentCinemaStreamId) {
+                const stg = document.getElementById('video-stage');
+                const vid = document.getElementById('stage-video');
+                if (vid) { try { vid.pause(); } catch(e){} vid.srcObject = null; vid.src = ''; }
+                if (stg) stg.style.display = 'none';
+            }
+            renderStreamTabs();
+            renderVoiceUsers();
+            showToast('🛑 Todas as transmissões ativas foram desligadas pelo Dono.');
             break;
 
         case 'cinema_update':
@@ -838,6 +1154,18 @@ function openUserContextMenu(e, userId) {
     const watchBtn = document.getElementById('ctx-btn-watch-stream');
     watchBtn.style.display = state.activeStreams.has(userId) ? 'flex' : 'none';
 
+    // Exibe ou oculta opções exclusivas de Administrador/Dono
+    const adminItems = document.querySelectorAll('.admin-only');
+    adminItems.forEach(el => {
+        el.style.display = (state.isOwner && !isSelf) ? 'flex' : 'none';
+    });
+
+    const stopStreamBtn = document.getElementById('ctx-btn-force-stop-stream');
+    if (stopStreamBtn) {
+        const isStreaming = user?.isStreaming || state.activeStreams.has(userId);
+        stopStreamBtn.style.display = (state.isOwner && isStreaming && !isSelf) ? 'flex' : 'none';
+    }
+
     // Posiciona menu na tela sem vazar das bordas
     menu.style.display = 'flex';
     const menuWidth = 230;
@@ -969,6 +1297,21 @@ function moveUserToChannel(userId, newChannel) {
 // Sair da Sala de Voz (Desconectar)
 function leaveVoiceChannel(notifyServer = true) {
     if (!state.currentVoiceChannel) return;
+    
+    // Limpa quaisquer transmissões ativas que estavam sendo assistidas nesta sala
+    state.activeStreams.clear();
+    state.currentlyWatchingUserId = null;
+    if (!state.currentCinemaStreamId) {
+        const stage = document.getElementById('video-stage');
+        const video = document.getElementById('stage-video');
+        if (video) {
+            try { video.pause(); } catch(e){}
+            video.srcObject = null;
+            video.src = '';
+        }
+        if (stage) stage.style.display = 'none';
+    }
+    renderStreamTabs();
 
     state.currentVoiceChannel = null;
     document.querySelectorAll('.voice-channel').forEach(el => {
@@ -1752,6 +2095,108 @@ function setupEventListeners() {
         };
     }
 
+
+    // Event Listeners do Dono do Servidor 👑
+    on('btn-owner-badge', 'click', openOwnerModal);
+    on('btn-close-owner-panel', 'click', closeOwnerModal);
+
+    on('btn-submit-owner-auth', 'click', () => {
+        const pass = document.getElementById('input-owner-pass')?.value || '';
+        adminAuth(pass);
+    });
+
+    on('btn-owner-kill-all-streams', 'click', () => {
+        if (confirm('👑 Deseja realmente desligar todas as transmissões de tela ativas/travadas no servidor?')) {
+            sendWs({ type: 'admin_stop_stream', targetUserId: 'all' });
+            showToast('👑 Desligando todas as transmissões de tela...');
+            closeOwnerModal();
+        }
+    });
+
+    on('btn-owner-open-create-channel', 'click', () => {
+        closeOwnerModal();
+        const m = document.getElementById('modal-create-channel');
+        if (m) m.style.display = 'flex';
+    });
+
+    on('btn-add-text-channel', 'click', () => {
+        const m = document.getElementById('modal-create-channel');
+        if (m) {
+            m.style.display = 'flex';
+            const radioText = document.querySelector('input[name="create-channel-type"][value="text"]');
+            if (radioText) radioText.checked = true;
+        }
+    });
+
+    on('btn-add-voice-channel', 'click', () => {
+        const m = document.getElementById('modal-create-channel');
+        if (m) {
+            m.style.display = 'flex';
+            const radioVoice = document.querySelector('input[name="create-channel-type"][value="voice"]');
+            if (radioVoice) radioVoice.checked = true;
+        }
+    });
+
+    on('btn-close-create-channel', 'click', () => {
+        const m = document.getElementById('modal-create-channel');
+        if (m) m.style.display = 'none';
+    });
+    on('btn-cancel-create-channel', 'click', () => {
+        const m = document.getElementById('modal-create-channel');
+        if (m) m.style.display = 'none';
+    });
+
+    on('btn-submit-create-channel', 'click', () => {
+        const inputName = document.getElementById('input-create-channel-name');
+        const name = inputName ? inputName.value.trim() : '';
+        if (!name) {
+            alert('Por favor, digite o nome do canal!');
+            return;
+        }
+        const chType = document.querySelector('input[name="create-channel-type"]:checked')?.value || 'voice';
+        adminCreateChannel(chType, name);
+        if (inputName) inputName.value = '';
+        const m = document.getElementById('modal-create-channel');
+        if (m) m.style.display = 'none';
+    });
+
+    // Ações de Admin no Menu de Contexto
+    on('ctx-btn-force-stop-stream', 'click', () => {
+        if (state.activeContextUserId) {
+            adminStopStream(state.activeContextUserId);
+        }
+        closeUserContextMenu();
+    });
+
+    on('ctx-btn-force-disconnect-voice', 'click', () => {
+        if (state.activeContextUserId) {
+            adminDisconnectVoice(state.activeContextUserId);
+        }
+        closeUserContextMenu();
+    });
+
+    on('ctx-btn-kick-user', 'click', () => {
+        if (state.activeContextUserId) {
+            const u = state.users.get(state.activeContextUserId);
+            const name = u ? u.username : 'o usuário';
+            if (confirm(`👑 Deseja expulsar ${name} do servidor?`)) {
+                adminKickUser(state.activeContextUserId);
+            }
+        }
+        closeUserContextMenu();
+    });
+
+    on('ctx-btn-ban-user', 'click', () => {
+        if (state.activeContextUserId) {
+            const u = state.users.get(state.activeContextUserId);
+            const name = u ? u.username : 'o usuário';
+            if (confirm(`🔨 ATENÇÃO: Deseja realmente BANIR permanentemente ${name} deste servidor?`)) {
+                adminBanUser(state.activeContextUserId);
+            }
+        }
+        closeUserContextMenu();
+    });
+
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeUserSettingsModal();
@@ -2026,8 +2471,8 @@ function playCinemaStream(cinema) {
     };
 
     if (cinema.streamType === 'live') {
-        const tsUrl = `/api/iptv/stream/${cinema.streamId}.ts`;
-        const m3u8Url = `/api/iptv/live/${cinema.streamId}.m3u8`;
+        const tsUrl = `${window.location.origin}/api/iptv/stream/${cinema.streamId}.ts`;
+        const m3u8Url = `${window.location.origin}/api/iptv/live/${cinema.streamId}.m3u8`;
 
         if (window.mpegts && mpegts.getFeatureList().mseLivePlayback) {
             try {
@@ -2036,7 +2481,7 @@ function playCinemaStream(cinema) {
                     isLive: true,
                     url: tsUrl
                 }, {
-                    enableWorker: true,
+                    enableWorker: false, // Executa diretamente no thread principal via MSE, eliminando falhas de worker blob
                     lazyLoad: false,
                     liveBufferLatencyChasing: true,
                     autoCleanupSourceBuffer: true
@@ -2382,6 +2827,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     try {
         setupEventListeners();
+        renderChannels();
     } catch (e) {
         console.error('Erro em setupEventListeners:', e);
     }

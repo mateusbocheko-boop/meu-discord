@@ -31,107 +31,33 @@
 
         <!-- 2. CANAIS E USUÁRIOS -->
         <aside class="channels-sidebar">
-            <div class="sidebar-header">
-                <h2>🎮 Comunidade 60FPS</h2>
-                <i class="fa-solid fa-chevron-down"></i>
+            <div class="sidebar-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <h2 style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;">🎮 Comunidade 60FPS</h2>
+                <button id="btn-owner-badge" class="btn-owner-badge" title="Painel do Dono do Servidor 👑">
+                    <i class="fa-solid fa-crown"></i> <span id="owner-badge-label">Dono</span>
+                </button>
             </div>
 
             <div class="channels-list">
                 <!-- Categoria Texto -->
                 <div class="channel-group">
-                    <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE TEXTO</span>
-                    <div class="channel-item active" data-type="text" data-channel="geral">
-                        <i class="fa-solid fa-hashtag"></i>
-                        <span>geral</span>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding-right:8px;">
+                        <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE TEXTO</span>
+                        <button class="btn-create-channel" id="btn-add-text-channel" title="Criar Canal de Texto"><i class="fa-solid fa-plus"></i></button>
                     </div>
-                    <div class="channel-item" data-type="text" data-channel="clips-e-lives">
-                        <i class="fa-solid fa-hashtag"></i>
-                        <span>clips-e-lives</span>
-                    </div>
-                    <div class="channel-item" data-type="text" data-channel="jogos">
-                        <i class="fa-solid fa-hashtag"></i>
-                        <span>jogos</span>
-                    </div>
-                    <div class="channel-item" data-type="text" data-channel="memes">
-                        <i class="fa-solid fa-hashtag"></i>
-                        <span>memes</span>
+                    <div id="text-channels-container">
+                        <!-- Gerado dinamicamente -->
                     </div>
                 </div>
 
-                <!-- Categoria Voz (Mais Salas Adicionadas) -->
+                <!-- Categoria Voz & Cinema -->
                 <div class="channel-group">
-                    <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE VOZ & CINEMA</span>
-                    
-                    <div class="voice-channel" data-channel="geral">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-volume-high"></i>
-                            <span>🔊 Geral</span>
-                            <span class="live-pill" id="live-tag-geral" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-geral"></div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding-right:8px;">
+                        <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE VOZ & CINEMA</span>
+                        <button class="btn-create-channel" id="btn-add-voice-channel" title="Criar Sala de Voz"><i class="fa-solid fa-plus"></i></button>
                     </div>
-
-                    <div class="voice-channel" data-channel="jogos-60fps">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-gamepad"></i>
-                            <span>🎮 Jogos 60FPS</span>
-                            <span class="live-pill" id="live-tag-jogos-60fps" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-jogos-60fps"></div>
-                    </div>
-
-                    <div class="voice-channel" data-channel="cinema-1">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-film text-green"></i>
-                            <span>🎬 Cinema 1 • Filmes</span>
-                            <span class="live-pill" id="live-tag-cinema-1" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-cinema-1"></div>
-                    </div>
-
-                    <div class="voice-channel" data-channel="cinema-2">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-tv text-green"></i>
-                            <span>🍿 Cinema 2 • Séries</span>
-                            <span class="live-pill" id="live-tag-cinema-2" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-cinema-2"></div>
-                    </div>
-
-                    <div class="voice-channel" data-channel="cinema-3">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-futbol text-green"></i>
-                            <span>⚽ Cinema 3 • Futebol & TV</span>
-                            <span class="live-pill" id="live-tag-cinema-3" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-cinema-3"></div>
-                    </div>
-
-                    <div class="voice-channel" data-channel="competitivo">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-trophy"></i>
-                            <span>🏆 Competitivo / Ranked</span>
-                            <span class="live-pill" id="live-tag-competitivo" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-competitivo"></div>
-                    </div>
-
-                    <div class="voice-channel" data-channel="bate-papo">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-mug-hot"></i>
-                            <span>☕ Bate-papo & Chill</span>
-                            <span class="live-pill" id="live-tag-bate-papo" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-bate-papo"></div>
-                    </div>
-
-                    <div class="voice-channel" data-channel="afk">
-                        <div class="voice-header">
-                            <i class="fa-solid fa-bed"></i>
-                            <span>💤 AFK / Ausente</span>
-                            <span class="live-pill" id="live-tag-afk" style="display: none;">AO VIVO</span>
-                        </div>
-                        <div class="voice-users" id="voice-users-afk"></div>
+                    <div id="voice-channels-container">
+                        <!-- Gerado dinamicamente -->
                     </div>
                 </div>
             </div>
@@ -650,7 +576,114 @@
         <div class="ctx-divider"></div>
         <div class="ctx-item text-red" id="ctx-btn-disconnect-voice">
             <i class="fa-solid fa-phone-slash"></i>
-            <span>Mover para AFK / Desconectar</span>
+            <span>Mover para AFK</span>
+        </div>
+
+        <!-- Opções Exclusivas do Dono do Servidor 👑 -->
+        <div class="ctx-divider admin-only" style="display: none;"></div>
+        <div class="ctx-admin-header admin-only" style="display: none; padding: 4px 8px; font-size: 10px; font-weight: 800; color: #f1c40f; text-transform: uppercase; letter-spacing: 0.5px;">
+            <i class="fa-solid fa-crown"></i> Painel do Dono
+        </div>
+        <div class="ctx-item text-yellow admin-only" id="ctx-btn-force-stop-stream" style="display: none;">
+            <i class="fa-solid fa-video-slash"></i>
+            <span>Desligar Transmissão</span>
+        </div>
+        <div class="ctx-item text-red admin-only" id="ctx-btn-force-disconnect-voice" style="display: none;">
+            <i class="fa-solid fa-phone-slash"></i>
+            <span>Desconectar da Sala</span>
+        </div>
+        <div class="ctx-item text-red admin-only" id="ctx-btn-kick-user" style="display: none;">
+            <i class="fa-solid fa-user-xmark"></i>
+            <span>Expulsar do Servidor</span>
+        </div>
+        <div class="ctx-item text-red admin-only" id="ctx-btn-ban-user" style="display: none;">
+            <i class="fa-solid fa-gavel"></i>
+            <span>Banir do Servidor</span>
+        </div>
+    </div>
+
+    
+    <!-- MODAL DE CRIAR NOVO CANAL (TEXTO OU VOZ) -->
+    <div class="modal-backdrop" id="modal-create-channel" style="display: none;">
+        <div class="modal-box" style="max-width: 440px; padding: 24px; text-align: left;">
+            <div class="modal-header" style="padding: 0 0 16px 0; border-bottom: 1px solid #3f4147;">
+                <h3 style="display:flex;align-items:center;gap:8px;font-size:18px;color:#fff;">
+                    <i class="fa-solid fa-plus-circle text-green"></i> Criar Novo Canal
+                </h3>
+                <button class="modal-close" id="btn-close-create-channel"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div style="margin-top: 16px;">
+                <label style="display:block;font-size:12px;font-weight:700;color:#b5bac1;text-transform:uppercase;margin-bottom:8px;">TIPO DE CANAL</label>
+                <div style="display:flex;gap:12px;margin-bottom:16px;">
+                    <label style="flex:1;background:#2b2d31;padding:12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:10px;border:2px solid #5865F2;">
+                        <input type="radio" name="create-channel-type" value="voice" checked style="accent-color:#5865F2;">
+                        <div>
+                            <div style="font-weight:700;color:#fff;font-size:14px;"><i class="fa-solid fa-volume-high"></i> Voz</div>
+                            <div style="font-size:11px;color:#949ba4;">Conversa por voz e IPTV</div>
+                        </div>
+                    </label>
+                    <label style="flex:1;background:#2b2d31;padding:12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:10px;border:2px solid transparent;" id="lbl-channel-type-text">
+                        <input type="radio" name="create-channel-type" value="text" style="accent-color:#5865F2;">
+                        <div>
+                            <div style="font-weight:700;color:#fff;font-size:14px;"><i class="fa-solid fa-hashtag"></i> Texto</div>
+                            <div style="font-size:11px;color:#949ba4;">Mensagens e imagens</div>
+                        </div>
+                    </label>
+                </div>
+
+                <label style="display:block;font-size:12px;font-weight:700;color:#b5bac1;text-transform:uppercase;margin-bottom:8px;">NOME DO CANAL</label>
+                <div style="position:relative;margin-bottom:20px;">
+                    <input type="text" id="input-create-channel-name" placeholder="ex: torneio-cs, resenha-vip" maxlength="28" style="width:100%;box-sizing:border-box;background:#1e1f22;border:1px solid #3f4147;color:#dbdee1;padding:10px 12px;border-radius:4px;font-size:14px;">
+                </div>
+
+                <div style="display:flex;justify-content:flex-end;gap:12px;">
+                    <button id="btn-cancel-create-channel" style="background:transparent;color:#dbdee1;border:none;padding:10px 18px;font-size:14px;cursor:pointer;font-weight:600;">Cancelar</button>
+                    <button id="btn-submit-create-channel" style="background:#5865F2;color:#fff;border:none;padding:10px 22px;border-radius:4px;font-size:14px;cursor:pointer;font-weight:700;">Criar Canal</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DO PAINEL DO DONO DO SERVIDOR 👑 -->
+    <div class="modal-backdrop" id="modal-owner-panel" style="display: none;">
+        <div class="modal-box" style="max-width: 520px; padding: 24px; text-align: left;">
+            <div class="modal-header" style="padding: 0 0 16px 0; border-bottom: 1px solid #3f4147;">
+                <h3 style="display:flex;align-items:center;gap:8px;font-size:18px;color:#f1c40f;">
+                    <i class="fa-solid fa-crown"></i> Painel do Dono do Servidor
+                </h3>
+                <button class="modal-close" id="btn-close-owner-panel"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div style="margin-top: 16px;">
+                <!-- Status de Autenticação -->
+                <div id="owner-auth-box" style="display:none;background:#2b2d31;padding:16px;border-radius:6px;margin-bottom:16px;">
+                    <p style="color:#dbdee1;font-size:13px;margin-bottom:10px;">Digite a senha de Dono do Servidor para liberar todos os poderes:</p>
+                    <div style="display:flex;gap:8px;">
+                        <input type="password" id="input-owner-pass" placeholder="Senha do Dono (padrão: dono123)" style="flex:1;background:#1e1f22;border:1px solid #3f4147;color:#fff;padding:8px 12px;border-radius:4px;font-size:13px;">
+                        <button id="btn-submit-owner-auth" style="background:#f1c40f;color:#000;border:none;padding:8px 16px;border-radius:4px;font-weight:700;font-size:13px;cursor:pointer;">Entrar</button>
+                    </div>
+                </div>
+
+                <div id="owner-powers-box">
+                    <div style="background:#23a55a22;border:1px solid #23a55a88;padding:12px;border-radius:6px;color:#23a55a;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+                        <i class="fa-solid fa-circle-check"></i> Você possui controle total sobre este servidor.
+                    </div>
+
+                    <label style="display:block;font-size:11px;font-weight:700;color:#b5bac1;text-transform:uppercase;margin-bottom:8px;">AÇÕES RÁPIDAS</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+                        <button id="btn-owner-kill-all-streams" style="background:#da373c;color:#fff;border:none;padding:12px 14px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;text-align:left;">
+                            <i class="fa-solid fa-power-off"></i> Desligar Todas as Transmissões
+                        </button>
+                        <button id="btn-owner-open-create-channel" style="background:#5865F2;color:#fff;border:none;padding:12px 14px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;text-align:left;">
+                            <i class="fa-solid fa-plus-circle"></i> Criar Nova Sala
+                        </button>
+                    </div>
+
+                    <label style="display:block;font-size:11px;font-weight:700;color:#b5bac1;text-transform:uppercase;margin-bottom:8px;">USUÁRIOS BANIDOS</label>
+                    <div id="owner-banned-list" style="background:#1e1f22;border:1px solid #3f4147;border-radius:6px;max-height:140px;overflow-y:auto;padding:8px;font-size:13px;color:#949ba4;">
+                        Nenhum usuário banido no momento.
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -2246,3 +2246,107 @@ body, html {
     background: #4752c4;
     transform: scale(1.05);
 }
+
+/* --- BOTÃO DE DONO DO SERVIDOR E PODERES 👑 --- */
+.btn-owner-badge {
+    background: linear-gradient(135deg, #f1c40f, #e67e22);
+    color: #111;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.1s, filter 0.1s;
+}
+.btn-owner-badge:hover {
+    filter: brightness(1.15);
+    transform: scale(1.04);
+}
+.btn-create-channel {
+    background: transparent;
+    color: #949ba4;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+}
+.btn-create-channel:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+.btn-del-channel {
+    margin-left: auto;
+    background: transparent;
+    color: #949ba4;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+}
+.channel-item:hover .btn-del-channel,
+.voice-channel:hover .btn-del-channel {
+    opacity: 1;
+}
+.btn-del-channel:hover {
+    color: #f23f43;
+    background: rgba(242, 63, 67, 0.15);
+}
+.btn-admin-kill-stream {
+    background: #da373c;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    animation: pulse 1.5s infinite;
+}
+.btn-admin-kill-stream:hover {
+    background: #b52a2e;
+}
+.ctx-item.text-yellow {
+    color: #f1c40f;
+}
+.ctx-item.text-yellow:hover {
+    background-color: #d4ac0d;
+    color: #000;
+}
+
+/* Avatar Color Options Horizontal Flex */
+.color-options, #register-color-options {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 12px 0 20px 0 !important;
+}
+.color-options .color-dot {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    transition: transform 0.15s, border 0.15s !important;
+    border: 2px solid transparent !important;
+}
+.color-options .color-dot.active {
+    border: 2px solid #fff !important;
+    transform: scale(1.15) !important;
+}
