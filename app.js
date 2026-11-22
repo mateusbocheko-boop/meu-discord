@@ -1542,16 +1542,39 @@ async function startScreenShare() {
 
     let stream = null;
     try {
-        // Tenta capturar tela com áudio
+        // Captura de tela com áudio automático pré-marcado e alta fidelidade 48kHz
         const constraints = {
             video: {
                 frameRate: { ideal: fps, max: fps },
                 width: { ideal: width, max: width },
-                height: { ideal: height, max: height }
+                height: { ideal: height, max: height },
+                displaySurface: 'monitor'
             },
-            audio: state.streamConfig.captureAudio ? true : false
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                channelCount: 2,
+                sampleRate: 48000
+            },
+            systemAudio: 'include',
+            selfBrowserSurface: 'include',
+            surfaceSwitching: 'include'
         };
-        stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+        } catch (errAudio) {
+            console.warn('Fallback getDisplayMedia constraints simples:', errAudio);
+            stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    frameRate: { ideal: fps, max: fps },
+                    width: { ideal: width, max: width },
+                    height: { ideal: height, max: height }
+                },
+                audio: true,
+                systemAudio: 'include'
+            });
+        }
     } catch (err) {
         console.warn('Erro getDisplayMedia com áudio, tentando fallback de vídeo:', err);
         try {
@@ -1568,11 +1591,23 @@ async function startScreenShare() {
         state.localScreenStream = stream;
         state.isStreaming = true;
 
-        const hasAudio = stream.getAudioTracks().length > 0;
-        if (!hasAudio) {
-            showToast('⚠️ <b>Atenção: Áudio do jogo não capturado!</b><br>No seletor do Windows, escolha a aba <b>"Tela inteira"</b> e marque a caixa <b>"Compartilhar áudio do sistema"</b> para o som do jogo sair.', 9000);
+        // Garante que a transmissão SEMPRE venha com áudio
+        let hasAudio = stream.getAudioTracks().length > 0;
+        if (!hasAudio && state.localAudioStream && state.localAudioStream.getAudioTracks().length > 0) {
+            try {
+                // Injeta automaticamente o áudio do microfone para a transmissão não ficar muda
+                const micTrack = state.localAudioStream.getAudioTracks()[0].clone();
+                stream.addTrack(micTrack);
+                hasAudio = true;
+                showToast('🎮 Transmissão iniciada com seu áudio incluído automaticamente!', 4000);
+            } catch (e) {
+                console.warn('Não foi possível anexar áudio secundário:', e);
+            }
+        }
+        if (hasAudio) {
+            showToast('🎮 Transmissão iniciada com áudio estéreo ativo!', 4000);
         } else {
-            showToast('🎮 Transmissão iniciada com o áudio estéreo do jogo!', 4000);
+            showToast('🎮 Transmissão iniciada!', 3000);
         }
 
         addStream(state.userId, stream, state.username + ' (Você)', {
