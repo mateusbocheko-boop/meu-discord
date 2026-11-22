@@ -3431,3 +3431,34 @@ body, html {
     box-shadow: 0 0 14px rgba(255, 215, 0, 0.5);
     border-radius: 14px;
 }
+
+/* BOTÃO DE MUTAR TRANSMISSÃO NO HUD */
+.btn-hud-mute-stream {
+    background-color: rgba(15, 23, 42, 0.75) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    color: #e2e8f5 !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    padding: 4px 10px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    transition: all 0.15s !important;
+    white-space: nowrap !important;
+}
+.btn-hud-mute-stream:hover {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    color: #ffffff !important;
+}
+.btn-hud-mute-stream.is-muted {
+    background-color: rgba(237, 66, 69, 0.3) !important;
+    border-color: #ed4245 !important;
+    color: #ed4245 !important;
+}
+.btn-hud-mute-stream.is-muted:hover {
+    background-color: #ed4245 !important;
+    color: #ffffff !important;
+}

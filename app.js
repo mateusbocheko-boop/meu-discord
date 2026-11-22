@@ -1804,10 +1804,11 @@ function selectLiveStream(userId) {
 
     stage.style.display = 'flex';
     video.srcObject = item.stream;
-    video.muted = (userId === state.userId);
+    const shouldMute = (userId === state.userId) || state.userMutedLocally.has(userId);
+    setStreamMuted(shouldMute);
 
     video.play().catch(() => {
-        video.muted = true;
+        setStreamMuted(true);
         video.play().catch(() => {});
     });
 
@@ -2002,16 +2003,82 @@ function closeUserContextMenu() {
     state.activeContextUserId = null;
 }
 
-function applyUserVolume(userId) {
-    const audioEl = state.remoteAudioElements.get(userId);
-    if (!audioEl) return;
 
-    if (state.userMutedLocally.has(userId)) {
-        audioEl.muted = true;
-    } else {
-        audioEl.muted = false;
-        const vol = (state.userVolumes.get(userId) ?? 100) / 100;
-        audioEl.volume = Math.min(1.0, Math.max(0, vol));
+// --- CONTROLE DE MUDO DA TRANSMISSÃO / TELA ---
+function setStreamMuted(muted, volume = null) {
+    const vid = document.getElementById('stage-video');
+    const hudBtn = document.getElementById('btn-hud-mute-stream');
+    const volBtn = document.getElementById('btn-vid-vol');
+    const volSlider = document.getElementById('vid-volume-slider');
+
+    // 1. Aplica no elemento de vídeo do palco
+    if (vid) {
+        vid.muted = muted;
+        if (volume !== null) {
+            vid.volume = volume;
+        }
+    }
+
+    // 2. Aplica no elemento de áudio WebRTC do streamer atual
+    if (state.currentlyWatchingUserId) {
+        const audioEl = state.remoteAudioElements.get(state.currentlyWatchingUserId);
+        if (audioEl) {
+            audioEl.muted = muted;
+            if (volume !== null) {
+                audioEl.volume = volume;
+            }
+        }
+    }
+
+    // 3. Atualiza botão de volume nos controles inferiores
+    if (volBtn) {
+        volBtn.innerHTML = muted 
+            ? '<i class="fa-solid fa-volume-xmark" style="color:#ed4245;"></i>' 
+            : '<i class="fa-solid fa-volume-high"></i>';
+        volBtn.title = muted ? 'Desmutar Transmissão' : 'Mutar Transmissão';
+    }
+
+    // 4. Atualiza botão de mudo no HUD superior
+    if (hudBtn) {
+        if (muted) {
+            hudBtn.classList.add('is-muted');
+            hudBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i> <span id="btn-hud-mute-text">Mutado</span>';
+            hudBtn.title = 'Desmutar Áudio da Transmissão';
+        } else {
+            hudBtn.classList.remove('is-muted');
+            hudBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i> <span id="btn-hud-mute-text">Som da Live</span>';
+            hudBtn.title = 'Mutar Áudio da Transmissão';
+        }
+    }
+
+    // 5. Atualiza slider de volume
+    if (volSlider) {
+        if (muted) {
+            volSlider.value = 0;
+        } else if (volume !== null) {
+            volSlider.value = volume;
+        } else if (vid && vid.volume > 0) {
+            volSlider.value = vid.volume;
+        } else {
+            volSlider.value = 1;
+        }
+    }
+}
+
+function applyUserVolume(userId) {
+    const isMuted = state.userMutedLocally.has(userId);
+    const audioEl = state.remoteAudioElements.get(userId);
+    if (audioEl) {
+        audioEl.muted = isMuted;
+        if (!isMuted) {
+            const vol = (state.userVolumes.get(userId) ?? 100) / 100;
+            audioEl.volume = Math.min(1.0, Math.max(0, vol));
+        }
+    }
+
+    // Se este usuário for o que estamos assistindo na transmissão, sincroniza o palco
+    if (state.currentlyWatchingUserId === userId) {
+        setStreamMuted(isMuted);
     }
 }
 
@@ -2977,19 +3044,22 @@ function setupEventListeners() {
     if (sendBtn) sendBtn.onclick = doSend;
     if (chatInput) chatInput.onkeydown = (e) => { if (e.key === 'Enter') doSend(); };
 
-    // 6. Controles de Áudio e Vídeo
+    // 6. Controles de Áudio e Vídeo da Transmissão
     const volSlider = document.getElementById('vid-volume-slider');
     const vid = document.getElementById('stage-video');
     if (volSlider && vid) {
         volSlider.oninput = (e) => {
-            vid.volume = parseFloat(e.target.value);
-            vid.muted = (vid.volume === 0);
+            const val = parseFloat(e.target.value);
+            setStreamMuted(val === 0, val);
         };
     }
     on('btn-vid-vol', 'click', () => {
-        if (!vid) return;
-        vid.muted = !vid.muted;
-        if (volSlider) volSlider.value = vid.muted ? 0 : 1;
+        const isMuted = vid ? vid.muted : false;
+        setStreamMuted(!isMuted);
+    });
+    on('btn-hud-mute-stream', 'click', () => {
+        const isMuted = vid ? vid.muted : false;
+        setStreamMuted(!isMuted);
     });
     // --- AUTO-HIDE CONTROLES E HUD DE VÍDEO (MODO CINEMA LIMPO NO CELULAR E PC) ---
     let videoControlsTimer = null;
