@@ -2,14 +2,18 @@
    DISCORD 60 FPS & 2K STREAM - CLIENT CONTROLLER COMPLETO
    ========================================================================== */
 
+const savedUid = localStorage.getItem('dc_userid');
+const currentUid = savedUid || ('user_' + Math.random().toString(36).substring(2, 9));
+localStorage.setItem('dc_userid', currentUid);
+
 const state = {
-    userId: 'user_' + Math.random().toString(36).substring(2, 9),
+    userId: currentUid,
     username: localStorage.getItem('dc_username') || ('Jogador_' + Math.floor(1000 + Math.random() * 9000)),
     avatarColor: localStorage.getItem('dc_avatar') || '#5865F2',
     userTag: localStorage.getItem('dc_tag') || ('#' + Math.floor(1000 + Math.random() * 9000)),
 
     currentTextChannel: 'geral',
-    currentVoiceChannel: 'geral',
+    currentVoiceChannel: null, // NÃO entra em nenhuma sala de voz automaticamente
     isMuted: false,
     isDeafened: false,
     isStreaming: false,
@@ -40,7 +44,14 @@ const state = {
     fpsInterval: null,
     micTestStream: null,
     micTestAnalyser: null,
-    micTestInterval: null
+    micTestInterval: null,
+
+    // Estado do IPTV e das 3 Salas de Cinema
+    cinemaRooms: { 'cinema-1': null, 'cinema-2': null, 'cinema-3': null },
+    hlsInstance: null,
+    currentIptvType: 'live',
+    currentIptvCategory: null,
+    iptvCategories: []
 };
 
 // Carrega volumes salvos
@@ -116,13 +127,43 @@ function initWebSocket() {
 // --- Handlers de Mensagens do Servidor ---
 async function handleServerMessage(data) {
     switch (data.type) {
+        case 'force_disconnect':
+            if (socket) {
+                socket.onclose = null;
+                socket.close();
+            }
+            document.body.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#202225;color:#fff;font-family:sans-serif;text-align:center;padding:20px;">
+                    <i class="fa-solid fa-triangle-exclamation" style="font-size:48px;color:#f23f43;margin-bottom:16px;"></i>
+                    <h2 style="color:#fff;margin-bottom:10px;font-size:22px;">Sessão Encerrada</h2>
+                    <p style="color:#949ba4;margin-bottom:24px;max-width:400px;font-size:14px;line-height:1.5;">${escapeHtml(data.reason || 'Você abriu o Discord em outra aba ou dispositivo.')}</p>
+                    <button onclick="location.reload()" style="background:#5865f2;color:#fff;border:none;padding:10px 24px;border-radius:4px;cursor:pointer;font-weight:600;font-size:14px;">Usar esta aba</button>
+                </div>
+            `;
+            break;
+
         case 'init_state':
             state.users.clear();
             data.users.forEach(u => state.users.set(u.id, u));
             if (data.publicTunnelUrl) {
                 state.publicTunnelUrl = data.publicTunnelUrl;
             }
+            if (data.cinemaRooms) {
+                state.cinemaRooms = data.cinemaRooms;
+            }
             renderVoiceUsers();
+            break;
+
+        case 'cinema_update':
+            if (state.cinemaRooms) {
+                state.cinemaRooms[data.room] = data.cinema;
+            }
+            if (state.currentVoiceChannel === data.room) {
+                checkRoomCinemaStream(data.room);
+            }
+            if (data.cinema) {
+                showToast(`🎬 Transmissão iniciada em <b>${data.room}</b>: <b>${escapeHtml(data.cinema.streamName)}</b>`);
+            }
             break;
 
         case 'tunnel_ready':
@@ -134,7 +175,7 @@ async function handleServerMessage(data) {
             state.users.set(data.user.id, data.user);
             renderVoiceUsers();
             addSystemChatMessage(`${data.user.username} entrou no servidor.`);
-            if (data.user.voiceChannel === state.currentVoiceChannel) {
+            if (state.currentVoiceChannel && data.user.voiceChannel === state.currentVoiceChannel) {
                 initiatePeerConnection(data.user.id);
             }
             break;
@@ -702,7 +743,7 @@ function applyUserVolume(userId) {
 
 // --- RENDERIZAÇÃO DOS USUÁRIOS NAS SALAS DE VOZ ---
 function renderVoiceUsers() {
-    const channels = ['geral', 'jogos-60fps', 'cinema', 'competitivo', 'bate-papo', 'afk'];
+    const channels = ['geral', 'jogos-60fps', 'cinema-1', 'cinema-2', 'cinema-3', 'competitivo', 'bate-papo', 'afk'];
 
     channels.forEach(ch => {
         const container = document.getElementById(`voice-users-${ch}`);
@@ -767,7 +808,9 @@ function moveUserToChannel(userId, newChannel) {
     const voiceChannelNames = {
         'geral': '🔊 Geral',
         'jogos-60fps': '🎮 Jogos 60FPS',
-        'cinema': '🎬 Cinema & Resenha',
+        'cinema-1': '🎬 Cinema 1 • Filmes',
+        'cinema-2': '🍿 Cinema 2 • Séries',
+        'cinema-3': '⚽ Cinema 3 • Futebol & TV',
         'competitivo': '🏆 Competitivo / Ranked',
         'bate-papo': '☕ Bate-papo & Chill',
         'afk': '💤 AFK / Ausente'
@@ -790,8 +833,49 @@ function moveUserToChannel(userId, newChannel) {
     showToast(`Movendo <b>${escapeHtml(name)}</b> para <b>${voiceChannelNames[newChannel] || newChannel}</b>...`);
 }
 
+// Sair da Sala de Voz (Desconectar)
+function leaveVoiceChannel(notifyServer = true) {
+    if (!state.currentVoiceChannel) return;
+
+    state.currentVoiceChannel = null;
+    document.querySelectorAll('.voice-channel').forEach(el => {
+        el.classList.remove('active');
+    });
+
+    const statusPanel = document.getElementById('voice-status-panel');
+    if (statusPanel) statusPanel.style.display = 'none';
+
+    // Fecha conexões P2P de voz
+    state.users.forEach(u => closePeerConnection(u.id));
+
+    // Para microfone
+    if (state.localAudioStream) {
+        state.localAudioStream.getTracks().forEach(t => t.stop());
+        state.localAudioStream = null;
+    }
+
+    // Se estiver transmitindo tela, encerra a transmissão
+    if (state.isStreaming) {
+        stopScreenShare();
+    }
+
+    if (notifyServer) {
+        sendWs({
+            type: 'voice_change',
+            channelId: null
+        });
+    }
+
+    renderVoiceUsers();
+    showToast('Desconectado da sala de voz.');
+}
+
 // Trocar de Canal de Voz
 function switchVoiceChannel(newChannel, notifyServer = true) {
+    if (!newChannel) {
+        leaveVoiceChannel(notifyServer);
+        return;
+    }
     if (state.currentVoiceChannel === newChannel) return;
 
     state.currentVoiceChannel = newChannel;
@@ -802,19 +886,34 @@ function switchVoiceChannel(newChannel, notifyServer = true) {
     const chNames = {
         'geral': '🔊 Geral',
         'jogos-60fps': '🎮 Jogos 60FPS',
-        'cinema': '🎬 Cinema & Resenha',
+        'cinema-1': '🎬 Cinema 1 • Filmes',
+        'cinema-2': '🍿 Cinema 2 • Séries',
+        'cinema-3': '⚽ Cinema 3 • Futebol & TV',
         'competitivo': '🏆 Competitivo / Ranked',
         'bate-papo': '☕ Bate-papo & Chill',
         'afk': '💤 AFK / Ausente'
     };
+
+    // Verifica se a sala de cinema já possui transmissão ativa
+    checkRoomCinemaStream(newChannel);
+
+    const statusPanel = document.getElementById('voice-status-panel');
+    if (statusPanel) statusPanel.style.display = 'flex';
     document.getElementById('current-voice-channel-name').textContent = `${chNames[newChannel] || newChannel} / 60 FPS RTC`;
 
-    // Fecha conexões com quem não está no novo canal
+    // Inicia microfone apenas se ainda não estiver iniciado
+    if (!state.localAudioStream) {
+        startMicrophone();
+    }
+
+    // Fecha conexões com quem não está no novo canal e inicia com quem está
     state.users.forEach(u => {
-        if (u.voiceChannel !== newChannel) {
-            closePeerConnection(u.id);
-        } else {
-            initiatePeerConnection(u.id);
+        if (u.id !== state.userId) {
+            if (u.voiceChannel !== newChannel) {
+                closePeerConnection(u.id);
+            } else {
+                initiatePeerConnection(u.id);
+            }
         }
     });
 
@@ -1283,14 +1382,268 @@ function setupEventListeners() {
         }
     };
 
+    // Desconectar da sala de voz
+    const btnDisc = document.getElementById('btn-disconnect-voice');
+    if (btnDisc) btnDisc.onclick = () => leaveVoiceChannel();
+
+    // Botões IPTV e Cinema
+    const btnIptv = document.getElementById('btn-open-iptv');
+    if (btnIptv) btnIptv.onclick = openIptvModal;
+    const btnCloseIptv = document.getElementById('btn-close-iptv-modal');
+    if (btnCloseIptv) btnCloseIptv.onclick = closeIptvModal;
+    const btnStopCinema = document.getElementById('btn-stop-cinema');
+    if (btnStopCinema) btnStopCinema.onclick = stopCinemaStream;
+
+    document.querySelectorAll('.iptv-type-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.iptv-type-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadIptvCategories(btn.dataset.type);
+        };
+    });
+
+    const iptvSearch = document.getElementById('iptv-search-input');
+    if (iptvSearch) {
+        let timer = null;
+        iptvSearch.oninput = (e) => {
+            clearTimeout(timer);
+            const q = e.target.value.trim().toLowerCase();
+            timer = setTimeout(() => {
+                const cards = document.querySelectorAll('.iptv-stream-card');
+                cards.forEach(c => {
+                    const title = c.querySelector('.iptv-stream-title')?.textContent?.toLowerCase() || '';
+                    c.style.display = title.includes(q) ? 'flex' : 'none';
+                });
+            }, 250);
+        };
+    }
+
     // Fechar modais com tecla ESC
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeUserSettingsModal();
             closeUserContextMenu();
+            closeIptvModal();
             document.getElementById('stream-modal').style.display = 'none';
         }
     });
+
+    // Desconecta e sai imediatamente ao fechar a aba
+    window.addEventListener('beforeunload', () => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            sendWs({ type: 'leave', userId: state.userId });
+            socket.close();
+        }
+    });
+    window.addEventListener('pagehide', () => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.close();
+        }
+    });
+}
+
+// --- CONTROLE DE TRANSMISSÃO IPTV NAS 3 SALAS DE CINEMA ---
+function checkRoomCinemaStream(room) {
+    const stopBtn = document.getElementById('btn-stop-cinema');
+    if (!room || !room.startsWith('cinema-')) {
+        if (state.hlsInstance) {
+            state.hlsInstance.destroy();
+            state.hlsInstance = null;
+        }
+        if (stopBtn) stopBtn.style.display = 'none';
+        return;
+    }
+
+    const cinema = state.cinemaRooms ? state.cinemaRooms[room] : null;
+    if (cinema) {
+        playCinemaStream(cinema);
+        if (stopBtn) stopBtn.style.display = 'flex';
+    } else {
+        if (state.hlsInstance) {
+            state.hlsInstance.destroy();
+            state.hlsInstance = null;
+        }
+        const stage = document.getElementById('video-stage');
+        const video = document.getElementById('stage-video');
+        if (video) {
+            video.pause();
+            video.srcObject = null;
+            video.src = '';
+        }
+        if (stage && !state.currentlyWatchingUserId) {
+            stage.style.display = 'none';
+        }
+        if (stopBtn) stopBtn.style.display = 'none';
+    }
+}
+
+function playCinemaStream(cinema) {
+    const stage = document.getElementById('video-stage');
+    const video = document.getElementById('stage-video');
+    if (!stage || !video) return;
+
+    stage.style.display = 'flex';
+    video.srcObject = null;
+
+    document.getElementById('hud-streamer-name').textContent = `🎬 Cinema IPTV: ${cinema.streamName}`;
+    document.getElementById('hud-res').textContent = '1080p FHD';
+    document.getElementById('hud-fps').textContent = '60 FPS';
+
+    if (state.hlsInstance) {
+        state.hlsInstance.destroy();
+        state.hlsInstance = null;
+    }
+
+    if (cinema.streamType === 'live') {
+        const streamUrl = `/api/iptv/live/${cinema.streamId}.m3u8`;
+        if (window.Hls && Hls.isSupported()) {
+            const hls = new Hls({
+                enableWorker: true,
+                lowLatencyMode: true
+            });
+            hls.loadSource(streamUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play().catch(() => {});
+            });
+            state.hlsInstance = hls;
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = streamUrl;
+            video.play().catch(() => {});
+        }
+    } else {
+        const vodUrl = `/api/iptv/vod/${cinema.streamId}?ext=${cinema.ext || 'mp4'}`;
+        video.src = vodUrl;
+        video.play().catch(() => {});
+    }
+
+    const stopBtn = document.getElementById('btn-stop-cinema');
+    if (stopBtn) stopBtn.style.display = 'flex';
+}
+
+function stopCinemaStream() {
+    const room = state.currentVoiceChannel;
+    if (!room || !room.startsWith('cinema-')) {
+        showToast('Entre em uma das salas de cinema para parar a transmissão.');
+        return;
+    }
+    sendWs({
+        type: 'cinema_stop',
+        room: room
+    });
+}
+
+function openIptvModal() {
+    const modal = document.getElementById('iptv-modal');
+    modal.style.display = 'flex';
+    if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
+        document.getElementById('iptv-select-target-room').value = state.currentVoiceChannel;
+    }
+    loadIptvCategories(state.currentIptvType);
+}
+
+function closeIptvModal() {
+    document.getElementById('iptv-modal').style.display = 'none';
+}
+
+async function loadIptvCategories(type = 'live') {
+    state.currentIptvType = type;
+    const catList = document.getElementById('iptv-categories-list');
+    catList.innerHTML = '<div class="iptv-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando categorias...</div>';
+    
+    try {
+        const res = await fetch(`/api/iptv/categories?type=${type}`);
+        const data = await res.json();
+        state.iptvCategories = data;
+        renderIptvCategories(data);
+        if (data.length > 0) {
+            loadIptvStreams(type, data[0].category_id, data[0].category_name);
+        }
+    } catch (e) {
+        catList.innerHTML = '<div class="iptv-placeholder">Erro ao carregar categorias.</div>';
+    }
+}
+
+function renderIptvCategories(categories) {
+    const catList = document.getElementById('iptv-categories-list');
+    catList.innerHTML = '';
+    categories.forEach(cat => {
+        const item = document.createElement('div');
+        item.className = 'iptv-cat-item';
+        item.dataset.catId = cat.category_id;
+        item.innerHTML = `
+            <span>${escapeHtml(cat.category_name)}</span>
+            <span class="iptv-cat-count">${cat.stream_count ?? ''}</span>
+        `;
+        item.onclick = () => {
+            document.querySelectorAll('.iptv-cat-item').forEach(el => el.classList.remove('active'));
+            item.classList.add('active');
+            loadIptvStreams(state.currentIptvType, cat.category_id, cat.category_name);
+        };
+        catList.appendChild(item);
+    });
+    if (catList.firstElementChild) catList.firstElementChild.classList.add('active');
+}
+
+async function loadIptvStreams(type, categoryId, categoryName = '') {
+    state.currentIptvCategory = categoryId;
+    document.getElementById('iptv-current-category-name').textContent = categoryName || 'Canais / Conteúdos';
+    const grid = document.getElementById('iptv-streams-grid');
+    grid.innerHTML = '<div class="iptv-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando streams...</div>';
+
+    try {
+        const res = await fetch(`/api/iptv/streams?type=${type}&category_id=${categoryId}`);
+        const streams = await res.json();
+        document.getElementById('iptv-streams-count').textContent = `${streams.length} itens`;
+        renderIptvStreams(streams);
+    } catch (e) {
+        grid.innerHTML = '<div class="iptv-placeholder">Erro ao carregar canais desta categoria.</div>';
+    }
+}
+
+function renderIptvStreams(streams) {
+    const grid = document.getElementById('iptv-streams-grid');
+    grid.innerHTML = '';
+    if (!streams || streams.length === 0) {
+        grid.innerHTML = '<div class="iptv-placeholder">Nenhum canal encontrado nesta categoria.</div>';
+        return;
+    }
+
+    streams.forEach(stream => {
+        const card = document.createElement('div');
+        card.className = 'iptv-stream-card';
+        const iconUrl = stream.stream_icon || '';
+        card.innerHTML = `
+            ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" class="iptv-stream-logo" onerror="this.onerror=null;this.replaceWith(createFallbackIcon())">` : '<div class="iptv-stream-logo"><i class="fa-solid fa-tv"></i></div>'}
+            <div class="iptv-stream-title" title="${escapeHtml(stream.name)}">${escapeHtml(stream.name)}</div>
+            <button class="iptv-stream-btn"><i class="fa-solid fa-play"></i> Assistir na Sala</button>
+        `;
+        card.onclick = () => {
+            const targetRoom = document.getElementById('iptv-select-target-room').value;
+            sendWs({
+                type: 'cinema_play',
+                room: targetRoom,
+                streamId: stream.stream_id,
+                streamName: stream.name,
+                streamType: state.currentIptvType,
+                ext: stream.container_extension || 'mp4',
+                poster: stream.stream_icon || ''
+            });
+            closeIptvModal();
+            if (state.currentVoiceChannel !== targetRoom) {
+                switchVoiceChannel(targetRoom);
+            }
+            showToast(`Transmissão iniciada em <b>${targetRoom}</b>: <b>${escapeHtml(stream.name)}</b>`);
+        };
+        grid.appendChild(card);
+    });
+}
+
+function createFallbackIcon() {
+    const el = document.createElement('div');
+    el.className = 'iptv-stream-logo';
+    el.innerHTML = '<i class="fa-solid fa-tv"></i>';
+    return el;
 }
 
 // Inicialização ao carregar a página
@@ -1303,7 +1656,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     setupEventListeners();
     initWebSocket();
-    startMicrophone();
+    // NÃO inicia microfone aqui: só inicia ao entrar em uma sala de voz!
 
     fetch('/api/tunnel-url')
         .then(r => r.json())

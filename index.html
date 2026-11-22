@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
     <div class="app-layout">
@@ -58,9 +59,9 @@
 
                 <!-- Categoria Voz (Mais Salas Adicionadas) -->
                 <div class="channel-group">
-                    <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE VOZ</span>
+                    <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE VOZ & CINEMA</span>
                     
-                    <div class="voice-channel active" data-channel="geral">
+                    <div class="voice-channel" data-channel="geral">
                         <div class="voice-header">
                             <i class="fa-solid fa-volume-high"></i>
                             <span>🔊 Geral</span>
@@ -78,13 +79,31 @@
                         <div class="voice-users" id="voice-users-jogos-60fps"></div>
                     </div>
 
-                    <div class="voice-channel" data-channel="cinema">
+                    <div class="voice-channel" data-channel="cinema-1">
                         <div class="voice-header">
-                            <i class="fa-solid fa-film"></i>
-                            <span>🎬 Cinema & Resenha</span>
-                            <span class="live-pill" id="live-tag-cinema" style="display: none;">AO VIVO</span>
+                            <i class="fa-solid fa-film text-green"></i>
+                            <span>🎬 Cinema 1 • Filmes</span>
+                            <span class="live-pill" id="live-tag-cinema-1" style="display: none;">AO VIVO</span>
                         </div>
-                        <div class="voice-users" id="voice-users-cinema"></div>
+                        <div class="voice-users" id="voice-users-cinema-1"></div>
+                    </div>
+
+                    <div class="voice-channel" data-channel="cinema-2">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-tv text-green"></i>
+                            <span>🍿 Cinema 2 • Séries</span>
+                            <span class="live-pill" id="live-tag-cinema-2" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-cinema-2"></div>
+                    </div>
+
+                    <div class="voice-channel" data-channel="cinema-3">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-futbol text-green"></i>
+                            <span>⚽ Cinema 3 • Futebol & TV</span>
+                            <span class="live-pill" id="live-tag-cinema-3" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-cinema-3"></div>
                     </div>
 
                     <div class="voice-channel" data-channel="competitivo">
@@ -117,13 +136,18 @@
             </div>
 
             <!-- Painel de Conexão de Voz -->
-            <div class="voice-status-panel">
-                <div class="voice-status-indicator">
-                    <i class="fa-solid fa-signal text-green"></i>
-                    <div>
-                        <div class="status-title">Voz Conectada</div>
-                        <div class="status-sub" id="current-voice-channel-name">🔊 Geral / 60 FPS RTC</div>
+            <div class="voice-status-panel" id="voice-status-panel" style="display: none;">
+                <div class="voice-status-top">
+                    <div class="voice-status-indicator">
+                        <i class="fa-solid fa-signal text-green"></i>
+                        <div>
+                            <div class="status-title">Voz Conectada</div>
+                            <div class="status-sub" id="current-voice-channel-name">🔊 Geral / 60 FPS RTC</div>
+                        </div>
                     </div>
+                    <button class="btn-disconnect-voice" id="btn-disconnect-voice" title="Desconectar da Sala de Voz">
+                        <i class="fa-solid fa-phone-slash"></i>
+                    </button>
                 </div>
                 <div class="voice-actions">
                     <button class="btn-stream-action" id="btn-stream-toggle">
@@ -161,12 +185,20 @@
                     <span class="header-desc" id="current-channel-desc">Transmissão em tempo real a 60 FPS e até 2K com som do jogo</span>
                 </div>
                 <div class="header-right">
+                    <button class="btn-iptv-action" id="btn-open-iptv" title="Abrir Catálogo de Canais e Filmes IPTV">
+                        <i class="fa-solid fa-tv text-green"></i>
+                        <span>Catálogo IPTV</span>
+                    </button>
+                    <button class="btn-stop-cinema" id="btn-stop-cinema" style="display: none;" title="Parar Transmissão IPTV">
+                        <i class="fa-solid fa-stop text-red"></i>
+                        <span>Parar IPTV</span>
+                    </button>
                     <button class="btn-invite" id="btn-copy-invite">
                         <i class="fa-solid fa-earth-americas"></i>
                         <span>Convidar Amigos (Link)</span>
                     </button>
                     <button class="header-btn" id="btn-toggle-stage" title="Alternar Palco de Vídeo">
-                        <i class="fa-solid fa-tv"></i>
+                        <i class="fa-solid fa-expand"></i>
                     </button>
                 </div>
             </header>
@@ -416,6 +448,60 @@
         </div>
     </div>
 
+    <!-- MODAL DE CATÁLOGO IPTV & CINEMA -->
+    <div class="modal-backdrop" id="iptv-modal" style="display: none;">
+        <div class="modal-box iptv-modal-box">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-tv text-green"></i> Catálogo IPTV • 3 Salas de Cinema</h3>
+                <button class="modal-close" id="btn-close-iptv-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="iptv-modal-body">
+                <div class="iptv-room-target-bar">
+                    <span>Transmitir para a sala:</span>
+                    <select id="iptv-select-target-room">
+                        <option value="cinema-1">🎬 Cinema 1 • Filmes</option>
+                        <option value="cinema-2">🍿 Cinema 2 • Séries</option>
+                        <option value="cinema-3">⚽ Cinema 3 • Futebol & TV</option>
+                    </select>
+                </div>
+
+                <!-- Barra de Busca e Abas de Tipo -->
+                <div class="iptv-toolbar">
+                    <div class="iptv-type-tabs">
+                        <button class="iptv-type-btn active" data-type="live"><i class="fa-solid fa-tower-broadcast"></i> TV Ao Vivo</button>
+                        <button class="iptv-type-btn" data-type="vod"><i class="fa-solid fa-film"></i> Filmes (VOD)</button>
+                        <button class="iptv-type-btn" data-type="series"><i class="fa-solid fa-clapperboard"></i> Séries</button>
+                    </div>
+                    <div class="iptv-search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="iptv-search-input" placeholder="Pesquisar por nome (ex: SporTV, Premiere, Batman)...">
+                    </div>
+                </div>
+
+                <div class="iptv-content-area">
+                    <!-- Lista de Categorias à Esquerda -->
+                    <div class="iptv-categories-sidebar">
+                        <div class="iptv-cat-title">Categorias</div>
+                        <div class="iptv-categories-list" id="iptv-categories-list">
+                            <div class="iptv-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>
+                        </div>
+                    </div>
+
+                    <!-- Lista de Streams / Canais à Direita -->
+                    <div class="iptv-streams-main">
+                        <div class="iptv-streams-header">
+                            <span id="iptv-current-category-name">Selecione uma categoria</span>
+                            <span class="iptv-streams-count" id="iptv-streams-count"></span>
+                        </div>
+                        <div class="iptv-streams-grid" id="iptv-streams-grid">
+                            <div class="iptv-placeholder">Clique em uma categoria à esquerda ou digite na pesquisa.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MENU DE CONTEXTO DO DISCORD (BOTÃO DIREITO NO NOME DO AMIGO) -->
     <div class="discord-context-menu" id="user-context-menu" style="display: none;">
         <div class="ctx-header">
@@ -465,7 +551,9 @@
             <div class="ctx-submenu" id="ctx-submenu-channels">
                 <div class="ctx-submenu-item" data-channel="geral"><i class="fa-solid fa-volume-high"></i> 🔊 Geral</div>
                 <div class="ctx-submenu-item" data-channel="jogos-60fps"><i class="fa-solid fa-gamepad"></i> 🎮 Jogos 60FPS</div>
-                <div class="ctx-submenu-item" data-channel="cinema"><i class="fa-solid fa-film"></i> 🎬 Cinema & Resenha</div>
+                <div class="ctx-submenu-item" data-channel="cinema-1"><i class="fa-solid fa-film"></i> 🎬 Cinema 1 • Filmes</div>
+                <div class="ctx-submenu-item" data-channel="cinema-2"><i class="fa-solid fa-tv"></i> 🍿 Cinema 2 • Séries</div>
+                <div class="ctx-submenu-item" data-channel="cinema-3"><i class="fa-solid fa-futbol"></i> ⚽ Cinema 3 • Futebol & TV</div>
                 <div class="ctx-submenu-item" data-channel="competitivo"><i class="fa-solid fa-trophy"></i> 🏆 Competitivo / Ranked</div>
                 <div class="ctx-submenu-item" data-channel="bate-papo"><i class="fa-solid fa-mug-hot"></i> ☕ Bate-papo & Chill</div>
                 <div class="ctx-submenu-item text-red" data-channel="afk"><i class="fa-solid fa-bed"></i> 💤 AFK / Ausente</div>
