@@ -311,6 +311,49 @@ function closeInviteModal() {
     if (modal) modal.style.display = 'none';
 }
 
+// --- MODAL DE INSTALAÇÃO DO APP (PWA / CELULAR E PC) ---
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+});
+
+window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    showToast('🎉 Discord 60FPS instalado com sucesso no seu dispositivo!');
+});
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+}
+
+function openInstallModal() {
+    const modal = document.getElementById('install-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeInstallModal() {
+    const modal = document.getElementById('install-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function triggerPwaInstall() {
+    if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult && choiceResult.outcome === 'accepted') {
+                showToast('🚀 Instalando aplicativo Discord...');
+            }
+            deferredPrompt = null;
+            closeInstallModal();
+        });
+    } else {
+        showToast('ℹ️ Siga o passo a passo na tela para instalar no seu navegador ou celular.', 6000);
+    }
+}
+
 async function copyInviteLink() {
     const input = document.getElementById('invite-url-input');
     const btn = document.getElementById('btn-copy-invite-modal');
@@ -2795,6 +2838,12 @@ function setupEventListeners() {
     on('btn-close-invite-modal', 'click', closeInviteModal);
     on('btn-copy-invite-modal', 'click', copyInviteLink);
 
+    // 4.1 Instalar Aplicativo (Celular e PC)
+    on('btn-open-install-modal', 'click', openInstallModal);
+    on('btn-install-rail', 'click', openInstallModal);
+    on('btn-close-install-modal', 'click', closeInstallModal);
+    on('btn-trigger-pwa-install', 'click', triggerPwaInstall);
+
     // 5. Chat Input
     const chatInput = document.getElementById('chat-input');
     const sendBtn = document.getElementById('btn-send-message');
@@ -3261,6 +3310,7 @@ function setupEventListeners() {
             closeUserContextMenu();
             closeIptvModal();
             closeInviteModal();
+            closeInstallModal();
             if (streamModal) streamModal.style.display = 'none';
         }
     });

@@ -25,7 +25,7 @@ PUBLIC_DIR = APP_DIR / "public"
 # Garante que a pasta public exista e SEMPRE sincroniza arquivos da raiz para public/ (caso o upload do GitHub tenha sido feito na raiz)
 try:
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
-    for fname in ["index.html", "style.css", "app.js", "icon.ico"]:
+    for fname in ["index.html", "style.css", "app.js", "icon.ico", "manifest.json", "sw.js", "icon-192.png", "icon-512.png"]:
         src_f = APP_DIR / fname
         dst_f = PUBLIC_DIR / fname
         if src_f.exists():

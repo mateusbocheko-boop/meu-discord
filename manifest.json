@@ -1,0 +1,25 @@
+{
+  "name": "Discord 60FPS",
+  "short_name": "Discord",
+  "description": "Discord com Streaming 60 FPS, IPTV e Salas de Cinema 24/7",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#313338",
+  "theme_color": "#5865F2",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

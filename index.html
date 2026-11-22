@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Discord 60FPS & 2K Stream</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#5865F2">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Discord">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" type="image/x-icon" href="/icon.ico">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,6 +35,9 @@
             </div>
             <div class="server-pill" id="btn-open-settings-rail" title="Configurações do Usuário">
                 <i class="fa-solid fa-gear"></i>
+            </div>
+            <div class="server-pill" id="btn-install-rail" title="Baixar / Instalar App (PC e Celular)" style="color:#23a55a;">
+                <i class="fa-solid fa-download"></i>
             </div>
         </nav>
 
@@ -135,6 +147,10 @@
                     <button class="btn-invite" id="btn-copy-invite">
                         <i class="fa-solid fa-earth-americas"></i>
                         <span>Convidar</span>
+                    </button>
+                    <button class="btn-invite" id="btn-open-install-modal" style="background:#23a55a;border-color:#23a55a;color:#fff;" title="Instalar Aplicativo no PC ou Celular">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Baixar App</span>
                     </button>
                     <button class="btn-mobile-toggle" id="btn-toggle-members" title="Ver Integrantes Online/Offline">
                         <i class="fa-solid fa-users"></i>
@@ -287,6 +303,62 @@
                     <button id="btn-copy-invite-modal" style="background:#5865F2;color:#fff;border:none;padding:10px 16px;border-radius:4px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;">
                         <i class="fa-solid fa-copy"></i> Copiar
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE INSTALAÇÃO DO APLICATIVO (CELULAR E PC) -->
+    <div class="modal-backdrop" id="install-modal" style="display: none;">
+        <div class="modal-box" style="max-width: 480px; padding: 24px; text-align: left;">
+            <div class="modal-header" style="padding: 0 0 16px 0; border-bottom: 1px solid #3f4147;">
+                <h3 style="display:flex;align-items:center;gap:8px;font-size:18px;color:#fff;">
+                    <i class="fa-solid fa-download text-green"></i> Baixar e Instalar Aplicativo
+                </h3>
+                <button class="modal-close" id="btn-close-install-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div style="margin-top: 16px;">
+                <div style="display:flex;align-items:center;gap:14px;background:#1e1f22;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
+                    <img src="/icon-192.png" alt="Discord Icon" style="width:52px;height:52px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                    <div>
+                        <div style="font-size:16px;font-weight:700;color:#fff;">Discord 60FPS</div>
+                        <div style="font-size:12px;color:#949ba4;">App Nativo Standalone • 60 FPS • IPTV 24/7</div>
+                    </div>
+                </div>
+
+                <div id="pwa-install-trigger-wrapper" style="margin-bottom: 16px;">
+                    <button id="btn-trigger-pwa-install" style="width:100%;background:#5865F2;color:#fff;border:none;padding:12px 18px;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(88,101,242,0.4);">
+                        <i class="fa-solid fa-circle-down"></i> Instalar Aplicativo Agora (1 Clique)
+                    </button>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:#dbdee1;">
+                    <div style="background:#2b2d31;padding:12px;border-radius:6px;border:1px solid #383a40;">
+                        <div style="font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+                            <i class="fa-brands fa-windows" style="color:#00a4ef;"></i> No PC (Windows, Mac ou Linux):
+                        </div>
+                        <div style="color:#b5bac1;font-size:12px;line-height:1.4;">
+                            Clique no botão acima ou no ícone de <b>Instalar</b> na barra de endereço do navegador. O Discord será instalado na sua <b>Área de Trabalho</b> e no <b>Menu Iniciar</b>, abrindo direto em janela limpa e dedicada!
+                        </div>
+                    </div>
+
+                    <div style="background:#2b2d31;padding:12px;border-radius:6px;border:1px solid #383a40;">
+                        <div style="font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+                            <i class="fa-brands fa-android" style="color:#3ddc84;"></i> No Celular Android:
+                        </div>
+                        <div style="color:#b5bac1;font-size:12px;line-height:1.4;">
+                            Toque no botão <b>Instalar</b> acima ou abra o menu do Chrome (<i class="fa-solid fa-ellipsis-vertical"></i>) e escolha <b>"Instalar aplicativo"</b> ou <b>"Adicionar à tela inicial"</b>.
+                        </div>
+                    </div>
+
+                    <div style="background:#2b2d31;padding:12px;border-radius:6px;border:1px solid #383a40;">
+                        <div style="font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+                            <i class="fa-brands fa-apple" style="color:#f5f5f7;"></i> No iPhone / iPad (iOS):
+                        </div>
+                        <div style="color:#b5bac1;font-size:12px;line-height:1.4;">
+                            No Safari, toque no botão <b>Compartilhar</b> (<i class="fa-solid fa-arrow-up-from-bracket"></i>) e selecione <b>"Adicionar à Tela de Início"</b>.
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
