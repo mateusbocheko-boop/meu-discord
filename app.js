@@ -4394,8 +4394,13 @@ function openVipModal() {
     const modal = document.getElementById('vip-modal');
     if (modal) {
         modal.style.display = 'flex';
-        const pixDisp = document.getElementById('vip-pix-display');
-        if (pixDisp) pixDisp.style.display = 'none';
+        // Personaliza a mensagem do WhatsApp com o nome do usuário atual
+        const myName = state.currentUser || 'Membro do Kord';
+        const msg = encodeURIComponent(`Olá DIM! 🔥 Quero ativar meu Passe VIP no Kord para liberar Filmes, Séries e TV Ao Vivo! 🍿 Meu usuário no Kord é: ${myName}. Já fiz o PIX de R$ 9,90 ou vou te mandar o comprovante agora!`);
+        const waBtn = document.getElementById('btn-whatsapp-vip');
+        if (waBtn) {
+            waBtn.href = `https://wa.me/5544997479416?text=${msg}`;
+        }
     }
 }
 
