@@ -835,7 +835,12 @@ body, html {
     justify-content: space-between;
     align-items: center;
     pointer-events: none;
-    z-index: 10;
+    z-index: 30;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s ease;
+}
+
+.stream-hud * {
+    pointer-events: auto;
 }
 
 .hud-left {
@@ -896,11 +901,19 @@ body, html {
     justify-content: space-between;
     align-items: center;
     opacity: 0;
-    transition: opacity 0.2s ease;
+    pointer-events: none;
+    z-index: 30;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s ease;
 }
 
-.video-player-wrapper:hover .video-controls {
+.video-controls * {
+    pointer-events: auto;
+}
+
+.video-player-wrapper:hover .video-controls,
+.video-stage:not(.controls-hidden) .video-controls {
     opacity: 1;
+    pointer-events: auto;
 }
 
 .vc-left, .vc-right {
@@ -2818,11 +2831,22 @@ body, html {
 }
 
 .video-stage.is-fullscreen .video-controls {
-    opacity: 1 !important;
-    background: linear-gradient(transparent, rgba(0,0,0,0.88)) !important;
-    padding-bottom: env(safe-area-inset-bottom, 20px) !important;
-    padding-left: 20px !important;
-    padding-right: 20px !important;
+    background: linear-gradient(transparent, rgba(0,0,0,0.92)) !important;
+    padding-bottom: env(safe-area-inset-bottom, 24px) !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+}
+
+/* MODO CINEMA: AUTO-HIDE DEPOIS DE 2.5s (TELA 100% LIMPA) */
+.video-stage.controls-hidden .stream-hud,
+.video-stage.controls-hidden .video-controls {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+.video-stage.is-fullscreen.controls-hidden {
+    cursor: none !important;
 }
 
 .btn-exit-fullscreen {

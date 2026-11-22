@@ -2886,6 +2886,42 @@ function setupEventListeners() {
         vid.muted = !vid.muted;
         if (volSlider) volSlider.value = vid.muted ? 0 : 1;
     });
+    // --- AUTO-HIDE CONTROLES E HUD DE VÍDEO (MODO CINEMA LIMPO NO CELULAR E PC) ---
+    let videoControlsTimer = null;
+
+    function showVideoOverlays() {
+        const stage = document.getElementById('video-stage');
+        if (!stage) return;
+        stage.classList.remove('controls-hidden');
+
+        if (videoControlsTimer) clearTimeout(videoControlsTimer);
+        videoControlsTimer = setTimeout(() => {
+            const vid = document.getElementById('stage-video');
+            const isPlaying = vid && !vid.paused;
+            const isFs = stage.classList.contains('is-fullscreen');
+            if (stage && (isPlaying || isFs)) {
+                stage.classList.add('controls-hidden');
+            }
+        }, 2600);
+    }
+
+    function hideVideoOverlaysNow() {
+        const stage = document.getElementById('video-stage');
+        if (!stage) return;
+        if (videoControlsTimer) clearTimeout(videoControlsTimer);
+        stage.classList.add('controls-hidden');
+    }
+
+    function toggleVideoOverlays() {
+        const stage = document.getElementById('video-stage');
+        if (!stage) return;
+        if (stage.classList.contains('controls-hidden')) {
+            showVideoOverlays();
+        } else {
+            hideVideoOverlaysNow();
+        }
+    }
+
     function toggleVideoFullscreen(forceClose = false) {
         const stage = document.getElementById('video-stage');
         const vid = document.getElementById('stage-video');
@@ -2895,6 +2931,7 @@ function setupEventListeners() {
 
         if (forceClose || isCurrentlyFs) {
             stage.classList.remove('is-fullscreen');
+            stage.classList.remove('controls-hidden');
             if (document.exitFullscreen) {
                 document.exitFullscreen().catch(() => {});
             } else if (document.webkitExitFullscreen) {
@@ -2916,25 +2953,44 @@ function setupEventListeners() {
             if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
                 window.screen.orientation.lock('landscape').catch(() => {});
             }
-            showToast('📺 Tela cheia ativada! Toque 2x ou no botão para sair.');
+            showToast('📺 Tela cheia ativada! Toque 1x para limpar a tela ou 2x para sair.');
+            showVideoOverlays();
         }
     }
 
     on('btn-vid-fullscreen', 'click', () => toggleVideoFullscreen());
     on('btn-exit-fullscreen', 'click', () => toggleVideoFullscreen(true));
 
-    // Toque duplo no vídeo para alternar tela cheia no celular
-    let lastTapTime = 0;
+    const vidWrapper = document.querySelector('.video-player-wrapper');
+    if (vidWrapper) {
+        vidWrapper.addEventListener('mousemove', () => showVideoOverlays());
+    }
+
+    let vidTapCount = 0;
+    let vidSingleTapTimer = null;
     if (vid) {
         vid.addEventListener('touchend', (e) => {
-            const currentTime = new Date().getTime();
-            const tapLength = currentTime - lastTapTime;
-            if (tapLength < 350 && tapLength > 50) {
+            if (e.target.closest('.video-controls') || e.target.closest('.stream-hud')) return;
+
+            vidTapCount++;
+            if (vidTapCount === 1) {
+                vidSingleTapTimer = setTimeout(() => {
+                    vidTapCount = 0;
+                    toggleVideoOverlays();
+                }, 280);
+            } else if (vidTapCount === 2) {
+                clearTimeout(vidSingleTapTimer);
+                vidTapCount = 0;
                 e.preventDefault();
                 toggleVideoFullscreen();
             }
-            lastTapTime = currentTime;
         });
+
+        vid.addEventListener('click', (e) => {
+            if (e.target.closest('.video-controls') || e.target.closest('.stream-hud')) return;
+            toggleVideoOverlays();
+        });
+
         vid.ondblclick = () => toggleVideoFullscreen();
     }
 
