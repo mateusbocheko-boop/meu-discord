@@ -3547,6 +3547,12 @@ function setupEventListeners() {
         };
     });
 
+    
+    // Eventos dos Botões de Comprar VIP
+    on('btn-header-buy-vip', 'click', () => openVipModal());
+    on('btn-sidebar-buy-vip', 'click', () => openVipModal());
+    on('btn-rail-buy-vip', 'click', () => openVipModal());
+
     on('btn-close-vip-modal', 'click', closeVipModal);
     on('btn-generate-vip-pix', 'click', () => {
         const pixDisp = document.getElementById('vip-pix-display');

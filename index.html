@@ -35,6 +35,9 @@
             <div class="server-pill btn-add-server" id="btn-open-create-server" title="Criar um Novo Servidor">
                 <i class="fa-solid fa-plus text-green"></i>
             </div>
+            <div class="server-pill vip-rail-pill" id="btn-rail-buy-vip" title="Comprar Passe VIP 👑">
+                <i class="fa-solid fa-crown"></i>
+            </div>
             <div class="kord-sep"></div>
             <div class="server-pill stream-quick-btn" id="btn-quick-stream" title="Iniciar Transmissão 60 FPS">
                 <i class="fa-solid fa-bolt"></i>
@@ -57,6 +60,17 @@
                 </div>
                 <button id="btn-owner-badge" class="btn-owner-badge" title="Painel do Dono do Servidor 👑">
                     <i class="fa-solid fa-crown"></i> <span id="owner-badge-label">Dono</span>
+                </button>
+            </div>
+
+            <!-- Banner Comprar VIP na Barra Lateral -->
+            <div style="padding: 10px 10px 4px;">
+                <button id="btn-sidebar-buy-vip" class="btn-buy-vip-banner" title="Assinar Kord VIP">
+                    <span style="display:flex;align-items:center;gap:6px;">
+                        <i class="fa-solid fa-crown" style="color:#ffd700;"></i>
+                        <span>Comprar VIP</span>
+                    </span>
+                    <span class="vip-price-tag">R$ 9,90</span>
                 </button>
             </div>
 
@@ -142,6 +156,10 @@
                     <span class="header-desc" id="current-channel-desc">Transmissão em tempo real a 60 FPS</span>
                 </div>
                 <div class="header-right">
+                    <button class="btn-buy-vip-header" id="btn-header-buy-vip" title="Comprar Passe VIP Kord">
+                        <i class="fa-solid fa-crown"></i>
+                        <span>Comprar VIP</span>
+                    </button>
                     <button class="btn-iptv-action" id="btn-open-iptv" title="Abrir Catálogo de Canais e Filmes IPTV">
                         <i class="fa-solid fa-tv text-green"></i>
                         <span>IPTV</span>
