@@ -1,12 +1,12 @@
 {
-  "name": "Kord 60FPS",
+  "name": "Kord",
   "short_name": "Kord",
-  "description": "Kord - Plataforma Ultra 60FPS, Streaming, Voz e Cinema 24/7",
+  "description": "Kord - Comunidade, Voz, Streaming e Cinema 24/7",
   "start_url": "/",
   "id": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#090c12",
+  "background_color": "#080b11",
   "theme_color": "#00f2fe",
   "icons": [
     {

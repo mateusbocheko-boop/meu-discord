@@ -1,3 +1,4 @@
+document.title = 'Kord';
 // Reset owner privileges from local storage
 try { localStorage.removeItem('discord_is_owner'); } catch (e) {}
 
@@ -325,7 +326,9 @@ window.addEventListener('appinstalled', () => {
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+            reg.update();
+        }).catch(() => {});
     });
 }
 
@@ -387,7 +390,7 @@ async function copyInviteLink() {
 }
 
 /* ==========================================================================
-   DISCORD 60 FPS & 2K STREAM - CLIENT CONTROLLER COMPLETO
+   KORD - CLIENT CONTROLLER COMPLETO
    ========================================================================== */
 
 const savedUid = localStorage.getItem('dc_userid');

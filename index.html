@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kord • 60FPS Stream, Voz & Cinema</title>
+    <title>Kord</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#00f2fe">
     <meta name="mobile-web-app-capable" content="yes">
@@ -25,8 +25,8 @@
     <div class="app-layout">
         <!-- 1. BARRA LATERAL KORD (COMMAND STRIP) -->
         <nav class="servers-nav kord-nav">
-            <div class="kord-logo-badge" title="KORD">
-                <span class="kord-logo-k">K</span>
+            <div class="kord-logo-badge" title="Kord">
+                <img src="/icon-192.png" alt="Kord" class="kord-fire-logo" style="width:38px;height:38px;border-radius:10px;">
             </div>
             <div class="kord-sep"></div>
             <div class="server-pill stream-quick-btn" id="btn-quick-stream" title="Iniciar Transmissão 60 FPS">
@@ -45,8 +45,8 @@
         <aside class="channels-sidebar">
             <div class="sidebar-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                 <div class="kord-brand-header">
+                    <img src="/icon-192.png" alt="Kord" style="width:26px;height:26px;border-radius:6px;">
                     <span class="kord-brand-title">KORD</span>
-                    <span class="kord-brand-sub">60FPS</span>
                 </div>
                 <button id="btn-owner-badge" class="btn-owner-badge" title="Painel do Dono do Servidor 👑">
                     <i class="fa-solid fa-crown"></i> <span id="owner-badge-label">Dono</span>
@@ -155,15 +155,7 @@
                         <i class="fa-solid fa-circle-down"></i>
                         <span>Baixar App</span>
                     </button>
-                    <button class="btn-mobile-toggle" id="btn-toggle-members" title="Ver Integrantes Online/Offline">
-                        <i class="fa-solid fa-users"></i>
-                    </button>
-                    <button class="header-btn" id="btn-toggle-stage" title="Alternar Palco de Vídeo">
-                        <i class="fa-solid fa-expand"></i>
-                    </button>
-                </div>
-            </header>
-                    <button class="btn-mobile-toggle" id="btn-toggle-members" title="Ver Integrantes Online/Offline">
+                    <button class="header-btn" id="btn-toggle-members" title="Ver Integrantes Online/Offline">
                         <i class="fa-solid fa-users"></i>
                     </button>
                     <button class="header-btn" id="btn-toggle-stage" title="Alternar Palco de Vídeo">
@@ -238,7 +230,7 @@
                     <div class="messages-list" id="messages-list">
                         <div class="system-message">
                             <i class="fa-solid fa-circle-info"></i>
-                            <span>Bem-vindo à Comunidade Kord 60 FPS! Clique com o <b>botão direito</b> em cima de qualquer integrante para ajustar volume ou gerenciar.</span>
+                            <span>Bem-vindo à Comunidade Kord! Clique com o <b>botão direito</b> em cima de qualquer integrante para ajustar volume ou gerenciar.</span>
                         </div>
                     </div>
                     <div class="chat-input-wrapper">
@@ -267,7 +259,7 @@
     <div class="modal-backdrop register-backdrop" id="register-modal" style="display: none;">
         <div class="modal-box register-modal-box">
             <div class="register-header">
-                <div class="register-logo"><div class="kord-logo-badge" style="width:58px;height:58px;font-size:28px;"><span class="kord-logo-k">K</span></div></div>
+                <div class="register-logo"><img src="/icon-192.png" alt="Kord" style="width:68px;height:68px;border-radius:18px;box-shadow:0 0 24px rgba(0,242,254,0.6);"></div>
                 <h2>Bem-vindo ao Kord!</h2>
                 <p>Para entrar e conversar com seus amigos, digite seu nome ou apelido:</p>
             </div>
@@ -332,8 +324,8 @@
                 <div style="display:flex;align-items:center;gap:14px;background:#1e1f22;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
                     <img src="/icon-192.png" alt="Kord Icon" style="width:52px;height:52px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
                     <div>
-                        <div style="font-size:16px;font-weight:700;color:#fff;">Kord 60FPS</div>
-                        <div style="font-size:12px;color:#949ba4;">App Nativo Standalone • 60 FPS • IPTV 24/7</div>
+                        <div style="font-size:18px;font-weight:800;color:#fff;">Kord</div>
+                        <div style="font-size:12px;color:#949ba4;">Aplicativo Nativo Standalone • Streaming, Voz & Cinema</div>
                     </div>
                 </div>
 

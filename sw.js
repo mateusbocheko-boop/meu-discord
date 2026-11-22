@@ -1,4 +1,4 @@
-const CACHE_NAME = 'discord-60fps-v1';
+const CACHE_NAME = 'kord-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -11,10 +11,11 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -35,12 +36,26 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Não intercepta chamadas de API, IPTV, WebSocket ou streams
   if (url.pathname.startsWith('/api') || url.pathname.startsWith('/ws') || url.pathname.includes('/live/') || url.pathname.includes('/vod/')) {
     return;
   }
 
-  // Network First com fallback para cache para assets estáticos
+  // Network First sempre para index.html para nunca ficar preso em cache antigo!
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -52,15 +67,6 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-        });
-      })
+      .catch(() => caches.match(event.request))
   );
 });
