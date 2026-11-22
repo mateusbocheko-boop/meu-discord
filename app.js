@@ -8,9 +8,12 @@ try { localStorage.removeItem('discord_is_owner'); } catch (e) {}
 // ==========================================================================
 
 function isUserAllowedOwner() {
+    if (state.isOwner) return true;
     const myName = (state.username || '').trim().toLowerCase();
     const myTag = (state.userTag || '').trim().toLowerCase();
-    return myName === 'dim' || myName.startsWith('dim') || myTag.includes('4095') || myName.includes('tester');
+    const allowed = myName === 'dim' || myName.startsWith('dim') || myTag.includes('4095') || myName.includes('tester');
+    if (allowed) state.isOwner = true;
+    return allowed;
 }
 
 function updateOwnerUI() {
@@ -393,15 +396,34 @@ async function copyInviteLink() {
    KORD - CLIENT CONTROLLER COMPLETO
    ========================================================================== */
 
-const savedUid = localStorage.getItem('dc_userid');
+const savedUid = localStorage.getItem('vox_userid') || localStorage.getItem('dc_userid');
 const currentUid = savedUid || ('user_' + Math.random().toString(36).substring(2, 9));
+localStorage.setItem('vox_userid', currentUid);
 localStorage.setItem('dc_userid', currentUid);
+
+let savedUsername = (localStorage.getItem('vox_username') || localStorage.getItem('dc_username') || '').trim();
+let savedTag = localStorage.getItem('vox_user_tag') || localStorage.getItem('dc_tag') || '';
+
+// REGRA ABSOLUTA DE TAG FIXO: DIM É SEMPRE #4095
+if (savedUsername.toUpperCase() === 'DIM' || savedUsername.toUpperCase().startsWith('DIM')) {
+    savedTag = '#4095';
+}
+
+if (!savedTag) {
+    savedTag = '#' + Math.floor(1000 + Math.random() * 9000);
+}
+
+localStorage.setItem('vox_user_tag', savedTag);
+localStorage.setItem('dc_tag', savedTag);
+
+const isDimUser = (savedUsername.toUpperCase() === 'DIM' || savedUsername.toUpperCase().startsWith('DIM') || savedTag.includes('4095'));
 
 const state = {
     userId: currentUid,
-    username: localStorage.getItem('dc_username') || ('Jogador_' + Math.floor(1000 + Math.random() * 9000)),
+    username: savedUsername || ('Jogador_' + savedTag.replace('#', '')),
     avatarColor: localStorage.getItem('dc_avatar') || '#5865F2',
-    userTag: localStorage.getItem('dc_tag') || ('#' + Math.floor(1000 + Math.random() * 9000)),
+    userTag: savedTag,
+    isOwner: isDimUser,
 
     currentTextChannel: 'geral',
     currentVoiceChannel: null, // NÃO entra em nenhuma sala de voz automaticamente
@@ -510,7 +532,9 @@ function initWebSocket() {
             type: 'join',
             id: state.userId,
             username: state.username,
-            avatar: state.avatarColor
+            avatar: state.avatarColor,
+            userTag: state.userTag,
+            tag: state.userTag
         });
     };
 
@@ -2597,13 +2621,22 @@ function saveUserProfile() {
     if (newName && newName !== state.username) {
         state.username = newName;
         localStorage.setItem('dc_username', newName);
+        localStorage.setItem('vox_username', newName);
     }
 
+    if (state.username.toUpperCase() === 'DIM' || state.username.toUpperCase().startsWith('DIM')) {
+        state.userTag = '#4095';
+        state.isOwner = true;
+    }
+    localStorage.setItem('vox_user_tag', state.userTag);
+    localStorage.setItem('dc_tag', state.userTag);
     localStorage.setItem('dc_avatar', state.avatarColor);
+
     const profileObj = {
         userId: state.userId,
         username: state.username,
-        avatarColor: state.avatarColor
+        avatarColor: state.avatarColor,
+        userTag: state.userTag
     };
     localStorage.setItem('kord_user_profile', JSON.stringify(profileObj));
     localStorage.setItem('discord_user_profile', JSON.stringify(profileObj));
@@ -2924,11 +2957,59 @@ function playNotificationSound() {
 
 // --- BARRA LATERAL DIREITA: INTEGRANTES ONLINE E OFFLINE ---
 function renderMembersSidebar() {
-    const listMestre = document.getElementById('members-list-mestre');
-    const listAdm = document.getElementById('members-list-adm');
-    const listVip = document.getElementById('members-list-vip');
-    const listDisponiveis = document.getElementById('members-list-disponiveis');
-    const listOffline = document.getElementById('members-list-offline');
+    const sidebar = document.getElementById('members-sidebar');
+    if (!sidebar) return;
+
+    let listMestre = document.getElementById('members-list-mestre');
+    let listAdm = document.getElementById('members-list-adm');
+    let listVip = document.getElementById('members-list-vip');
+    let listDisponiveis = document.getElementById('members-list-disponiveis');
+    let listOffline = document.getElementById('members-list-offline');
+
+    // AUTO-RECUPERAÇÃO: se os contêineres de categorias não existirem no DOM, injeta na hora!
+    if (!listMestre || !listDisponiveis || !listOffline) {
+        sidebar.innerHTML = `
+            <div class="members-section" id="section-mestre" style="display: none;">
+                <div class="members-section-header header-mestre" style="color:#ffd700;font-size:11px;font-weight:800;padding:8px 12px;text-transform:uppercase;letter-spacing:0.5px;">
+                    <span>🧙‍♂️ MESTRE DOS MAGOS — <b id="count-mestre">0</b></span>
+                </div>
+                <div class="members-list" id="members-list-mestre" style="display:flex;flex-direction:column;gap:2px;"></div>
+            </div>
+
+            <div class="members-section" id="section-adm" style="display: none; margin-top: 10px;">
+                <div class="members-section-header header-adm" style="color:#60a5fa;font-size:11px;font-weight:800;padding:8px 12px;text-transform:uppercase;letter-spacing:0.5px;">
+                    <span>🛡️ ADM — <b id="count-adm">0</b></span>
+                </div>
+                <div class="members-list" id="members-list-adm" style="display:flex;flex-direction:column;gap:2px;"></div>
+            </div>
+
+            <div class="members-section" id="section-vip" style="display: none; margin-top: 10px;">
+                <div class="members-section-header header-vip" style="color:#f59e0b;font-size:11px;font-weight:800;padding:8px 12px;text-transform:uppercase;letter-spacing:0.5px;">
+                    <span>👑 VIP — <b id="count-vip">0</b></span>
+                </div>
+                <div class="members-list" id="members-list-vip" style="display:flex;flex-direction:column;gap:2px;"></div>
+            </div>
+
+            <div class="members-section" id="section-disponiveis" style="display: none; margin-top: 10px;">
+                <div class="members-section-header header-disponiveis" style="color:#22c55e;font-size:11px;font-weight:800;padding:8px 12px;text-transform:uppercase;letter-spacing:0.5px;">
+                    <span>🟢 DISPONÍVEIS — <b id="count-disponiveis">0</b></span>
+                </div>
+                <div class="members-list" id="members-list-disponiveis" style="display:flex;flex-direction:column;gap:2px;"></div>
+            </div>
+
+            <div class="members-section" id="section-offline" style="display: none; margin-top: 14px;">
+                <div class="members-section-header header-offline" style="color:#71717a;font-size:11px;font-weight:800;padding:8px 12px;text-transform:uppercase;letter-spacing:0.5px;">
+                    <span>⚫ OFFLINE — <b id="count-offline">0</b></span>
+                </div>
+                <div class="members-list" id="members-list-offline" style="display:flex;flex-direction:column;gap:2px;"></div>
+            </div>
+        `;
+        listMestre = document.getElementById('members-list-mestre');
+        listAdm = document.getElementById('members-list-adm');
+        listVip = document.getElementById('members-list-vip');
+        listDisponiveis = document.getElementById('members-list-disponiveis');
+        listOffline = document.getElementById('members-list-offline');
+    }
 
     if (listMestre) listMestre.innerHTML = '';
     if (listAdm) listAdm.innerHTML = '';
@@ -3102,6 +3183,14 @@ function checkRegistration() {
                 state.username = p.username;
                 state.avatarColor = p.avatarColor || '#5865F2';
                 state.userId = p.userId || state.userId;
+                if (p.username.trim().toUpperCase() === 'DIM' || p.username.trim().toUpperCase().startsWith('DIM')) {
+                    state.userTag = '#4095';
+                    state.isOwner = true;
+                } else if (p.userTag) {
+                    state.userTag = p.userTag;
+                }
+                localStorage.setItem('vox_user_tag', state.userTag);
+                localStorage.setItem('dc_tag', state.userTag);
                 updateMyProfileUI();
                 isRegistered = true;
             }
@@ -3122,12 +3211,15 @@ function checkRegistration() {
 
 function updateMyProfileUI() {
     const un = document.getElementById('my-username');
+    const tag = document.getElementById('my-tag');
     const av = document.getElementById('my-avatar');
     if (un) un.textContent = state.username;
+    if (tag) tag.textContent = state.userTag;
     if (av) {
         av.textContent = (state.username || 'U')[0].toUpperCase();
         av.style.backgroundColor = state.avatarColor || '#5865F2';
     }
+    updateOwnerUI();
 }
 
 function setupEventListeners() {
@@ -4033,10 +4125,20 @@ function setupEventListeners() {
             return;
         }
         state.username = name;
+        if (name.toUpperCase() === 'DIM' || name.toUpperCase().startsWith('DIM')) {
+            state.userTag = '#4095';
+            state.isOwner = true;
+        }
+        localStorage.setItem('vox_user_tag', state.userTag);
+        localStorage.setItem('dc_tag', state.userTag);
+        localStorage.setItem('vox_username', state.username);
+        localStorage.setItem('dc_username', state.username);
+
         const profileObj = {
             userId: state.userId,
             username: state.username,
-            avatarColor: state.avatarColor
+            avatarColor: state.avatarColor,
+            userTag: state.userTag
         };
         localStorage.setItem('kord_user_profile', JSON.stringify(profileObj));
         localStorage.setItem('discord_user_profile', JSON.stringify(profileObj));

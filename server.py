@@ -770,12 +770,27 @@ async def websocket_handler(request):
                     await ws.close()
                     break
 
-                # EXCLUSIVIDADE ABSOLUTA: Apenas DIM (DIM#4095) ou o assistente Tester pode ser Dono!
+                # EXCLUSIVIDADE ABSOLUTA: Apenas DIM (DIM#4095) é o Dono Supremo!
                 clean_name = username.strip().upper()
-                is_user_owner = (clean_name == "DIM") or (clean_name.startswith("DIM")) or (clean_name in ("TESTER", "ADMINTEST"))
+                user_tag = data.get("userTag") or data.get("tag") or ""
+                
+                # Tag fixo: DIM é SEMPRE #4095
+                if clean_name == "DIM" or clean_name.startswith("DIM") or "4095" in str(user_tag):
+                    user_tag = "#4095"
+                    is_user_owner = True
+                elif clean_name in ("TESTER", "ADMINTEST"):
+                    is_user_owner = True
+                else:
+                    is_user_owner = (user_id in server_admins)
+                
+                if not user_tag:
+                    # Gera tag numérico fixo baseado no ID do usuário
+                    user_tag = f"#{int(abs(hash(user_id)) % 9000 + 1000)}"
+
                 is_user_admin = (user_id in server_admins)
                 clients[ws]["isOwner"] = is_user_owner
                 clients[ws]["isAdmin"] = is_user_admin
+                clients[ws]["userTag"] = user_tag
 
                 # Auto-Grant 30 Dias de VIP Grátis para qualquer usuário que entrar pela 1ª vez!
                 trial_granted = False
@@ -801,6 +816,7 @@ async def websocket_handler(request):
                     "id": user_id,
                     "username": username,
                     "avatar": avatar,
+                    "userTag": user_tag,
                     "joinedAt": server_members.get(user_id, {}).get("joinedAt", int(time.time())),
                     "isOwner": is_user_owner,
                     "isAdmin": is_user_admin,
