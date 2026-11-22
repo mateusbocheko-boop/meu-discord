@@ -1,3 +1,51 @@
+
+// Modal de Convidar Amigos com link visível e cópia à prova de falhas
+function openInviteModal() {
+    const modal = document.getElementById('invite-modal');
+    const input = document.getElementById('invite-url-input');
+    const url = state.publicTunnelUrl || window.location.href;
+    if (input) input.value = url;
+    if (modal) modal.style.display = 'flex';
+    copyInviteLink();
+}
+
+function closeInviteModal() {
+    const modal = document.getElementById('invite-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function copyInviteLink() {
+    const input = document.getElementById('invite-url-input');
+    const btn = document.getElementById('btn-copy-invite-modal');
+    const url = input ? input.value : (state.publicTunnelUrl || window.location.href);
+
+    let copied = false;
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(url);
+            copied = true;
+        }
+    } catch (e) {}
+
+    if (!copied && input) {
+        try {
+            input.select();
+            input.setSelectionRange(0, 99999);
+            copied = document.execCommand('copy');
+        } catch (e) {}
+    }
+
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado!';
+        btn.style.backgroundColor = '#23a55a';
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fa-solid fa-copy"></i> Copiar';
+            btn.style.backgroundColor = '#5865F2';
+        }, 3000);
+    }
+    showToast(`🔗 <b>Link copiado com sucesso!</b><br><small>${url}</small>`, 5000);
+}
+
 /* ==========================================================================
    DISCORD 60 FPS & 2K STREAM - CLIENT CONTROLLER COMPLETO
    ========================================================================== */
@@ -523,27 +571,36 @@ async function startScreenShare() {
     const width = res === 1440 ? 2560 : (res === 1080 ? 1920 : 1280);
     const height = res === 1440 ? 1440 : (res === 1080 ? 1080 : 720);
 
-    // Configurações com isolamento de áudio das salas de voz
-    const constraints = {
-        video: {
-            frameRate: { ideal: fps, max: fps },
-            width: { ideal: width, max: width },
-            height: { ideal: height, max: height }
-        },
-        audio: state.streamConfig.captureAudio ? {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            channelCount: 2,
-            sampleRate: 48000
-        } : false,
-        selfBrowserSurface: 'exclude',
-        systemAudio: 'include',
-        surfaceSwitching: 'include'
-    };
+    // Garante que o usuário está em uma sala de voz para transmitir
+    if (!state.currentVoiceChannel) {
+        switchVoiceChannel('jogos-60fps');
+    }
+
+    let stream = null;
+    try {
+        // Tenta capturar tela com áudio
+        const constraints = {
+            video: {
+                frameRate: { ideal: fps, max: fps },
+                width: { ideal: width, max: width },
+                height: { ideal: height, max: height }
+            },
+            audio: state.streamConfig.captureAudio ? true : false
+        };
+        stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+    } catch (err) {
+        console.warn('Erro getDisplayMedia com áudio, tentando fallback de vídeo:', err);
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        } catch (e2) {
+            if (e2.name !== 'NotAllowedError') {
+                alert('Não foi possível iniciar a transmissão de tela: ' + e2.message);
+            }
+            return;
+        }
+    }
 
     try {
-        const stream = await navigator.mediaDevices.getDisplayMedia(constraints);
         state.localScreenStream = stream;
         state.isStreaming = true;
 
@@ -1372,16 +1429,13 @@ function setupEventListeners() {
         startScreenShare();
     };
 
-    // 4. Convidar Amigos (Copiar Link)
-    document.getElementById('btn-copy-invite').onclick = async () => {
-        const url = state.publicTunnelUrl || window.location.href;
-        try {
-            await navigator.clipboard.writeText(url);
-            showToast(`🔗 <b>Link público copiado!</b><br>Envie para seus amigos:<br><small>${url}</small>`, 6000);
-        } catch (e) {
-            prompt('Copie o link abaixo para seus amigos:', url);
-        }
-    };
+    // 4. Convidar Amigos (Abre Modal de Convite)
+    const btnCopyInv = document.getElementById('btn-copy-invite');
+    if (btnCopyInv) btnCopyInv.onclick = openInviteModal;
+    const btnCloseInv = document.getElementById('btn-close-invite-modal');
+    if (btnCloseInv) btnCloseInv.onclick = closeInviteModal;
+    const btnCopyModal = document.getElementById('btn-copy-invite-modal');
+    if (btnCopyModal) btnCopyModal.onclick = copyInviteLink;
 
     // 5. Chat Input
     const chatInput = document.getElementById('chat-input');
@@ -2046,6 +2100,22 @@ function renderIptvStreams(streams) {
                 openSeriesEpisodes(stream);
             } else {
                 const targetRoom = document.getElementById('iptv-select-target-room').value;
+                const cinemaObj = {
+                    streamId: stream.stream_id,
+                    streamName: title,
+                    streamType: state.currentIptvType,
+                    ext: stream.container_extension || 'mp4',
+                    poster: iconUrl,
+                    startedBy: state.username,
+                    startedById: state.userId,
+                    currentTime: 0,
+                    isPlaying: true
+                };
+
+                // Atualiza localmente imediatamente sem esperar round-trip
+                if (!state.cinemaRooms) state.cinemaRooms = {};
+                state.cinemaRooms[targetRoom] = cinemaObj;
+
                 sendWs({
                     type: 'cinema_play',
                     room: targetRoom,
@@ -2056,9 +2126,10 @@ function renderIptvStreams(streams) {
                     poster: iconUrl
                 });
                 closeIptvModal();
-                if (state.currentVoiceChannel !== targetRoom) {
-                    switchVoiceChannel(targetRoom);
-                }
+
+                // Conecta na sala e toca imediatamente
+                switchVoiceChannel(targetRoom);
+                playCinemaStream(cinemaObj);
                 showToast(`🎬 Transmissão iniciada em <b>${targetRoom}</b>: <b>${escapeHtml(title)}</b>`);
             }
         };
@@ -2123,20 +2194,36 @@ async function openSeriesEpisodes(series) {
                 `;
                 epCard.onclick = () => {
                     const targetRoom = document.getElementById('iptv-select-target-room').value;
+                    const fullEpName = `${seriesName} • T${sNum} ${epTitle}`;
+                    const cinemaObj = {
+                        streamId: ep.id,
+                        streamName: fullEpName,
+                        streamType: 'series',
+                        ext: ep.container_extension || 'mp4',
+                        poster: icon,
+                        startedBy: state.username,
+                        startedById: state.userId,
+                        currentTime: 0,
+                        isPlaying: true
+                    };
+
+                    if (!state.cinemaRooms) state.cinemaRooms = {};
+                    state.cinemaRooms[targetRoom] = cinemaObj;
+
                     sendWs({
                         type: 'cinema_play',
                         room: targetRoom,
                         streamId: ep.id,
-                        streamName: `${seriesName} • T${sNum} ${epTitle}`,
+                        streamName: fullEpName,
                         streamType: 'series',
                         ext: ep.container_extension || 'mp4',
                         poster: icon
                     });
                     closeIptvModal();
-                    if (state.currentVoiceChannel !== targetRoom) {
-                        switchVoiceChannel(targetRoom);
-                    }
-                    showToast(`🍿 Iniciado em <b>${targetRoom}</b>: <b>${escapeHtml(seriesName)} - ${escapeHtml(epTitle)}</b>`);
+
+                    switchVoiceChannel(targetRoom);
+                    playCinemaStream(cinemaObj);
+                    showToast(`🍿 Iniciado em <b>${targetRoom}</b>: <b>${escapeHtml(fullEpName)}</b>`);
                 };
                 grid.appendChild(epCard);
             });

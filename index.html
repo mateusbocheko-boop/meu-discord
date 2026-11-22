@@ -326,6 +326,29 @@
         </div>
     </div>
 
+    <!-- MODAL DE CONVIDAR AMIGOS -->
+    <div class="modal-backdrop" id="invite-modal" style="display: none;">
+        <div class="modal-box" style="max-width: 460px; padding: 24px; text-align: left;">
+            <div class="modal-header" style="padding: 0 0 16px 0; border-bottom: 1px solid #3f4147;">
+                <h3 style="display:flex;align-items:center;gap:8px;font-size:18px;color:#fff;">
+                    <i class="fa-solid fa-user-plus text-green"></i> Convidar Amigos
+                </h3>
+                <button class="modal-close" id="btn-close-invite-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div style="margin-top: 16px;">
+                <p style="color:#b5bac1;font-size:13px;line-height:1.5;margin-bottom:12px;">
+                    Envie o link abaixo para seus amigos entrarem no servidor e assistirem às transmissões com você:
+                </p>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="invite-url-input" readonly style="flex:1;background:#1e1f22;border:1px solid #3f4147;color:#dbdee1;padding:10px 12px;border-radius:4px;font-size:13px;" value="https://meu-discord-1.onrender.com">
+                    <button id="btn-copy-invite-modal" style="background:#5865F2;color:#fff;border:none;padding:10px 16px;border-radius:4px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;">
+                        <i class="fa-solid fa-copy"></i> Copiar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL DE CONFIGURAÇÃO DE TRANSMISSÃO 60 FPS & 2K COM ISOLAMENTO DE ÁUDIO -->
     <div class="modal-backdrop" id="stream-modal" style="display: none;">
         <div class="modal-box">
