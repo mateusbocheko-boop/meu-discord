@@ -266,6 +266,15 @@ async def index_handler(request):
         return web.FileResponse(fallback)
     return web.Response(text="index.html não encontrado", status=404)
 
+async def download_apk_handler(request):
+    apk_local = PUBLIC_DIR / "kord.apk"
+    if apk_local.exists():
+        return web.FileResponse(apk_local, headers={"Content-Disposition": 'attachment; filename="kord.apk"'})
+    apk_root = APP_DIR / "kord.apk"
+    if apk_root.exists():
+        return web.FileResponse(apk_root, headers={"Content-Disposition": 'attachment; filename="kord.apk"'})
+    raise web.HTTPFound("https://github.com/mateusbocheko-boop/meu-discord/releases/download/v1.0.0/kord.apk")
+
 async def tunnel_api(request):
     return web.json_response({"publicUrl": public_tunnel_url})
 
@@ -1414,6 +1423,7 @@ def init_app(port=8080):
     app.router.add_get("/api/iptv/live/{stream_id}.m3u8", iptv_live_m3u8_handler)
     app.router.add_get("/api/iptv/ts", iptv_ts_chunk_handler)
     app.router.add_get("/api/iptv/vod/{stream_id}", iptv_vod_stream_handler)
+    app.router.add_get("/download-apk", download_apk_handler)
     app.router.add_get("/ws", websocket_handler)
     app.router.add_static("/", PUBLIC_DIR)
     return app
