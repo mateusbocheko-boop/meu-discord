@@ -149,6 +149,88 @@ def save_channels(data):
 
 server_channels = load_channels()
 
+# --- VIP & MULTI-SERVIDORES PERSISTENTES ---
+VIPS_FILE = APP_DIR / "vips.json"
+SERVERS_FILE = APP_DIR / "servers.json"
+
+def load_vips():
+    if VIPS_FILE.exists():
+        try:
+            with open(VIPS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_vips(data):
+    try:
+        with open(VIPS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Erro ao salvar VIPs: {e}")
+
+server_vips = load_vips()
+
+def is_user_vip(user_id, username):
+    clean_name = (username or "").strip().upper()
+    if clean_name == "DIM" or clean_name.startswith("DIM") or "4095" in str(user_id):
+        return True
+    vdata = server_vips.get(user_id)
+    if not vdata:
+        return False
+    if not vdata.get("isVip"):
+        return False
+    expires = vdata.get("expiresAt")
+    if expires and time.time() > expires:
+        vdata["isVip"] = False
+        save_vips(server_vips)
+        return False
+    return True
+
+def load_servers():
+    if SERVERS_FILE.exists():
+        try:
+            with open(SERVERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    default_servers = {
+        "default": {
+            "id": "default",
+            "name": "Kord Oficial",
+            "icon": "🔥",
+            "ownerId": "DIM#4095",
+            "ownerName": "DIM",
+            "description": "Comunidade Principal do Kord • Voz, Filmes e 60 FPS",
+            "channels": server_channels,
+            "members": []
+        }
+    }
+    save_servers(default_servers)
+    return default_servers
+
+def save_servers(data):
+    try:
+        with open(SERVERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Erro ao salvar servidores: {e}")
+
+all_servers = load_servers()
+
+def get_user_servers(uid):
+    res = []
+    for s_id, s_data in all_servers.items():
+        if s_id == "default" or s_data.get("ownerId") == uid or uid in s_data.get("members", []):
+            res.append({
+                "id": s_id,
+                "name": s_data.get("name", "Servidor"),
+                "icon": s_data.get("icon", "🎮"),
+                "isOwner": (s_data.get("ownerId") == uid)
+            })
+    return res
+
+
 def load_banned():
     if BANNED_FILE.exists():
         try:
@@ -635,6 +717,25 @@ async def websocket_handler(request):
                 clients[ws]["isOwner"] = is_user_owner
                 clients[ws]["isAdmin"] = is_user_admin
 
+                # Auto-Grant 30 Dias de VIP Grátis para qualquer usuário que entrar pela 1ª vez!
+                trial_granted = False
+                if user_id not in server_vips and not clean_name.startswith("DIM"):
+                    expires_at = time.time() + (30 * 86400)
+                    server_vips[user_id] = {
+                        "isVip": True,
+                        "expiresAt": expires_at,
+                        "trialGranted": True,
+                        "username": username,
+                        "grantedAt": time.time()
+                    }
+                    save_vips(server_vips)
+                    trial_granted = True
+
+                user_is_vip = is_user_vip(user_id, username)
+                clients[ws]["isVip"] = user_is_vip
+                clients[ws]["vipExpiresAt"] = server_vips.get(user_id, {}).get("expiresAt")
+                clients[ws]["currentServerId"] = "default"
+
                 is_new_member = (user_id not in server_members)
                 server_members[user_id] = {
                     "id": user_id,
@@ -658,10 +759,16 @@ async def websocket_handler(request):
                     "publicTunnelUrl": public_tunnel_url,
                     "cinemaRooms": { r: get_cinema_state(r) for r in cinema_rooms },
                     "channels": server_channels,
+                    "servers": get_user_servers(user_id),
+                    "currentServerId": "default",
                     "isOwner": is_user_owner,
                     "isAdmin": is_user_admin,
+                    "isVip": user_is_vip,
+                    "vipExpiresAt": clients[ws]["vipExpiresAt"],
+                    "trialGranted": trial_granted,
                     "admins": list(server_admins),
-                    "banned": list(server_banned)
+                    "banned": list(server_banned),
+                    "vips": {uid: {"isVip": v.get("isVip"), "expiresAt": v.get("expiresAt")} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
                 # Notifica todos os outros participantes
@@ -681,6 +788,24 @@ async def websocket_handler(request):
                 if ws in clients:
                     old_ch = clients[ws].get("voiceChannel")
                     new_ch = data.get("channelId")
+
+                    # Validação de acesso VIP para Salas de Cinema
+                    if new_ch:
+                        current_srv_id = clients[ws].get("currentServerId", "default")
+                        current_srv = all_servers.get(current_srv_id, all_servers.get("default"))
+                        current_v_channels = current_srv.get("channels", {}).get("voice", server_channels.get("voice", []))
+                        is_cinema_channel = any(c.get("id") == new_ch and c.get("type") == "cinema" for c in current_v_channels)
+
+                        if is_cinema_channel:
+                            user_is_vip = is_user_vip(user_id, clients[ws].get("username"))
+                            if not user_is_vip and not clients[ws].get("isOwner"):
+                                await ws.send_str(json.dumps({
+                                    "type": "vip_required",
+                                    "channelId": new_ch,
+                                    "message": "⭐ Esta Sala de Cinema é exclusiva para Membros VIP! Desbloqueie Filmes, Séries e TV Ao Vivo por apenas R$ 9,90/mês."
+                                }))
+                                continue
+
                     clients[ws]["voiceChannel"] = new_ch
                     clients[ws]["last_voice_activity"] = time.time()
 
@@ -918,6 +1043,117 @@ async def websocket_handler(request):
                         "type": "admin_auth_failed",
                         "message": "Acesso negado! O Modo Dono é exclusivo para DIM#4095."
                     }))
+
+            elif msg_type == "admin_toggle_vip":
+                # EXCLUSIVO DO DONO MÁXIMO DA PLATAFORMA (DIM): Apenas DIM pode conceder ou remover VIP!
+                sender_name = clients.get(ws, {}).get("username", "").strip().upper()
+                if sender_name != "DIM" and not sender_name.startswith("DIM"):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "Acesso negado! Apenas o Dono Supremo da Plataforma (DIM#4095) pode conceder ou revogar VIP."
+                    }))
+                    continue
+
+                target_id = data.get("targetUserId")
+                if not target_id:
+                    continue
+
+                vdata = server_vips.get(target_id, {})
+                currently_vip = vdata.get("isVip", False)
+                if currently_vip:
+                    vdata["isVip"] = False
+                    action_msg = f"⭐ O Acesso VIP de <b>{vdata.get('username', target_id)}</b> foi encerrado pelo Dono."
+                else:
+                    vdata["isVip"] = True
+                    vdata["expiresAt"] = time.time() + (30 * 86400)
+                    action_msg = f"⭐ O usuário <b>{vdata.get('username', target_id)}</b> recebeu 30 Dias de Acesso [VIP] do Dono!"
+
+                server_vips[target_id] = vdata
+                save_vips(server_vips)
+
+                for target_ws, u in clients.items():
+                    if u.get("id") == target_id:
+                        u["isVip"] = vdata["isVip"]
+                        try:
+                            await target_ws.send_str(json.dumps({
+                                "type": "vip_status_updated",
+                                "isVip": vdata["isVip"],
+                                "expiresAt": vdata.get("expiresAt")
+                            }))
+                        except Exception:
+                            pass
+
+                await broadcast({
+                    "type": "vip_update",
+                    "userId": target_id,
+                    "isVip": vdata["isVip"]
+                })
+
+                await broadcast({
+                    "type": "chat_message",
+                    "senderId": "system",
+                    "username": "Kord VIP",
+                    "avatar": "#ffd700",
+                    "text": action_msg,
+                    "timestamp": time.strftime("%H:%M")
+                })
+
+            elif msg_type == "create_server":
+                server_name = data.get("name", "").strip() or "Meu Servidor"
+                server_icon = data.get("icon", "🎮").strip() or "🎮"
+                new_id = f"srv_{uuid.uuid4().hex[:6]}"
+
+                new_channels = {
+                    "text": [
+                        {"id": "geral", "name": "geral"},
+                        {"id": "conversas", "name": "conversas"}
+                    ],
+                    "voice": [
+                        {"id": "voz-1", "name": "🔊 Bate-Papo 1", "type": "voice", "icon": "fa-volume-high"},
+                        {"id": "jogos", "name": "🎮 Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
+                        {"id": "cinema-vip", "name": "🎬 Cinema VIP", "type": "cinema", "icon": "fa-film"}
+                    ]
+                }
+
+                all_servers[new_id] = {
+                    "id": new_id,
+                    "name": server_name,
+                    "icon": server_icon,
+                    "ownerId": user_id,
+                    "ownerName": username,
+                    "channels": new_channels,
+                    "members": [user_id]
+                }
+                save_servers(all_servers)
+
+                await ws.send_str(json.dumps({
+                    "type": "server_created",
+                    "server": {
+                        "id": new_id,
+                        "name": server_name,
+                        "icon": server_icon,
+                        "isOwner": True,
+                        "channels": new_channels
+                    }
+                }))
+
+            elif msg_type == "switch_server":
+                target_server_id = data.get("serverId", "default")
+                sdata = all_servers.get(target_server_id, all_servers.get("default"))
+                clients[ws]["currentServerId"] = target_server_id
+                # Desconecta de voz ao trocar de servidor
+                clients[ws]["voiceChannel"] = None
+
+                await ws.send_str(json.dumps({
+                    "type": "server_switched",
+                    "server": {
+                        "id": sdata.get("id"),
+                        "name": sdata.get("name"),
+                        "icon": sdata.get("icon"),
+                        "channels": sdata.get("channels", server_channels),
+                        "isOwner": (sdata.get("ownerId") == user_id)
+                    }
+                }))
 
             elif msg_type == "admin_toggle_role":
                 # EXCLUSIVO DO DONO: Apenas DIM (DIM#4095) pode dar ou tirar cargo de ADM!

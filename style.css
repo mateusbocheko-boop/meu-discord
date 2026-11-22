@@ -3286,3 +3286,80 @@ body, html {
         width: 220px !important;
     }
 }
+
+/* ========================================================
+   SELOS VIP & MULTI-SERVIDORES ESTILO DISCORD
+   ======================================================== */
+.badge-vip {
+    background: linear-gradient(135deg, #ffd700, #ff8c00) !important;
+    color: #080b11 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5), 0 0 18px rgba(255, 140, 0, 0.3) !important;
+    margin-left: 6px !important;
+    letter-spacing: 0.5px !important;
+    animation: vip-pulse-glow 2s infinite alternate ease-in-out !important;
+}
+
+@keyframes vip-pulse-glow {
+    0% {
+        box-shadow: 0 0 6px rgba(255, 215, 0, 0.4);
+        transform: scale(1);
+    }
+    100% {
+        box-shadow: 0 0 14px rgba(255, 215, 0, 0.8), 0 0 24px rgba(255, 140, 0, 0.5);
+        transform: scale(1.03);
+    }
+}
+
+.server-pill.btn-add-server {
+    background: rgba(0, 242, 254, 0.08) !important;
+    border: 1px dashed rgba(0, 242, 254, 0.4) !important;
+    color: #00f2fe !important;
+    transition: all 0.2s ease !important;
+}
+
+.server-pill.btn-add-server:hover {
+    background: #00f2fe !important;
+    color: #080b11 !important;
+    border-style: solid !important;
+    transform: scale(1.08) !important;
+    box-shadow: 0 0 18px rgba(0, 242, 254, 0.5) !important;
+}
+
+.server-pill.user-server-item {
+    font-size: 18px !important;
+    background: #141b2a !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.server-pill.user-server-item.active {
+    background: linear-gradient(135deg, #00f2fe, #4facfe) !important;
+    border-color: #00f2fe !important;
+    box-shadow: 0 0 16px rgba(0, 242, 254, 0.5) !important;
+}
+
+.emoji-opt {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: #141b2a;
+    transition: transform 0.15s, background 0.15s;
+}
+
+.emoji-opt:hover {
+    background: rgba(0, 242, 254, 0.2);
+    transform: scale(1.15);
+}
+
+.text-gold {
+    color: #ffd700 !important;
+}

@@ -430,6 +430,11 @@ const state = {
     userVolumes: new Map(), // userId -> volume (0 a 200)
     userMutedLocally: new Set(), // Set de userIds mutados apenas localmente
     activeContextUserId: null,
+    isVip: false,
+    vipExpiresAt: null,
+    vips: new Map(),
+    userServers: [],
+    currentServerId: 'default',
 
     localAudioStream: null,
     localScreenStream: null,
@@ -578,12 +583,82 @@ async function handleServerMessage(data) {
             if (data.isAdmin !== undefined) {
                 state.isAdmin = !!data.isAdmin;
             }
+            if (data.isVip !== undefined) {
+                state.isVip = !!data.isVip;
+            }
+            if (data.vipExpiresAt) {
+                state.vipExpiresAt = data.vipExpiresAt;
+            }
+            if (data.vips) {
+                state.vips = new Map(Object.entries(data.vips));
+            }
+            if (data.servers) {
+                state.userServers = data.servers;
+                renderUserServers();
+            }
+            if (data.trialGranted) {
+                setTimeout(() => {
+                    showToast('🎉 Parabéns! Você ganhou 30 Dias de Acesso VIP Grátis com selo [VIP] para curtir Cinema, Filmes e TV Ao Vivo!', 9000);
+                }, 1000);
+            }
             if (data.isOwner !== undefined) {
                 state.isOwner = data.isOwner || (false);
                 updateOwnerUI();
             }
             renderChannels();
             renderMembersSidebar();
+            break;
+
+        case 'vip_required':
+            openVipModal();
+            showToast('⭐ ' + (data.message || 'Esta sala é exclusiva para Membros VIP!'), 6000);
+            break;
+
+        case 'vip_update':
+            if (!state.vips) state.vips = new Map();
+            if (data.isVip) {
+                state.vips.set(data.userId, { isVip: true });
+            } else {
+                state.vips.delete(data.userId);
+            }
+            if (data.userId === state.userId) {
+                state.isVip = !!data.isVip;
+            }
+            renderMembersSidebar();
+            renderVoiceUsers();
+            break;
+
+        case 'vip_status_updated':
+            state.isVip = !!data.isVip;
+            state.vipExpiresAt = data.expiresAt;
+            renderMembersSidebar();
+            if (data.isVip) {
+                showToast('👑 Seu Acesso VIP foi ativado com sucesso! Aproveite todas as salas de Cinema e Filmes!');
+            }
+            break;
+
+        case 'server_created':
+            if (data.server) {
+                state.userServers.push(data.server);
+                renderUserServers();
+                switchServer(data.server.id);
+                showToast(`🎉 Servidor "${data.server.name}" criado com sucesso!`);
+            }
+            break;
+
+        case 'server_switched':
+            if (data.server) {
+                state.currentServerId = data.server.id;
+                const brandTitle = document.querySelector('.kord-brand-title');
+                if (brandTitle) brandTitle.textContent = (data.server.name || 'KORD').toUpperCase();
+                if (data.server.channels) {
+                    state.channels = data.server.channels;
+                    renderTextChannels();
+                    renderVoiceChannels();
+                }
+                renderUserServers();
+                showToast(`Switched to "${data.server.name}"`);
+            }
             break;
 
         case 'role_update':
@@ -1849,6 +1924,28 @@ function openUserContextMenu(e, userId) {
     const isTargetOwner = (user && user.isOwner) || (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (user?.userTag?.includes('4095'));
     const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin));
 
+    // Opção exclusiva do Dono: Dar ou Remover VIP (30 Dias)
+    const toggleVipBtn = document.getElementById('ctx-btn-toggle-vip');
+    if (toggleVipBtn) {
+        if (state.isOwner && !isSelf) {
+            toggleVipBtn.style.display = 'flex';
+            const isTargetVip = (state.vips && state.vips.has(userId)) || (user && user.isVip);
+            const icon = document.getElementById('ctx-vip-icon');
+            const text = document.getElementById('ctx-vip-role-text');
+            if (isTargetVip) {
+                if (icon) icon.className = 'fa-solid fa-crown text-red';
+                if (text) text.textContent = 'Remover Acesso VIP';
+                toggleVipBtn.style.color = '#ff3366';
+            } else {
+                if (icon) icon.className = 'fa-solid fa-crown text-gold';
+                if (text) text.textContent = 'Dar 30 Dias VIP [VIP]';
+                toggleVipBtn.style.color = '#ffd700';
+            }
+        } else {
+            toggleVipBtn.style.display = 'none';
+        }
+    }
+
     // Opção exclusiva do Dono: Dar ou Remover cargo de ADM
     const toggleAdminBtn = document.getElementById('ctx-btn-toggle-admin');
     if (toggleAdminBtn) {
@@ -2453,6 +2550,7 @@ function renderChatMessage(data) {
             <div style="display:flex;align-items:center;gap:6px;">
                 <span class="chat-author" style="cursor:pointer;">${escapeHtml(data.username)}</span>
                 ${roleBadge}
+                ${(data.isVip || (state.vips && state.vips.has(data.senderId))) ? '<span class="badge-vip" title="Membro VIP"><i class="fa-solid fa-crown"></i> VIP</span>' : ''}
                 <span class="chat-time">${time}</span>
             </div>
             <div class="chat-text">${escapeHtml(data.text)}</div>
@@ -2688,6 +2786,12 @@ function renderMembersSidebar() {
             roleBadge = '<span class="badge-role-adm" title="Administrador"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
         }
 
+        const isMemberVip = (state.vips && state.vips.has(member.id)) || member.isVip || isMemberOwner;
+        let vipBadge = '';
+        if (isMemberVip) {
+            vipBadge = '<span class="badge-vip" title="Membro VIP Kord"><i class="fa-solid fa-crown"></i> VIP</span>';
+        }
+
         row.innerHTML = `
             <div class="member-avatar-wrap">
                 <div class="member-avatar" style="background-color: ${color};">${avatarLetter}</div>
@@ -2696,6 +2800,7 @@ function renderMembersSidebar() {
             <div class="member-name-wrap" style="display:flex;align-items:center;flex-wrap:wrap;">
                 <span class="member-name ${isOnline ? 'online' : 'offline'}">${nameDisplay}</span>
                 ${roleBadge}
+                ${vipBadge}
                 <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}" style="margin-left:5px;"></span>
                 ${isDeafened ? '<i class="fa-solid fa-ear-deaf voice-deafen-icon" title="Ensurdecido (Áudio Desativado)" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
                 ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
@@ -3427,6 +3532,50 @@ function setupEventListeners() {
             closeInstallModal();
             if (streamModal) streamModal.style.display = 'none';
         }
+    });
+
+    // Botões de Multi-Servidor e Modal VIP
+    on('btn-open-create-server', 'click', openCreateServerModal);
+    on('btn-close-create-server-modal', 'click', closeCreateServerModal);
+    on('btn-submit-create-server', 'click', submitCreateServer);
+
+    // Emojis de servidor
+    document.querySelectorAll('.emoji-opt').forEach(opt => {
+        opt.onclick = () => {
+            const iconInp = document.getElementById('new-server-icon-input');
+            if (iconInp) iconInp.value = opt.dataset.emoji || '🎮';
+        };
+    });
+
+    on('btn-close-vip-modal', 'click', closeVipModal);
+    on('btn-generate-vip-pix', 'click', () => {
+        const pixDisp = document.getElementById('vip-pix-display');
+        if (pixDisp) {
+            pixDisp.style.display = 'block';
+            showToast('✅ Código PIX gerado! Copie e pague no seu banco para ativar.');
+        }
+    });
+
+    on('btn-copy-vip-pix', 'click', () => {
+        const inp = document.getElementById('vip-pix-code');
+        if (inp) {
+            inp.select();
+            navigator.clipboard.writeText(inp.value).then(() => {
+                showToast('📋 Código PIX copiado para a área de transferência!');
+            }).catch(() => {
+                showToast('📋 Código selecionado. Pressione Ctrl+C para copiar.');
+            });
+        }
+    });
+
+    // Opção exclusiva do Dono no Menu de Contexto: Dar / Remover VIP
+    on('ctx-btn-toggle-vip', 'click', () => {
+        if (!state.activeContextUserId) return;
+        send({
+            type: 'admin_toggle_vip',
+            targetUserId: state.activeContextUserId
+        });
+        closeUserContextMenu();
     });
 
     // 10. Gavetas do Menu Mobile
@@ -4167,3 +4316,90 @@ window.addEventListener('DOMContentLoaded', () => {
         })
         .catch(() => {});
 });
+
+
+// ==========================================================================
+// FUNÇÕES DE MULTI-SERVIDORES & ASSINATURA VIP (PIX)
+// ==========================================================================
+
+function renderUserServers() {
+    const rail = document.getElementById('user-servers-rail');
+    if (!rail) return;
+    rail.innerHTML = '';
+
+    const defaultBtn = document.getElementById('btn-server-default');
+    if (defaultBtn) {
+        if (state.currentServerId === 'default') {
+            defaultBtn.classList.add('active');
+        } else {
+            defaultBtn.classList.remove('active');
+        }
+        defaultBtn.onclick = () => switchServer('default');
+    }
+
+    if (state.userServers && Array.isArray(state.userServers)) {
+        state.userServers.forEach(srv => {
+            if (srv.id === 'default') return;
+            const pill = document.createElement('div');
+            pill.className = `server-pill user-server-item ${state.currentServerId === srv.id ? 'active' : ''}`;
+            pill.title = srv.name;
+            pill.innerHTML = `<span>${escapeHtml(srv.icon || '🎮')}</span>`;
+            pill.onclick = () => switchServer(srv.id);
+            rail.appendChild(pill);
+        });
+    }
+}
+
+function switchServer(srvId) {
+    if (state.currentServerId === srvId) return;
+    send({ type: 'switch_server', serverId: srvId });
+}
+
+function openCreateServerModal() {
+    const modal = document.getElementById('create-server-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        const input = document.getElementById('new-server-name-input');
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+    }
+}
+
+function closeCreateServerModal() {
+    const modal = document.getElementById('create-server-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function submitCreateServer() {
+    const nameInput = document.getElementById('new-server-name-input');
+    const iconInput = document.getElementById('new-server-icon-input');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const icon = iconInput ? iconInput.value.trim() : '🎮';
+    if (!name) {
+        alert('Por favor, digite um nome para o seu servidor!');
+        if (nameInput) nameInput.focus();
+        return;
+    }
+    send({
+        type: 'create_server',
+        name: name,
+        icon: icon || '🎮'
+    });
+    closeCreateServerModal();
+}
+
+function openVipModal() {
+    const modal = document.getElementById('vip-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        const pixDisp = document.getElementById('vip-pix-display');
+        if (pixDisp) pixDisp.style.display = 'none';
+    }
+}
+
+function closeVipModal() {
+    const modal = document.getElementById('vip-modal');
+    if (modal) modal.style.display = 'none';
+}
