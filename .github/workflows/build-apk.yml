@@ -93,8 +93,8 @@ jobs:
                   applicationId "com.kord.app"
                   minSdk 24
                   targetSdk 34
-                  versionCode 1
-                  versionName "1.0.0"
+                  versionCode 2
+                  versionName "1.0.1"
               }
               buildTypes {
                   release {
@@ -171,16 +171,19 @@ jobs:
           </manifest>
           EOF
 
-          # MainActivity.java
+          # MainActivity.java com suporte completo a tela cheia e rotação
           cat << 'EOF' > android/app/src/main/java/com/kord/app/MainActivity.java
           package com.kord.app;
 
           import android.Manifest;
           import android.content.Intent;
+          import android.content.pm.ActivityInfo;
           import android.content.pm.PackageManager;
           import android.net.Uri;
           import android.os.Build;
           import android.os.Bundle;
+          import android.view.View;
+          import android.view.ViewGroup;
           import android.view.WindowManager;
           import android.webkit.PermissionRequest;
           import android.webkit.ValueCallback;
@@ -188,6 +191,7 @@ jobs:
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
+          import android.widget.FrameLayout;
           import androidx.annotation.NonNull;
           import androidx.appcompat.app.AppCompatActivity;
           import androidx.core.app.ActivityCompat;
@@ -195,6 +199,9 @@ jobs:
 
           public class MainActivity extends AppCompatActivity {
               private WebView webView;
+              private FrameLayout customViewContainer;
+              private View customView;
+              private WebChromeClient.CustomViewCallback customViewCallback;
               private ValueCallback<Uri[]> filePathCallback;
               private static final int PERMISSION_REQ_CODE = 101;
               private static final int FILE_CHOOSER_REQ_CODE = 1001;
@@ -203,12 +210,23 @@ jobs:
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
+
                   getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
                   getWindow().setStatusBarColor(0xFF080B11);
                   getWindow().setNavigationBarColor(0xFF080B11);
 
+                  FrameLayout rootLayout = new FrameLayout(this);
+                  setContentView(rootLayout);
+
                   webView = new WebView(this);
-                  setContentView(webView);
+                  rootLayout.addView(webView, new FrameLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                  customViewContainer = new FrameLayout(this);
+                  customViewContainer.setVisibility(View.GONE);
+                  customViewContainer.setBackgroundColor(0xFF000000);
+                  rootLayout.addView(customViewContainer, new FrameLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
                   WebSettings settings = webView.getSettings();
                   settings.setJavaScriptEnabled(true);
@@ -235,6 +253,26 @@ jobs:
                       @Override
                       public void onPermissionRequest(final PermissionRequest request) {
                           runOnUiThread(() -> request.grant(request.getResources()));
+                      }
+
+                      @Override
+                      public void onShowCustomView(View view, CustomViewCallback callback) {
+                          if (customView != null) {
+                              callback.onCustomViewHidden();
+                              return;
+                          }
+                          customView = view;
+                          customViewCallback = callback;
+                          webView.setVisibility(View.GONE);
+                          customViewContainer.setVisibility(View.VISIBLE);
+                          customViewContainer.addView(view, new FrameLayout.LayoutParams(
+                                  ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                          setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                      }
+
+                      @Override
+                      public void onHideCustomView() {
+                          onHideCustomViewProxy();
                       }
 
                       @Override
@@ -291,10 +329,28 @@ jobs:
 
               @Override
               public void onBackPressed() {
+                  if (customView != null) {
+                      onHideCustomViewProxy();
+                      return;
+                  }
                   if (webView != null && webView.canGoBack()) {
                       webView.goBack();
                   } else {
                       super.onBackPressed();
+                  }
+              }
+
+              private void onHideCustomViewProxy() {
+                  if (customView != null) {
+                      customViewContainer.removeView(customView);
+                      customView = null;
+                      customViewContainer.setVisibility(View.GONE);
+                      webView.setVisibility(View.VISIBLE);
+                      if (customViewCallback != null) {
+                          customViewCallback.onCustomViewHidden();
+                          customViewCallback = null;
+                      }
+                      setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
                   }
               }
           }
@@ -342,7 +398,7 @@ jobs:
         with:
           tag_name: v1.0.0
           name: "Kord Android APK v1.0.0"
-          body: "Aplicativo nativo Kord para Android (.apk). Suporta chamadas de voz, vídeo, streaming 60FPS e cinema."
+          body: "Aplicativo nativo Kord para Android (.apk). Pronto para instalar no celular, com gestos de deslizar, rolagem fluida, tela cheia para filmes e áudio WebRTC de baixa latência."
           files: output/kord.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
