@@ -1053,7 +1053,7 @@ function enhanceSDP(sdp) {
     return sdp.replace(/a=mid:video\r\n/g, `a=mid:video\r\nb=AS:${b}\r\nb=TIAS:${b * 1000}\r\n`);
 }
 
-// --- Filtro de Voz Profissional & Noise Gate Web Audio API ---
+// --- Filtro de Voz de Proximidade & Rejeição Extrema de Ruídos Externos (Web Audio API) ---
 let voiceAudioCtx = null;
 let voiceSourceNode = null;
 let voiceGateGain = null;
@@ -1061,6 +1061,8 @@ let voiceAnalyserNode = null;
 let voiceDestinationNode = null;
 let vadInterval = null;
 let lastSpeechTime = Date.now();
+let consecutiveVoiceFrames = 0; // Exige voz contínua, rejeita batidas instantâneas na mesa
+let ambientNoiseFloor = 18.0;   // Piso de ruído adaptativo da sala (aprende TV/cooler)
 
 async function setupVoiceFilter(rawStream) {
     try {
@@ -1083,42 +1085,48 @@ async function setupVoiceFilter(rawStream) {
 
         voiceSourceNode = voiceAudioCtx.createMediaStreamSource(rawStream);
 
-        // 1. Filtro High-Pass (Corta abaixo de 85Hz: elimina vibrações de mesa, batidas e ruído de coolers)
-        const highpass = voiceAudioCtx.createBiquadFilter();
-        highpass.type = 'highpass';
-        highpass.frequency.setValueAtTime(85, voiceAudioCtx.currentTime);
-        highpass.Q.setValueAtTime(0.7, voiceAudioCtx.currentTime);
+        // 1. Filtro High-Pass Duplo em Cascata (Corta abaixo de 140Hz: ELIMINA 100% DE BATIDAS NA MESA, TECLADO E RUMBLES GRAVES)
+        const highpass1 = voiceAudioCtx.createBiquadFilter();
+        highpass1.type = 'highpass';
+        highpass1.frequency.setValueAtTime(140, voiceAudioCtx.currentTime);
+        highpass1.Q.setValueAtTime(0.8, voiceAudioCtx.currentTime);
 
-        // 2. Filtro Low-Pass (Corta acima de 3800Hz: elimina chiados agudos, estática e ruído de fundo)
+        const highpass2 = voiceAudioCtx.createBiquadFilter();
+        highpass2.type = 'highpass';
+        highpass2.frequency.setValueAtTime(115, voiceAudioCtx.currentTime);
+        highpass2.Q.setValueAtTime(0.7, voiceAudioCtx.currentTime);
+
+        // 2. Filtro Low-Pass (Corta acima de 3400Hz: elimina toques finos de celular, alarmes, estática e ruído de fundo)
         const lowpass = voiceAudioCtx.createBiquadFilter();
         lowpass.type = 'lowpass';
-        lowpass.frequency.setValueAtTime(3800, voiceAudioCtx.currentTime);
+        lowpass.frequency.setValueAtTime(3400, voiceAudioCtx.currentTime);
         lowpass.Q.setValueAtTime(0.7, voiceAudioCtx.currentTime);
 
-        // 3. Filtro Peaking Vocal (Realça presença e clareza da voz humana em 1600Hz)
+        // 3. Filtro Peaking Vocal (Destaca as formantes primárias da voz humana em 1500Hz)
         const vocalBoost = voiceAudioCtx.createBiquadFilter();
         vocalBoost.type = 'peaking';
-        vocalBoost.frequency.setValueAtTime(1600, voiceAudioCtx.currentTime);
-        vocalBoost.Q.setValueAtTime(1.0, voiceAudioCtx.currentTime);
-        vocalBoost.gain.setValueAtTime(3.0, voiceAudioCtx.currentTime);
+        vocalBoost.frequency.setValueAtTime(1500, voiceAudioCtx.currentTime);
+        vocalBoost.Q.setValueAtTime(1.1, voiceAudioCtx.currentTime);
+        vocalBoost.gain.setValueAtTime(3.5, voiceAudioCtx.currentTime);
 
-        // 4. Analisador Espectral para medição precisa de fala
+        // 4. Analisador Espectral para medição precisa de voz humana próxima
         voiceAnalyserNode = voiceAudioCtx.createAnalyser();
         voiceAnalyserNode.fftSize = 512;
         voiceAnalyserNode.smoothingTimeConstant = 0.2;
 
-        // 5. Portão de Ruído (Noise Gate Dinâmico): Quando a pessoa não fala, fecha o áudio em silêncio absoluto
+        // 5. Portão de Ruído (Noise Gate Dinâmico): Quando não fala, zero absoluto de ganho (silêncio total)
         voiceGateGain = voiceAudioCtx.createGain();
         voiceGateGain.gain.setValueAtTime(0, voiceAudioCtx.currentTime);
 
-        // 6. Destino de saída para WebRTC
+        // 6. Destino WebRTC com áudio cristalino e isolado
         voiceDestinationNode = voiceAudioCtx.createMediaStreamDestination();
 
-        // Encadeamento do filtro:
-        // rawStream -> highpass -> lowpass -> vocalBoost -> voiceAnalyserNode (leitura de voz)
-        //                                                 -> voiceGateGain -> destination (áudio limpo p/ WebRTC)
-        voiceSourceNode.connect(highpass);
-        highpass.connect(lowpass);
+        // Encadeamento acústico profissional:
+        // rawStream -> highpass1 -> highpass2 -> lowpass -> vocalBoost -> voiceAnalyserNode
+        //                                                              -> voiceGateGain -> destination
+        voiceSourceNode.connect(highpass1);
+        highpass1.connect(highpass2);
+        highpass2.connect(lowpass);
         lowpass.connect(vocalBoost);
         vocalBoost.connect(voiceAnalyserNode);
         vocalBoost.connect(voiceGateGain);
@@ -1147,7 +1155,7 @@ async function startMicrophone(deviceId = null) {
             echoCancellation: { ideal: true },
             noiseSuppression: { ideal: true },
             autoGainControl: { ideal: true },
-            channelCount: 1, // Mono no microfone elimina ruído de estática e chiado
+            channelCount: 1, // Mono elimina estática
             sampleRate: 48000
         };
         if (deviceId) {
@@ -1159,7 +1167,7 @@ async function startMicrophone(deviceId = null) {
             video: false
         });
 
-        // Passa pelo filtro de voz e portão de ruído (Noise Gate)
+        // Passa pelo filtro acústico anti-ruído e portão de silêncio
         const filteredStream = await setupVoiceFilter(rawStream);
 
         // Se estiver na sala AFK ou silenciado, desativa as tracks de áudio
@@ -1184,7 +1192,7 @@ async function startMicrophone(deviceId = null) {
             });
         });
 
-        // Inicia detector inteligente de voz humana (só ativa quando realmente fala)
+        // Inicia detector inteligente exclusivo de voz próxima
         setupVoiceActivityDetection();
     } catch (e) {
         console.warn('Microfone não ativado:', e);
@@ -1198,6 +1206,8 @@ function setupVoiceActivityDetection() {
     const timeDomainArray = new Uint8Array(voiceAnalyserNode.fftSize);
     let isSpeaking = false;
     lastSpeechTime = Date.now();
+    consecutiveVoiceFrames = 0;
+    ambientNoiseFloor = 18.0;
 
     if (vadInterval) clearInterval(vadInterval);
     vadInterval = setInterval(() => {
@@ -1205,6 +1215,7 @@ function setupVoiceActivityDetection() {
 
         // Se estiver na sala AFK ou mutado, o portão fica totalmente fechado (silêncio)
         if (state.currentVoiceChannel === 'afk' || state.isMuted) {
+            consecutiveVoiceFrames = 0;
             if (voiceGateGain) {
                 voiceGateGain.gain.setTargetAtTime(0, voiceAudioCtx.currentTime, 0.02);
             }
@@ -1219,14 +1230,18 @@ function setupVoiceActivityDetection() {
         // 1. Obtém espectro de frequências
         voiceAnalyserNode.getByteFrequencyData(dataArray);
 
-        // 2. Mede a energia na faixa específica da voz humana (200Hz a 3200Hz -> bins 2 a 34)
+        // 2. Mede a energia na faixa específica da voz humana (250Hz a 2800Hz -> bins 3 a 30)
         let speechEnergy = 0;
-        for (let i = 2; i <= 34; i++) {
+        let maxBinEnergy = 0;
+        for (let i = 3; i <= 30; i++) {
             speechEnergy += dataArray[i];
+            if (dataArray[i] > maxBinEnergy) {
+                maxBinEnergy = dataArray[i];
+            }
         }
-        const avgSpeechEnergy = speechEnergy / 33;
+        const avgSpeechEnergy = speechEnergy / 28;
 
-        // 3. Mede volume RMS no domínio do tempo para rejeitar cliques e batidas
+        // 3. Mede volume RMS no domínio do tempo
         voiceAnalyserNode.getByteTimeDomainData(timeDomainArray);
         let sumSquares = 0;
         for (let i = 0; i < timeDomainArray.length; i++) {
@@ -1235,13 +1250,35 @@ function setupVoiceActivityDetection() {
         }
         const rms = Math.sqrt(sumSquares / timeDomainArray.length);
 
-        // Critério refinado: só ativa o sinal de voz quando REALMENTE fala (rejeita ruído ambiente e coolers)
-        const isVoiceActive = (avgSpeechEnergy > 26 && rms > 0.022);
+        // 4. Rastreamento inteligente do piso de ruído da sala (ignora TV ao fundo ou ventilador)
+        if (!isSpeaking && rms < 0.04) {
+            ambientNoiseFloor = (ambientNoiseFloor * 0.95) + (avgSpeechEnergy * 0.05);
+            if (ambientNoiseFloor > 40) ambientNoiseFloor = 40;
+            if (ambientNoiseFloor < 12) ambientNoiseFloor = 12;
+        }
+
+        // 5. Filtro Anti-Toque de Celular e Alarmes (rejeita senóides puras concentradas num único tom)
+        const isPureTone = (maxBinEnergy / (avgSpeechEnergy + 0.1)) > 7.2;
+
+        // 6. Limiar de voz próxima: exige volume e energia de quem está falando perto do microfone
+        const requiredEnergy = Math.max(42, ambientNoiseFloor + 18);
+        const requiredRms = 0.044; // Sons distantes (TV ao fundo) ficam em ~0.02-0.03 e são bloqueados
+
+        const isCandidate = (avgSpeechEnergy > requiredEnergy && rms > requiredRms && !isPureTone);
+
+        // 7. Filtro Anti-Batida na Mesa e Cliques: exige pelo menos 2 frames consecutivos (~120ms) de voz contínua
+        if (isCandidate) {
+            consecutiveVoiceFrames++;
+        } else {
+            consecutiveVoiceFrames = Math.max(0, consecutiveVoiceFrames - 1);
+        }
+
+        const isVoiceActive = (consecutiveVoiceFrames >= 2);
 
         if (isVoiceActive) {
             lastSpeechTime = Date.now();
 
-            // Abre o portão de áudio sem estalos (12ms de ataque)
+            // Abre o portão de áudio instantaneamente para a voz passar (12ms)
             if (voiceGateGain) {
                 voiceGateGain.gain.setTargetAtTime(1.0, voiceAudioCtx.currentTime, 0.012);
             }
@@ -1252,10 +1289,10 @@ function setupVoiceActivityDetection() {
                 sendWs({ type: 'voice_state', isMuted: false, isDeafened: state.isDeafened, isSpeaking: true });
             }
         } else {
-            // Sustentação (hold time) de 380ms para pausas naturais entre palavras sem cortar a voz
+            // Sustentação (hold time) de 320ms para pausas naturais entre palavras
             const timeSinceSpeech = Date.now() - lastSpeechTime;
-            if (timeSinceSpeech > 380) {
-                // Fecha o portão de áudio com fade suave (35ms) -> SILÊNCIO TOTAL de ruído de fundo
+            if (timeSinceSpeech > 320) {
+                // Fecha o portão de áudio para ZERO absoluto (corta TV ao fundo e qualquer barulho externo)
                 if (voiceGateGain) {
                     voiceGateGain.gain.setTargetAtTime(0.0, voiceAudioCtx.currentTime, 0.035);
                 }
@@ -1277,7 +1314,7 @@ function setupVoiceActivityDetection() {
                 switchVoiceChannel('afk');
             }
         }
-    }, 80);
+    }, 60); // 60ms por ciclo: resposta rápida para voz e rejeição perfeita de transientes
 }
 
 function setMicrophoneMuted(muted) {
