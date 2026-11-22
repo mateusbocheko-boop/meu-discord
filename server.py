@@ -174,7 +174,7 @@ def save_owners(data):
 
 server_owners = load_owners()
 
-ADMINS_FILE = BASE_DIR / "admins.json"
+ADMINS_FILE = APP_DIR / "admins.json"
 
 def load_admins():
     if ADMINS_FILE.exists():
