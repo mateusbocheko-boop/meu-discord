@@ -1473,6 +1473,15 @@ function setupEventListeners() {
     const btnVidPlay = document.getElementById('btn-vid-play');
     if (btnVidPlay) {
         btnVidPlay.onclick = () => {
+            const currentRoom = state.currentVoiceChannel;
+            const cinema = (currentRoom && state.cinemaRooms) ? state.cinemaRooms[currentRoom] : null;
+            const isOwner = cinema && (cinema.startedById === state.userId);
+
+            if (!isOwner) {
+                showToast('🔒 Apenas quem iniciou o filme pode pausar ou mexer no tempo.');
+                return;
+            }
+
             if (vid.paused) {
                 vid.play().then(() => {
                     btnVidPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
@@ -2005,15 +2014,19 @@ function applyCinemaSync(data) {
     if (!video || !data) return;
 
     const cinema = state.cinemaRooms ? state.cinemaRooms[data.room] : null;
-    if (cinema && cinema.startedById === state.userId) return; // Dono nunca é sobrescrito
+    if (cinema && cinema.startedById === state.userId) return; // O Dono nunca é sobrescrito
 
-    const diff = Math.abs(video.currentTime - data.currentTime);
-    if (diff > 1.8) {
-        video.currentTime = data.currentTime;
+    // Sincroniza o minuto/segundo exato com tolerância máxima de 0.9s
+    if (data.currentTime !== undefined && cinema && cinema.streamType !== 'live') {
+        const diff = Math.abs(video.currentTime - data.currentTime);
+        if (diff > 0.9) {
+            try { video.currentTime = data.currentTime; } catch(e) {}
+        }
     }
 
+    // Sincroniza o Play / Pause instantaneamente com o Dono
     if (data.isPlaying && video.paused) {
-        video.play().catch(() => {});
+        startVideoPlayback(video);
     } else if (!data.isPlaying && !video.paused) {
         video.pause();
     }
