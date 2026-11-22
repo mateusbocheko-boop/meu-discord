@@ -1265,25 +1265,28 @@ function renderMembersSidebar() {
 // --- CADASTRO OBRIGATÓRIO DE NOVO INTEGRANTE AO ENTRAR PELO LINK ---
 function checkRegistration() {
     const saved = localStorage.getItem('discord_user_profile');
+    let isRegistered = false;
     if (saved) {
         try {
             const p = JSON.parse(saved);
-            if (p.username) {
+            if (p.username && !p.username.startsWith('Jogador_')) {
                 state.username = p.username;
                 state.avatarColor = p.avatarColor || '#5865F2';
                 state.userId = p.userId || state.userId;
                 updateMyProfileUI();
-                return;
+                isRegistered = true;
             }
         } catch (e) {}
     }
-    const regModal = document.getElementById('register-modal');
-    if (regModal) {
-        regModal.style.display = 'flex';
-        const nameInput = document.getElementById('register-name-input');
-        if (nameInput) {
-            nameInput.value = '';
-            setTimeout(() => nameInput.focus(), 250);
+    if (!isRegistered) {
+        const regModal = document.getElementById('register-modal');
+        if (regModal) {
+            regModal.style.display = 'flex';
+            const nameInput = document.getElementById('register-name-input');
+            if (nameInput) {
+                nameInput.value = '';
+                setTimeout(() => nameInput.focus(), 300);
+            }
         }
     }
 }
@@ -1359,8 +1362,10 @@ function setupEventListeners() {
             state.streamConfig.fps = parseInt(c.dataset.fps);
         };
     });
-    document.getElementById('chk-audio').onchange = (e) => state.streamConfig.captureAudio = e.target.checked;
-    document.getElementById('chk-isolate-voice').onchange = (e) => state.streamConfig.isolateVoice = e.target.checked;
+    const chkAudio = document.getElementById('chk-audio');
+    if (chkAudio) chkAudio.onchange = (e) => state.streamConfig.captureAudio = e.target.checked;
+    const chkIsolate = document.getElementById('chk-isolate-voice');
+    if (chkIsolate) chkIsolate.onchange = (e) => state.streamConfig.isolateVoice = e.target.checked;
 
     document.getElementById('btn-confirm-stream').onclick = () => {
         streamModal.style.display = 'none';
@@ -1408,6 +1413,42 @@ function setupEventListeners() {
     };
     document.getElementById('btn-vid-fullscreen').onclick = () => {
         if (vid.requestFullscreen) vid.requestFullscreen();
+    };
+
+    const btnVidPlay = document.getElementById('btn-vid-play');
+    if (btnVidPlay) {
+        btnVidPlay.onclick = () => {
+            if (vid.paused) {
+                vid.play().then(() => {
+                    btnVidPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+                }).catch(() => {});
+            } else {
+                vid.pause();
+                btnVidPlay.innerHTML = '<i class="fa-solid fa-play"></i>';
+            }
+        };
+    }
+
+    const btnBigPlay = document.getElementById('btn-big-play');
+    if (btnBigPlay) {
+        btnBigPlay.onclick = () => {
+            vid.muted = false;
+            vid.play().then(() => {
+                const overlay = document.getElementById('video-play-overlay');
+                if (overlay) overlay.style.display = 'none';
+                if (btnVidPlay) btnVidPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+            }).catch(e => console.error(e));
+        };
+    }
+
+    // Clique no vídeo para tocar/pausar ou tirar o mudo
+    vid.onclick = () => {
+        if (vid.muted) {
+            vid.muted = false;
+            showToast('🔊 Áudio ativado!');
+            const overlay = document.getElementById('video-play-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
     };
 
     // 7. Mute e Deafen
@@ -1671,6 +1712,16 @@ function setupEventListeners() {
             avatar: state.avatarColor
         });
         showToast(`🎉 Bem-vindo(a), <b>${escapeHtml(state.username)}</b>!`);
+
+        // No celular, abre imediatamente a lista de canais para o usuário escolher em qual entrar
+        if (window.innerWidth <= 850 && !state.currentVoiceChannel) {
+            const channelsSidebar = document.querySelector('.channels-sidebar');
+            const mobileBackdrop = document.getElementById('mobile-sidebar-backdrop');
+            if (channelsSidebar) {
+                channelsSidebar.classList.add('mobile-open');
+                if (mobileBackdrop) mobileBackdrop.style.display = 'block';
+            }
+        }
     };
 
     if (btnRegisterSubmit) btnRegisterSubmit.onclick = submitRegistration;
@@ -1730,6 +1781,35 @@ function checkRoomCinemaStream(room) {
 }
 
 let cinemaSyncInterval = null;
+
+
+function startVideoPlayback(video) {
+    const playOverlay = document.getElementById('video-play-overlay');
+    const playBtn = document.getElementById('btn-vid-play');
+    
+    // Tenta reproduzir normalmente
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+        playPromise.then(() => {
+            if (playOverlay) playOverlay.style.display = 'none';
+            if (playBtn) playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+        }).catch(err => {
+            console.warn('Autoplay com áudio bloqueado pelo navegador:', err);
+            // Tenta reproduzir mudo no mobile para contornar a política de autoplay
+            video.muted = true;
+            video.play().then(() => {
+                if (playBtn) playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+                showToast('🔇 Vídeo iniciado. Toque no vídeo para ativar o áudio!', 5000);
+                if (playOverlay) playOverlay.style.display = 'flex';
+                const bigSpan = document.querySelector('#btn-big-play span');
+                if (bigSpan) bigSpan.textContent = 'Toque para Ativar o Áudio';
+            }).catch(() => {
+                if (playOverlay) playOverlay.style.display = 'flex';
+                if (playBtn) playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+            });
+        });
+    }
+}
 
 function playCinemaStream(cinema) {
     const stage = document.getElementById('video-stage');
@@ -2000,9 +2080,12 @@ async function openSeriesEpisodes(series) {
         ${escapeHtml(seriesName)}
     `;
 
-    document.getElementById('btn-back-to-series').onclick = () => {
-        loadIptvStreams(state.currentIptvType, state.currentIptvCategory);
-    };
+    const btnBackSeries = document.getElementById('btn-back-to-series');
+    if (btnBackSeries) {
+        btnBackSeries.onclick = () => {
+            loadIptvStreams(state.currentIptvType, state.currentIptvCategory);
+        };
+    }
 
     try {
         const res = await fetch(`/api/iptv/series_info?series_id=${seriesId}`);
@@ -2072,16 +2155,47 @@ function createFallbackIcon() {
 
 // Inicialização ao carregar a página
 window.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('my-username').textContent = state.username;
-    document.getElementById('my-tag').textContent = state.userTag;
-    const av = document.getElementById('my-avatar');
-    av.textContent = state.username[0].toUpperCase();
-    av.style.backgroundColor = state.avatarColor;
+    try {
+        const unEl = document.getElementById('my-username');
+        if (unEl) unEl.textContent = state.username;
+        const tagEl = document.getElementById('my-tag');
+        if (tagEl) tagEl.textContent = state.userTag;
+        const av = document.getElementById('my-avatar');
+        if (av && state.username) {
+            av.textContent = state.username[0].toUpperCase();
+            av.style.backgroundColor = state.avatarColor;
+        }
+    } catch (e) {}
 
-    setupEventListeners();
-    checkRegistration();
-    initWebSocket();
-    // NÃO inicia microfone aqui: só inicia ao entrar em uma sala de voz!
+    try {
+        setupEventListeners();
+    } catch (e) {
+        console.error('Erro em setupEventListeners:', e);
+    }
+
+    try {
+        checkRegistration();
+    } catch (e) {
+        console.error('Erro em checkRegistration:', e);
+    }
+
+    try {
+        initWebSocket();
+    } catch (e) {
+        console.error('Erro em initWebSocket:', e);
+    }
+
+    // No celular: abre os canais automaticamente ao entrar para que a lista de salas fique visível!
+    if (window.innerWidth <= 850 && !state.currentVoiceChannel) {
+        setTimeout(() => {
+            const channelsSidebar = document.querySelector('.channels-sidebar');
+            const mobileBackdrop = document.getElementById('mobile-sidebar-backdrop');
+            if (channelsSidebar) {
+                channelsSidebar.classList.add('mobile-open');
+                if (mobileBackdrop) mobileBackdrop.style.display = 'block';
+            }
+        }, 200);
+    }
 
     fetch('/api/tunnel-url')
         .then(r => r.json())

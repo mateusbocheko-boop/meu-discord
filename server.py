@@ -170,7 +170,7 @@ async def iptv_streams_handler(request):
 
     if cat_type == "series":
         action = "get_series"
-    elif cat_type == "movie":
+    elif cat_type in ("movie", "vod"):
         action = "get_vod_streams"
     else:
         action = "get_live_streams"
@@ -219,20 +219,20 @@ async def iptv_live_m3u8_handler(request):
                 lines = []
                 for line in text.splitlines():
                     s = line.strip()
-                    if s.endswith(".ts"):
-                        if s.startswith("http://") or s.startswith("https://"):
-                            parsed_s = urlparse(s)
-                            seg_edge = f"{parsed_s.scheme}://{parsed_s.netloc}"
-                            seg_path = parsed_s.path
-                            if parsed_s.query:
-                                seg_path += "?" + parsed_s.query
-                        else:
-                            seg_edge = edge_host
-                            seg_path = s if s.startswith("/") else "/" + s
-                        proxied_ts = f"/api/iptv/ts?edge={quote(seg_edge)}&path={quote(seg_path)}"
-                        lines.append(proxied_ts)
-                    else:
+                    if not s or s.startswith("#"):
                         lines.append(line)
+                        continue
+                    if s.startswith("http://") or s.startswith("https://"):
+                        parsed_s = urlparse(s)
+                        seg_edge = f"{parsed_s.scheme}://{parsed_s.netloc}"
+                        seg_path = parsed_s.path
+                        if parsed_s.query:
+                            seg_path += "?" + parsed_s.query
+                    else:
+                        seg_edge = edge_host
+                        seg_path = s if s.startswith("/") else "/" + s
+                    proxied_ts = f"/api/iptv/ts?edge={quote(seg_edge)}&path={quote(seg_path)}"
+                    lines.append(proxied_ts)
 
                 rewritten_m3u8 = "\n".join(lines)
                 return web.Response(

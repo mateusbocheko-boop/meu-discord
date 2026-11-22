@@ -2210,3 +2210,39 @@ body, html {
         border-radius: 0;
     }
 }
+
+/* Overlay de Play para Celular e Navegadores com Autoplay Bloqueado */
+.video-play-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    cursor: pointer;
+}
+
+.btn-big-play {
+    background: #5865F2;
+    color: #fff;
+    border: none;
+    border-radius: 50px;
+    padding: 14px 28px;
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(88, 101, 242, 0.5);
+    transition: transform 0.15s, background 0.15s;
+}
+
+.btn-big-play:hover {
+    background: #4752c4;
+    transform: scale(1.05);
+}
