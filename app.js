@@ -5341,8 +5341,16 @@ function setupAuditModalTabs() {
 }
 
 // Inicializa controles do VOX após o carregamento da página
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initVoxStatusAndActivity);
-} else {
+function startVoxApp() {
     initVoxStatusAndActivity();
+    renderMembersSidebar();
+    updateMyProfileUI();
+    // Atualização periódica leve para garantir que amigos conectando apareçam sempre
+    setInterval(renderMembersSidebar, 4000);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startVoxApp);
+} else {
+    startVoxApp();
 }
