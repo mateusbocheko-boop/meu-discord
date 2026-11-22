@@ -2966,7 +2966,7 @@ function renderMembersSidebar() {
     let listDisponiveis = document.getElementById('members-list-disponiveis');
     let listOffline = document.getElementById('members-list-offline');
 
-    // AUTO-RECUPERAÇÃO: se os contêineres de categorias não existirem no DOM, injeta na hora!
+    // AUTO-RECUPERAÇÃO: Se os contêineres não existirem no HTML, recria dinamicamente na hora!
     if (!listMestre || !listDisponiveis || !listOffline) {
         sidebar.innerHTML = `
             <div class="members-section" id="section-mestre" style="display: none;">
@@ -3017,21 +3017,59 @@ function renderMembersSidebar() {
     if (listDisponiveis) listDisponiveis.innerHTML = '';
     if (listOffline) listOffline.innerHTML = '';
 
-    const allMembers = Array.from(state.serverMembers.values());
-    state.users.forEach(u => {
-        if (!state.serverMembers.has(u.id)) {
-            allMembers.push({
-                id: u.id,
-                username: u.username,
-                avatar: u.avatar || '#5865F2',
-                status: u.status || 'online',
-                activity: u.activity || null
-            });
-        }
-    });
-
     const uniqueMap = new Map();
-    allMembers.forEach(m => uniqueMap.set(m.id, m));
+
+    // 1. Adiciona todos os membros salvos do servidor
+    if (state.serverMembers) {
+        state.serverMembers.forEach(m => uniqueMap.set(m.id, { ...m }));
+    }
+
+    // 2. Adiciona todos os usuários online no momento
+    if (state.users) {
+        state.users.forEach(u => {
+            if (!uniqueMap.has(u.id)) {
+                uniqueMap.set(u.id, {
+                    id: u.id,
+                    username: u.username,
+                    avatar: u.avatar || '#5865F2',
+                    userTag: u.userTag || '',
+                    status: u.status || 'online',
+                    activity: u.activity || null
+                });
+            } else {
+                const existing = uniqueMap.get(u.id);
+                existing.status = u.status || existing.status || 'online';
+                existing.activity = u.activity || existing.activity || null;
+            }
+        });
+    }
+
+    // 3. GARANTIA ABSOLUTA: O usuário atual SEMPRE está no mapa de membros
+    const currentName = state.username || 'DIM';
+    const isMeDim = currentName.trim().toUpperCase() === 'DIM' || currentName.trim().toUpperCase().startsWith('DIM') || (state.userTag && state.userTag.includes('4095')) || state.isOwner;
+    
+    if (!uniqueMap.has(state.userId)) {
+        uniqueMap.set(state.userId, {
+            id: state.userId,
+            username: currentName,
+            avatar: state.avatarColor || '#5865F2',
+            userTag: state.userTag || (isMeDim ? '#4095' : '#6060'),
+            status: state.userStatus || 'online',
+            activity: state.userActivity || null,
+            isMaster: isMeDim,
+            isOwner: isMeDim || state.isOwner
+        });
+    } else {
+        const myEntry = uniqueMap.get(state.userId);
+        myEntry.username = currentName;
+        myEntry.userTag = state.userTag || myEntry.userTag;
+        myEntry.status = state.userStatus || myEntry.status;
+        myEntry.activity = state.userActivity || myEntry.activity;
+        if (isMeDim) {
+            myEntry.isMaster = true;
+            myEntry.isOwner = true;
+        }
+    }
 
     let countMestre = 0;
     let countAdm = 0;
@@ -3041,12 +3079,12 @@ function renderMembersSidebar() {
 
     uniqueMap.forEach(member => {
         const isMe = (member.id === state.userId);
-        const liveUser = state.users.get(member.id);
+        const liveUser = state.users ? state.users.get(member.id) : null;
         const userStatus = isMe ? (state.userStatus || 'online') : (liveUser?.status || member.status || 'online');
         const userActivity = isMe ? (state.userActivity || null) : (liveUser?.activity || member.activity || null);
 
-        // Se o usuário estiver invisível e não for eu mesmo, ele é tratado como offline
-        let isOnline = (state.onlineUserIds.has(member.id) || state.users.has(member.id));
+        // Se o usuário estiver invisível e não for eu mesmo, aparece offline para os outros
+        let isOnline = isMe ? (state.userStatus !== 'invisible' && state.userStatus !== 'offline') : ((state.onlineUserIds && state.onlineUserIds.has(member.id)) || (state.users && state.users.has(member.id)));
         if (!isMe && (userStatus === 'invisible' || userStatus === 'offline')) {
             isOnline = false;
         }
@@ -3066,17 +3104,19 @@ function renderMembersSidebar() {
         const isSpeaking = !!vState.isSpeaking;
 
         // Classificação: MESTRE DOS MAGOS > ADM > VIP > DISPONÍVEIS
-        const isMemberMestre = (member.username && member.username.trim().toLowerCase() === 'dim') || 
-                               (member.username && member.username.trim().toLowerCase().startsWith('dim')) ||
-                               member.isMaster;
+        const mNameLower = (member.username || '').trim().toLowerCase();
+        const isMemberMestre = mNameLower === 'dim' || 
+                               mNameLower.startsWith('dim') ||
+                               (member.userTag && member.userTag.includes('4095')) ||
+                               member.isMaster ||
+                               (isMe && isMeDim);
 
         const isMemberAdmin = !isMemberMestre && (member.isAdmin || (state.serverAdmins && state.serverAdmins.has(member.id)) || member.isOwner);
-
         const isMemberVip = !isMemberMestre && !isMemberAdmin && (state.vips ? state.vips.has(member.id) : false);
 
         let roleBadge = '';
         if (isMemberMestre) {
-            roleBadge = '<span class="badge-role-mestre" title="Mestre dos Magos"><i class="fa-solid fa-wand-magic-sparkles"></i> MESTRE</span>';
+            roleBadge = '<span class="badge-role-mestre" title="Mestre dos Magos"><i class="fa-solid fa-crown"></i> MESTRE</span>';
         } else if (isMemberAdmin) {
             roleBadge = '<span class="badge-role-adm" title="Administrador"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
         }
