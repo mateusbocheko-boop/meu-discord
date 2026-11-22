@@ -675,6 +675,9 @@ async function handleServerMessage(data) {
             if (data.userId === state.userId) {
                 if (data.channelId !== state.currentVoiceChannel) {
                     switchVoiceChannel(data.channelId, false);
+                    if (data.channelId === 'afk') {
+                        setMicrophoneMuted(true);
+                    }
                     if (data.movedBy) {
                         showToast(`🔊 <b>Você foi movido para a sala ${targetChannelName} por ${escapeHtml(data.movedBy)}!</b>`, 5000);
                     }
@@ -713,6 +716,12 @@ async function handleServerMessage(data) {
             }
             renderVoiceUsers();
             showToast(`🔴 <b>${escapeHtml(data.username)}</b> iniciou uma transmissão 60 FPS!`);
+            break;
+
+        case 'force_afk':
+            showToast(`💤 <b>${escapeHtml(data.message || 'Você foi movido para a sala AFK por inatividade.')}</b>`, 7000);
+            switchVoiceChannel('afk', false);
+            setMicrophoneMuted(true);
             break;
 
         case 'force_stop_stream':
@@ -956,13 +965,99 @@ async function startMicrophone(deviceId = null) {
         });
         state.localAudioStream = stream;
 
+        // Se estiver na sala AFK ou silenciado, desativa as tracks de áudio
+        if (state.currentVoiceChannel === 'afk' || state.isMuted) {
+            stream.getAudioTracks().forEach(track => track.enabled = false);
+            state.isMuted = true;
+            const micBtn = document.getElementById('btn-mic');
+            if (micBtn) micBtn.classList.add('active');
+        }
+
         // Atualiza nos peers
         state.peerConnections.forEach(pc => {
             stream.getAudioTracks().forEach(track => pc.addTrack(track, stream));
         });
+
+        // Detector de silêncio e atividade de voz (5 min -> AFK)
+        setupVoiceActivityDetection(stream);
     } catch (e) {
         console.warn('Microfone não ativado:', e);
     }
+}
+
+let vadInterval = null;
+let lastSpeechTime = Date.now();
+
+function setupVoiceActivityDetection(stream) {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const audioCtx = new AudioCtx();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        let isSpeaking = false;
+        lastSpeechTime = Date.now();
+
+        if (vadInterval) clearInterval(vadInterval);
+        vadInterval = setInterval(() => {
+            if (!state.currentVoiceChannel) return;
+
+            // Se estiver na sala AFK ou mutado, não transmite fala
+            if (state.currentVoiceChannel === 'afk' || state.isMuted) {
+                if (isSpeaking) {
+                    isSpeaking = false;
+                    sendWs({ type: 'voice_state', isMuted: true, isSpeaking: false });
+                }
+            } else {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                const avg = sum / dataArray.length;
+
+                if (avg > 14) {
+                    lastSpeechTime = Date.now();
+                    if (!isSpeaking) {
+                        isSpeaking = true;
+                        sendWs({ type: 'voice_state', isMuted: false, isSpeaking: true });
+                    }
+                } else if (isSpeaking && (Date.now() - lastSpeechTime > 800)) {
+                    isSpeaking = false;
+                    sendWs({ type: 'voice_state', isMuted: false, isSpeaking: false });
+                }
+            }
+
+            // Se estiver em canal de voz que NÃO seja o AFK, e ficar 5 minutos em silêncio:
+            if (state.currentVoiceChannel && state.currentVoiceChannel !== 'afk') {
+                const silenceDuration = Date.now() - lastSpeechTime;
+                if (silenceDuration >= 300000) { // 5 minutos (300.000 ms)
+                    lastSpeechTime = Date.now();
+                    showToast('💤 Você ficou mais de 5 minutos em silêncio e foi movido para a sala AFK.');
+                    switchVoiceChannel('afk');
+                }
+            }
+        }, 500);
+    } catch (e) {
+        console.warn('Erro ao configurar VAD:', e);
+    }
+}
+
+function setMicrophoneMuted(muted) {
+    state.isMuted = muted;
+    const micBtn = document.getElementById('btn-mic');
+    if (micBtn) micBtn.classList.toggle('active', state.isMuted);
+    if (state.localAudioStream) {
+        state.localAudioStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
+    }
+    sendWs({
+        type: 'voice_state',
+        isMuted: state.isMuted,
+        isDeafened: state.isDeafened,
+        isSpeaking: false
+    });
 }
 
 // --- Transmissão 60 FPS com Áudio do Jogo ---
@@ -1445,6 +1540,12 @@ function switchVoiceChannel(newChannel, notifyServer = true) {
         'bate-papo': '☕ Bate-papo & Chill',
         'afk': '💤 AFK / Ausente'
     };
+
+    // Se entrou na sala AFK, silencia o microfone na hora e avisa
+    if (newChannel === 'afk') {
+        setMicrophoneMuted(true);
+        showToast('💤 Você entrou na sala AFK e foi silenciado automaticamente.');
+    }
 
     // Se estiver transmitindo tela do PC e entrar em sala de cinema, encerra a transmissão de tela na hora
     if (newChannel && newChannel.startsWith('cinema-') && state.isStreaming) {
@@ -2000,12 +2101,11 @@ function setupEventListeners() {
 
     // 7. Mute e Deafen
     on('btn-mic', 'click', () => {
-        state.isMuted = !state.isMuted;
-        const micBtn = document.getElementById('btn-mic');
-        if (micBtn) micBtn.classList.toggle('active', state.isMuted);
-        if (state.localAudioStream) {
-            state.localAudioStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
+        if (state.currentVoiceChannel === 'afk') {
+            showToast('💤 Você está na sala AFK e não pode falar aqui. Mude para outro canal para ativar o microfone!');
+            return;
         }
+        setMicrophoneMuted(!state.isMuted);
         showToast(state.isMuted ? '🔇 Microfone silenciado.' : '🎙️ Microfone ativado.');
     });
 

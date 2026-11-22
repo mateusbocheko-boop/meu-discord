@@ -624,9 +624,14 @@ async def websocket_handler(request):
                     old_ch = clients[ws].get("voiceChannel")
                     new_ch = data.get("channelId")
                     clients[ws]["voiceChannel"] = new_ch
+                    clients[ws]["last_voice_activity"] = time.time()
 
-                    # Se estava transmitindo tela do PC e mudou para sala de cinema ou desconectou de voz:
-                    if clients[ws].get("isStreaming") and (new_ch is None or new_ch.startswith("cinema-")):
+                    # Se entrou no AFK, silencia automaticamente!
+                    if new_ch == "afk":
+                        clients[ws]["isMuted"] = True
+
+                    # Se estava transmitindo tela do PC e mudou para sala de cinema ou foi pro afk ou desconectou de voz:
+                    if clients[ws].get("isStreaming") and (new_ch is None or new_ch.startswith("cinema-") or new_ch == "afk"):
                         clients[ws]["isStreaming"] = False
                         clients[ws]["streamInfo"] = None
                         await broadcast({
@@ -639,6 +644,16 @@ async def websocket_handler(request):
                         "userId": user_id,
                         "channelId": new_ch
                     })
+
+                    if new_ch == "afk":
+                        await broadcast({
+                            "type": "voice_state_update",
+                            "userId": user_id,
+                            "isMuted": True,
+                            "isDeafened": clients[ws].get("isDeafened", False),
+                            "isSpeaking": False
+                        })
+
                     # Se entrou em sala de cinema com transmissão ativa, envia o estado na hora
                     if new_ch and new_ch.startswith("cinema-") and new_ch in cinema_rooms and cinema_rooms[new_ch]:
                         await ws.send_str(json.dumps({
@@ -658,8 +673,11 @@ async def websocket_handler(request):
                 for target_ws, u in clients.items():
                     if u.get("id") == target_id:
                         u["voiceChannel"] = new_channel
+                        u["last_voice_activity"] = time.time()
                         moved_username = u.get("username")
-                        if u.get("isStreaming") and (new_channel is None or new_channel.startswith("cinema-")):
+                        if new_channel == "afk":
+                            u["isMuted"] = True
+                        if u.get("isStreaming") and (new_channel is None or new_channel.startswith("cinema-") or new_channel == "afk"):
                             u["isStreaming"] = False
                             u["streamInfo"] = None
                             await broadcast({
@@ -676,6 +694,14 @@ async def websocket_handler(request):
                         "movedBy": mover_name,
                         "movedUser": moved_username
                     })
+                    if new_channel == "afk":
+                        await broadcast({
+                            "type": "voice_state_update",
+                            "userId": target_id,
+                            "isMuted": True,
+                            "isDeafened": False,
+                            "isSpeaking": False
+                        })
                     await check_empty_cinema_rooms()
 
             # 2.1 Atualização de Perfil (Mudar Nome / Avatar)
@@ -725,14 +751,24 @@ async def websocket_handler(request):
             # 5. Estado de voz (Mute / Deafen / Falando)
             elif msg_type == "voice_state":
                 if ws in clients:
-                    clients[ws]["isMuted"] = data.get("isMuted", clients[ws]["isMuted"])
+                    is_speaking = data.get("isSpeaking", False)
+                    if is_speaking:
+                        clients[ws]["last_voice_activity"] = time.time()
+
+                    # Na sala AFK ninguém pode falar! Fica sempre mutado.
+                    if clients[ws].get("voiceChannel") == "afk":
+                        clients[ws]["isMuted"] = True
+                        is_speaking = False
+                    else:
+                        clients[ws]["isMuted"] = data.get("isMuted", clients[ws]["isMuted"])
+
                     clients[ws]["isDeafened"] = data.get("isDeafened", clients[ws]["isDeafened"])
                     await broadcast({
                         "type": "voice_state_update",
                         "userId": user_id,
                         "isMuted": clients[ws]["isMuted"],
                         "isDeafened": clients[ws]["isDeafened"],
-                        "isSpeaking": data.get("isSpeaking", False)
+                        "isSpeaking": is_speaking
                     })
 
             # 6. Sinalização WebRTC (P2P de Voz e Vídeo 60 FPS)
@@ -1120,8 +1156,57 @@ async def start_cloudflare_tunnel(port=8080):
     except Exception as e:
         print(f"[!] Erro ao iniciar cloudflared: {e}")
 
+async def afk_monitor_loop():
+    while True:
+        try:
+            await asyncio.sleep(10)
+            now = time.time()
+            for ws, u in list(clients.items()):
+                v_ch = u.get("voiceChannel")
+                if v_ch and v_ch != "afk":
+                    last_act = u.get("last_voice_activity", now)
+                    # 5 minutos em silêncio (300 segundos)
+                    if (now - last_act) >= 300:
+                        u["voiceChannel"] = "afk"
+                        u["isMuted"] = True
+                        u["last_voice_activity"] = now
+                        if u.get("isStreaming"):
+                            u["isStreaming"] = False
+                            u["streamInfo"] = None
+                            await broadcast({
+                                "type": "stream_stopped",
+                                "userId": u.get("id")
+                            })
+                        await broadcast({
+                            "type": "user_voice_change",
+                            "userId": u.get("id"),
+                            "channelId": "afk",
+                            "movedBy": "💤 Sistema AFK (5 min em silêncio)",
+                            "movedUser": u.get("username")
+                        })
+                        await broadcast({
+                            "type": "voice_state_update",
+                            "userId": u.get("id"),
+                            "isMuted": True,
+                            "isDeafened": u.get("isDeafened", False),
+                            "isSpeaking": False
+                        })
+                        try:
+                            await ws.send_str(json.dumps({
+                                "type": "force_afk",
+                                "message": "Você ficou mais de 5 minutos em silêncio e foi movido para a sala AFK."
+                            }))
+                        except Exception:
+                            pass
+                        await check_empty_cinema_rooms()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[AFK] Erro no monitor: {e}")
+
 async def on_startup(app):
     port = app.get("server_port", 8080)
+    asyncio.create_task(afk_monitor_loop())
     # Só tenta iniciar o túnel Cloudflare se estiver no Windows, com o .exe presente e fora de ambientes cloud (ex: Render)
     if sys.platform == 'win32' and not os.environ.get("RENDER") and CLOUDFLARED_EXE.exists():
         asyncio.create_task(start_cloudflare_tunnel(port))
