@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kord</title>
+    <title>VOX</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#00f2fe">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Kord">
+    <meta name="apple-mobile-web-app-title" content="VOX">
     <link rel="apple-touch-icon" href="/icon-192.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
     <link rel="icon" type="image/x-icon" href="/icon.ico">
@@ -143,6 +143,7 @@
                 <div class="user-info" id="user-footer-info" title="Clique para mudar seu nome">
                     <span class="username" id="my-username">Você</span>
                     <span class="user-tag" id="my-tag">#6060</span>
+                    <div id="my-activity-display" style="font-size:10px;color:#22c55e;display:none;margin-top:2px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
                 </div>
                 <div class="user-controls">
                     <button class="icon-btn" id="btn-mic" title="Silenciar Microfone"><i class="fa-solid fa-microphone"></i></button>
@@ -166,7 +167,7 @@
                     <span class="header-desc" id="current-channel-desc">Transmissão em tempo real a 60 FPS</span>
                 </div>
                 <div class="header-right">
-                    <button class="btn-buy-vip-header" id="btn-header-buy-vip" title="Comprar Passe VIP Kord">
+                    <button class="btn-buy-vip-header" id="btn-header-buy-vip" title="Comprar Passe VIP VOX">
                         <i class="fa-solid fa-crown"></i>
                         <span>Comprar VIP</span>
                     </button>
@@ -186,7 +187,7 @@
                         <i class="fa-solid fa-earth-americas"></i>
                         <span>Convidar</span>
                     </button>
-                    <button class="btn-invite" id="btn-open-install-modal" style="background:linear-gradient(135deg, #00f2fe, #4facfe);border-color:#00f2fe;color:#0b0e14;font-weight:800;" title="Instalar Aplicativo Kord no PC ou Celular">
+                    <button class="btn-invite" id="btn-open-install-modal" style="background:linear-gradient(135deg, #00f2fe, #4facfe);border-color:#00f2fe;color:#0b0e14;font-weight:800;" title="Instalar Aplicativo VOX no PC ou Celular">
                         <i class="fa-solid fa-circle-down"></i>
                         <span>Baixar App</span>
                     </button>
@@ -273,7 +274,7 @@
                     <div class="messages-list" id="messages-list">
                         <div class="system-message">
                             <i class="fa-solid fa-circle-info"></i>
-                            <span>Bem-vindo à Comunidade Kord! Clique com o <b>botão direito</b> em cima de qualquer integrante para ajustar volume ou gerenciar.</span>
+                            <span>Bem-vindo à Comunidade VOX! Clique com o <b>botão direito</b> em cima de qualquer integrante para ajustar volume ou gerenciar.</span>
                         </div>
                     </div>
                     <div class="chat-input-wrapper">
@@ -334,7 +335,7 @@
         <div class="modal-box register-modal-box">
             <div class="register-header">
                 <div class="register-logo"><img src="/icon-192.png" alt="VOX" style="width:68px;height:68px;border-radius:18px;box-shadow:0 0 24px rgba(0,242,254,0.6);"></div>
-                <h2>Bem-vindo ao Kord!</h2>
+                <h2>Bem-vindo ao VOX!</h2>
                 <p>Para entrar e conversar com seus amigos, digite seu nome ou apelido:</p>
             </div>
             <div class="register-body">
@@ -396,9 +397,9 @@
             </div>
             <div style="margin-top: 16px;">
                 <div style="display:flex;align-items:center;gap:14px;background:#1e1f22;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
-                    <img src="/icon-192.png" alt="Kord Icon" style="width:52px;height:52px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="/icon-192.png" alt="VOX Icon" style="width:52px;height:52px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
                     <div>
-                        <div style="font-size:18px;font-weight:800;color:#fff;">Kord</div>
+                        <div style="font-size:18px;font-weight:800;color:#fff;">VOX</div>
                         <div style="font-size:12px;color:#949ba4;">Aplicativo Nativo Standalone • Streaming, Voz & Cinema</div>
                     </div>
                 </div>
@@ -409,7 +410,7 @@
                         <span>Baixar APK Direto para Celular Android (.apk)</span>
                     </a>
                     <button id="btn-trigger-pwa-install" style="width:100%;background:linear-gradient(135deg, #00f2fe, #4facfe);color:#0b0e14;border:none;padding:12px 18px;border-radius:6px;font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(0,242,254,0.4);">
-                        <i class="fa-solid fa-circle-down"></i> Instalar Aplicativo Kord no PC / PWA (1 Clique)
+                        <i class="fa-solid fa-circle-down"></i> Instalar Aplicativo VOX no PC / PWA (1 Clique)
                     </button>
                 </div>
 
@@ -419,7 +420,7 @@
                             <i class="fa-brands fa-windows" style="color:#00a4ef;"></i> No PC (Windows, Mac ou Linux):
                         </div>
                         <div style="color:#b5bac1;font-size:12px;line-height:1.4;">
-                            Clique no botão acima ou no ícone de <b>Instalar</b> na barra de endereço do navegador. O Kord será instalado na sua <b>Área de Trabalho</b> e no <b>Menu Iniciar</b>, abrindo direto em janela limpa e dedicada!
+                            Clique no botão acima ou no ícone de <b>Instalar</b> na barra de endereço do navegador. O VOX será instalado na sua <b>Área de Trabalho</b> e no <b>Menu Iniciar</b>, abrindo direto em janela limpa e dedicada!
                         </div>
                     </div>
 
@@ -933,7 +934,7 @@
                 <div style="width: 60px; height: 60px; margin: 0 auto 12px; background: linear-gradient(135deg, #ffd700, #ff8c00); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 24px rgba(255, 215, 0, 0.45);">
                     <i class="fa-solid fa-crown" style="font-size: 28px; color: #080b11;"></i>
                 </div>
-                <h3 style="font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 6px;">Kord VIP Cinema</h3>
+                <h3 style="font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 6px;">VOX VIP Cinema</h3>
                 <p style="font-size: 12.5px; color: #949ba4; margin-bottom: 16px; line-height: 1.4;">
                     Desbloqueie acesso exclusivo a todas as <b>Salas de Cinema</b>, filmes lançamentos, séries e canais de TV ao vivo com áudio cristalino e vídeo em <b>60 FPS</b>!
                 </p>
@@ -963,7 +964,7 @@
                 </div>
 
                 <!-- BOTÃO CHAMATIVO DO WHATSAPP -->
-                <a id="btn-whatsapp-vip" href="https://wa.me/5544997479416?text=Ol%C3%A1%20DIM!%20%F0%9F%94%A5%20Quero%20ativar%20meu%20Passe%20VIP%20no%20Kord%20para%20liberar%20todos%20os%20Filmes%2C%20S%C3%A9ries%20e%20TV%20Ao%20Vivo!%20J%C3%A1%20estou%20com%20o%20comprovante%20do%20PIX%20de%20R%24%209%2C90%20pronto%20para%20te%20enviar!" target="_blank" rel="noopener noreferrer" style="width: 100%; text-decoration: none; background: linear-gradient(135deg, #25d366, #128c7e); color: #ffffff; border: none; padding: 13px 16px; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 20px rgba(37, 211, 102, 0.4); transition: transform 0.15s, box-shadow 0.15s;">
+                <a id="btn-whatsapp-vip" href="https://wa.me/5544997479416?text=Ol%C3%A1%20DIM!%20%F0%9F%94%A5%20Quero%20ativar%20meu%20Passe%20VIP%20no%20VOX%20para%20liberar%20todos%20os%20Filmes%2C%20S%C3%A9ries%20e%20TV%20Ao%20Vivo!%20J%C3%A1%20estou%20com%20o%20comprovante%20do%20PIX%20de%20R%24%209%2C90%20pronto%20para%20te%20enviar!" target="_blank" rel="noopener noreferrer" style="width: 100%; text-decoration: none; background: linear-gradient(135deg, #25d366, #128c7e); color: #ffffff; border: none; padding: 13px 16px; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 20px rgba(37, 211, 102, 0.4); transition: transform 0.15s, box-shadow 0.15s;">
                     <i class="fa-brands fa-whatsapp" style="font-size: 22px;"></i>
                     <span>Chamar no WhatsApp para Ativar VIP</span>
                 </a>

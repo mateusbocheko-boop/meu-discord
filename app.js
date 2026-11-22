@@ -548,6 +548,7 @@ async function handleServerMessage(data) {
             break;
 
         case 'init_state':
+            if (data.selfId) state.userId = data.selfId;
             state.users.clear();
             if (!state.voiceStates) state.voiceStates = new Map();
             state.voiceStates.clear();
@@ -3551,7 +3552,7 @@ function setupEventListeners() {
     // 9. Configurações de Perfil
     const openProfile = () => openUserSettingsModal('profile');
     on('btn-settings', 'click', openProfile);
-    on('user-footer-avatar-wrap', 'click', openProfile);
+    // on('user-footer-avatar-wrap', 'click', openProfile); // Desativado para abrir exclusivamente o menu de status
     on('user-footer-info', 'click', openProfile);
     on('btn-open-settings-rail', 'click', openProfile);
     on('btn-close-settings', 'click', closeUserSettingsModal);
@@ -4776,7 +4777,9 @@ function initVoxStatusAndActivity() {
 
     if (avatarWrap && statusMenu) {
         avatarWrap.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
             const isVisible = (statusMenu.style.display === 'block');
             statusMenu.style.display = isVisible ? 'none' : 'block';
         });
@@ -4861,6 +4864,13 @@ function initVoxStatusAndActivity() {
             const actLabel = document.getElementById('current-activity-label');
             if (actLabel) actLabel.textContent = `${name}`;
 
+            const myActEl = document.getElementById('my-activity-display');
+            if (myActEl) {
+                const prefix = type === 'watching' ? '🍿 Assistindo' : (type === 'listening' ? '🎧 Ouvindo' : '🎮 Jogando');
+                myActEl.innerHTML = `${prefix} <b>${escapeHtml(name)}</b>`;
+                myActEl.style.display = 'block';
+            }
+
             actModal.style.display = 'none';
             renderMembersSidebar();
             if (typeof showToast === 'function') showToast(`Atividade definida: ${name}`, 'success');
@@ -4909,6 +4919,11 @@ function clearUserActivity() {
     sendWs({ type: 'set_activity', activity: null });
     const actLabel = document.getElementById('current-activity-label');
     if (actLabel) actLabel.textContent = 'Nenhuma atividade';
+    const myActEl = document.getElementById('my-activity-display');
+    if (myActEl) {
+        myActEl.innerHTML = '';
+        myActEl.style.display = 'none';
+    }
     renderMembersSidebar();
     if (typeof showToast === 'function') showToast('Atividade limpa.', 'info');
 }

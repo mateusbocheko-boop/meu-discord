@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kord-v4';
+const CACHE_NAME = 'vox-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
