@@ -1079,6 +1079,21 @@ async function handleServerMessage(data) {
             }
             break;
 
+        
+        case 'sync_users_response':
+            if (data.users && Array.isArray(data.users)) {
+                data.users.forEach(u => state.users.set(u.id, u));
+            }
+            if (data.onlineIds && Array.isArray(data.onlineIds)) {
+                state.onlineUserIds = new Set(data.onlineIds);
+            }
+            if (data.members && Array.isArray(data.members)) {
+                data.members.forEach(m => state.serverMembers.set(m.id, m));
+            }
+            renderMembersSidebar();
+            renderVoiceUsers();
+            break;
+
         case 'chat_message':
             renderChatMessage(data);
             break;
@@ -5345,8 +5360,14 @@ function startVoxApp() {
     initVoxStatusAndActivity();
     renderMembersSidebar();
     updateMyProfileUI();
-    // Atualização periódica leve para garantir que amigos conectando apareçam sempre
-    setInterval(renderMembersSidebar, 4000);
+    // Sincronização em tempo real para amigos sempre se enxergarem
+    setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            sendWs({ type: 'request_sync_users' });
+        }
+        renderMembersSidebar();
+        renderVoiceUsers();
+    }, 3000);
 }
 
 if (document.readyState === 'loading') {

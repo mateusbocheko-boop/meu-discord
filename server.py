@@ -733,10 +733,10 @@ async def websocket_handler(request):
                 avatar = data.get("avatar", "#5865F2")
 
                 # Regra: 1 só login por usuário.
-                # Desconecta qualquer sessão anterior do mesmo usuário ou mesmo nome
+                # Desconecta apenas se for exatamente o mesmo ID de sessão
                 old_sessions = [
                     old_ws for old_ws, u in list(clients.items())
-                    if old_ws != ws and (u.get("id") == user_id or u.get("username").lower() == username.lower())
+                    if old_ws != ws and u.get("id") == user_id
                 ]
                 for old_ws in old_sessions:
                     try:
@@ -851,13 +851,13 @@ async def websocket_handler(request):
                     "vips": {uid: {"isVip": v.get("isVip"), "expiresAt": v.get("expiresAt")} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
-                # Notifica todos os outros participantes
+                # Notifica todos os participantes em tempo real
                 await broadcast({
                     "type": "user_joined",
                     "user": clients[ws],
                     "isNewMember": is_new_member,
                     "member": server_members[user_id]
-                }, exclude_ws=ws)
+                })
 
             # 1.1 Saída imediata (quando fecha a aba ou sai)
             elif msg_type == "leave":
@@ -1045,6 +1045,15 @@ async def websocket_handler(request):
                     await send_to_user(target, data)
 
             # 7. Mensagem de texto no chat
+            
+            elif msg_type == "request_sync_users":
+                await ws.send_str(json.dumps({
+                    "type": "sync_users_response",
+                    "users": list(clients.values()),
+                    "onlineIds": [u["id"] for u in clients.values()],
+                    "members": list(server_members.values())
+                }))
+
             elif msg_type == "chat_message":
                 if ws in clients:
                     if user_id in server_muted_users:

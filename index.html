@@ -1,6 +1,19 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+    <script>
+        // DESTRUIDOR DE CACHE ANTIGO VOX: Garante que ninguém fique preso em versões antigas
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                for (let r of regs) { r.unregister(); }
+            });
+        }
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                for (let n of names) { caches.delete(n); }
+            });
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VOX</title>
@@ -13,7 +26,7 @@
     <link rel="apple-touch-icon" href="/icon-192.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
     <link rel="icon" type="image/x-icon" href="/icon.ico">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2.5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1015,7 +1028,7 @@
     <!-- Container de Notificações Toast -->
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=2.5"></script>
 
     <!-- MENU RÁPIDO DE STATUS & ATIVIDADE VOX -->
     <div id="user-status-menu" class="vox-status-popover" style="display: none;">
