@@ -127,14 +127,14 @@ def load_channels():
             {"id": "memes", "name": "memes"}
         ],
         "voice": [
-            {"id": "geral", "name": "🔊 Geral", "type": "voice", "icon": "fa-volume-high"},
-            {"id": "jogos-60fps", "name": "🎮 Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
-            {"id": "cinema-1", "name": "🎬 Cinema 1 • Filmes", "type": "cinema", "icon": "fa-film"},
-            {"id": "cinema-2", "name": "🍿 Cinema 2 • Séries", "type": "cinema", "icon": "fa-tv"},
-            {"id": "cinema-3", "name": "⚽ Cinema 3 • Futebol & TV", "type": "cinema", "icon": "fa-futbol"},
-            {"id": "competitivo", "name": "🏆 Competitivo / Ranked", "type": "voice", "icon": "fa-trophy"},
-            {"id": "bate-papo", "name": "☕ Bate-papo & Chill", "type": "voice", "icon": "fa-mug-hot"},
-            {"id": "afk", "name": "💤 AFK / Ausente", "type": "voice", "icon": "fa-bed"}
+            {"id": "geral", "name": "Geral", "type": "voice", "icon": "fa-volume-high"},
+            {"id": "jogos-60fps", "name": "Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
+            {"id": "cinema-1", "name": "Cinema 1 • Filmes", "type": "cinema", "icon": "fa-film"},
+            {"id": "cinema-2", "name": "Cinema 2 • Séries", "type": "cinema", "icon": "fa-tv"},
+            {"id": "cinema-3", "name": "Cinema 3 • Futebol & TV", "type": "cinema", "icon": "fa-futbol"},
+            {"id": "competitivo", "name": "Competitivo / Ranked", "type": "voice", "icon": "fa-trophy"},
+            {"id": "bate-papo", "name": "Bate-papo & Chill", "type": "voice", "icon": "fa-mug-hot"},
+            {"id": "afk", "name": "AFK / Ausente", "type": "voice", "icon": "fa-bed"}
         ]
     }
     save_channels(default_ch)
@@ -1110,7 +1110,7 @@ async def websocket_handler(request):
                     ],
                     "voice": [
                         {"id": "voz-1", "name": "🔊 Bate-Papo 1", "type": "voice", "icon": "fa-volume-high"},
-                        {"id": "jogos", "name": "🎮 Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
+                        {"id": "jogos", "name": "Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
                         {"id": "cinema-vip", "name": "🎬 Cinema VIP", "type": "cinema", "icon": "fa-film"}
                     ]
                 }

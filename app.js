@@ -257,7 +257,7 @@ function renderChannels() {
         vItem.innerHTML = `
             <div class="voice-header">
                 <i class="fa-solid ${iconClass}"></i>
-                <span>${escapeHtml(ch.name.replace(/^[🔊🎮🎬🍿⚽🏆☕💤]\s*/, ''))}</span>
+                <span>${escapeHtml(ch.name.replace(/^[\ufffd\?🔊🎮🎬🍿⚽🏆☕💤\s]+/g, '').trim() || ch.name)}</span>
                 <span class="live-pill" id="live-tag-${ch.id}" style="display: none;">AO VIVO</span>
                 ${(state.isOwner && ch.id !== 'geral') ? `<button class="btn-del-channel" title="Excluir Sala"><i class="fa-solid fa-xmark"></i></button>` : ''}
             </div>
