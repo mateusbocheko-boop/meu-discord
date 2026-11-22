@@ -1,0 +1,10 @@
+cloudflared.exe
+*.log
+*.txt
+*.bat
+*.ps1
+*.lnk
+__pycache__/
+*.pyc
+.vscode/
+.idea/

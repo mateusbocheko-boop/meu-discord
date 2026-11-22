@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord 60FPS & 2K Stream</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 1. BARRA LATERAL ESQUERDA (SERVIDORES) -->
+        <nav class="servers-nav">
+            <div class="server-pill active" title="Servidor Principal">
+                <i class="fa-brands fa-discord"></i>
+            </div>
+            <div class="server-sep"></div>
+            <div class="server-pill stream-quick-btn" id="btn-quick-stream" title="Iniciar Transmissão 60 FPS">
+                <i class="fa-solid fa-display"></i>
+                <span class="fps-tag">60</span>
+            </div>
+            <div class="server-pill" id="btn-open-settings-rail" title="Configurações do Usuário">
+                <i class="fa-solid fa-gear"></i>
+            </div>
+        </nav>
+
+        <!-- 2. CANAIS E USUÁRIOS -->
+        <aside class="channels-sidebar">
+            <div class="sidebar-header">
+                <h2>🎮 Comunidade 60FPS</h2>
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+
+            <div class="channels-list">
+                <!-- Categoria Texto -->
+                <div class="channel-group">
+                    <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE TEXTO</span>
+                    <div class="channel-item active" data-type="text" data-channel="geral">
+                        <i class="fa-solid fa-hashtag"></i>
+                        <span>geral</span>
+                    </div>
+                    <div class="channel-item" data-type="text" data-channel="clips-e-lives">
+                        <i class="fa-solid fa-hashtag"></i>
+                        <span>clips-e-lives</span>
+                    </div>
+                    <div class="channel-item" data-type="text" data-channel="jogos">
+                        <i class="fa-solid fa-hashtag"></i>
+                        <span>jogos</span>
+                    </div>
+                    <div class="channel-item" data-type="text" data-channel="memes">
+                        <i class="fa-solid fa-hashtag"></i>
+                        <span>memes</span>
+                    </div>
+                </div>
+
+                <!-- Categoria Voz (Mais Salas Adicionadas) -->
+                <div class="channel-group">
+                    <span class="group-title"><i class="fa-solid fa-chevron-right"></i> CANAIS DE VOZ</span>
+                    
+                    <div class="voice-channel active" data-channel="geral">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-volume-high"></i>
+                            <span>🔊 Geral</span>
+                            <span class="live-pill" id="live-tag-geral" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-geral"></div>
+                    </div>
+
+                    <div class="voice-channel" data-channel="jogos-60fps">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-gamepad"></i>
+                            <span>🎮 Jogos 60FPS</span>
+                            <span class="live-pill" id="live-tag-jogos-60fps" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-jogos-60fps"></div>
+                    </div>
+
+                    <div class="voice-channel" data-channel="cinema">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-film"></i>
+                            <span>🎬 Cinema & Resenha</span>
+                            <span class="live-pill" id="live-tag-cinema" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-cinema"></div>
+                    </div>
+
+                    <div class="voice-channel" data-channel="competitivo">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-trophy"></i>
+                            <span>🏆 Competitivo / Ranked</span>
+                            <span class="live-pill" id="live-tag-competitivo" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-competitivo"></div>
+                    </div>
+
+                    <div class="voice-channel" data-channel="bate-papo">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-mug-hot"></i>
+                            <span>☕ Bate-papo & Chill</span>
+                            <span class="live-pill" id="live-tag-bate-papo" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-bate-papo"></div>
+                    </div>
+
+                    <div class="voice-channel" data-channel="afk">
+                        <div class="voice-header">
+                            <i class="fa-solid fa-bed"></i>
+                            <span>💤 AFK / Ausente</span>
+                            <span class="live-pill" id="live-tag-afk" style="display: none;">AO VIVO</span>
+                        </div>
+                        <div class="voice-users" id="voice-users-afk"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Painel de Conexão de Voz -->
+            <div class="voice-status-panel">
+                <div class="voice-status-indicator">
+                    <i class="fa-solid fa-signal text-green"></i>
+                    <div>
+                        <div class="status-title">Voz Conectada</div>
+                        <div class="status-sub" id="current-voice-channel-name">🔊 Geral / 60 FPS RTC</div>
+                    </div>
+                </div>
+                <div class="voice-actions">
+                    <button class="btn-stream-action" id="btn-stream-toggle">
+                        <i class="fa-solid fa-display"></i>
+                        <span id="btn-stream-text">Transmitir Tela</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Perfil do Usuário no Rodapé -->
+            <div class="user-footer">
+                <div class="user-avatar-wrap" id="user-footer-avatar-wrap" title="Clique para abrir configurações">
+                    <div class="user-avatar" id="my-avatar">U</div>
+                    <div class="status-dot online"></div>
+                </div>
+                <div class="user-info" id="user-footer-info" title="Clique para mudar seu nome">
+                    <span class="username" id="my-username">Você</span>
+                    <span class="user-tag" id="my-tag">#6060</span>
+                </div>
+                <div class="user-controls">
+                    <button class="icon-btn" id="btn-mic" title="Silenciar Microfone"><i class="fa-solid fa-microphone"></i></button>
+                    <button class="icon-btn" id="btn-deafen" title="Ensurdecer"><i class="fa-solid fa-headphones"></i></button>
+                    <button class="icon-btn" id="btn-settings" title="Configurações do Usuário"><i class="fa-solid fa-gear"></i></button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 3. ÁREA PRINCIPAL (HEADER + STAGE 60FPS + CHAT) -->
+        <main class="main-stage-area">
+            <!-- Header do Canal com Link para Amigos -->
+            <header class="main-header">
+                <div class="header-left">
+                    <i class="fa-solid fa-hashtag" id="channel-icon"></i>
+                    <h3 id="current-channel-title">geral</h3>
+                    <span class="header-desc" id="current-channel-desc">Transmissão em tempo real a 60 FPS e até 2K com som do jogo</span>
+                </div>
+                <div class="header-right">
+                    <button class="btn-invite" id="btn-copy-invite">
+                        <i class="fa-solid fa-earth-americas"></i>
+                        <span>Convidar Amigos (Link)</span>
+                    </button>
+                    <button class="header-btn" id="btn-toggle-stage" title="Alternar Palco de Vídeo">
+                        <i class="fa-solid fa-tv"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- BARRA DE SELEÇÃO DE TRANSMISSÕES (ESCOLHER QUAL LIVE ASSISTIR) -->
+            <div class="stream-switcher-bar" id="stream-switcher-bar" style="display: none;">
+                <div class="switcher-label">
+                    <i class="fa-solid fa-tv"></i>
+                    <span>Escolher Transmissão:</span>
+                </div>
+                <div class="stream-tabs" id="stream-tabs-container">
+                    <!-- Abas de quem está transmitindo inseridas dinamicamente -->
+                </div>
+            </div>
+
+            <!-- PALCO DE VÍDEO (60 FPS & 2K) -->
+            <div class="video-stage" id="video-stage" style="display: none;">
+                <div class="video-player-wrapper">
+                    <video id="stage-video" autoplay playsinline></video>
+
+                    <!-- HUD com Estatísticas de 60 FPS -->
+                    <div class="stream-hud">
+                        <div class="hud-left">
+                            <span class="hud-pill live"><i class="fa-solid fa-circle"></i> AO VIVO</span>
+                            <span class="hud-pill fps" id="hud-fps">60.0 FPS</span>
+                            <span class="hud-pill res" id="hud-res">1440p (2K)</span>
+                            <span class="hud-pill bitrate" id="hud-bitrate">12.0 Mbps</span>
+                        </div>
+                        <div class="hud-right">
+                            <span class="streamer-name" id="hud-streamer-name">Transmitido por: Alguém</span>
+                        </div>
+                    </div>
+
+                    <!-- Controles do Vídeo -->
+                    <div class="video-controls">
+                        <div class="vc-left">
+                            <button class="vc-btn" id="btn-vid-vol"><i class="fa-solid fa-volume-high"></i></button>
+                            <input type="range" id="vid-volume-slider" min="0" max="1" step="0.05" value="1">
+                        </div>
+                        <div class="vc-right">
+                            <button class="vc-btn" id="btn-vid-fullscreen" title="Tela Cheia"><i class="fa-solid fa-expand"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ÁREA DO CHAT DE TEXTO -->
+            <div class="chat-container">
+                <div class="messages-list" id="messages-list">
+                    <div class="system-message">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>Bem-vindo à Comunidade Discord 60 FPS! Clique com o <b>botão direito</b> em cima de qualquer amigo para ajustar volume ou gerenciar. Mude seu nome nas <b>Configurações (⚙️)</b>.</span>
+                    </div>
+                </div>
+                <div class="chat-input-wrapper">
+                    <input type="text" id="chat-input" placeholder="Conversar em #geral..." autocomplete="off">
+                    <button class="send-btn" id="btn-send-message"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE CONFIGURAÇÃO DE TRANSMISSÃO 60 FPS & 2K COM ISOLAMENTO DE ÁUDIO -->
+    <div class="modal-backdrop" id="stream-modal" style="display: none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-display"></i> Transmissão de Tela em 60 FPS</h3>
+                <button class="modal-close" id="btn-close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">Configure a resolução e taxa de quadros da sua transmissão:</p>
+
+                <div class="setting-group">
+                    <label>Resolução de Vídeo:</label>
+                    <div class="option-cards" id="opt-resolution">
+                        <div class="opt-card" data-res="720">720p (HD)</div>
+                        <div class="opt-card active" data-res="1080">1080p (FHD)</div>
+                        <div class="opt-card highlight" data-res="1440">1440p (2K)</div>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label>Taxa de Quadros (FPS):</label>
+                    <div class="option-cards" id="opt-fps">
+                        <div class="opt-card" data-fps="30">30 FPS</div>
+                        <div class="opt-card active highlight" data-fps="60">60 FPS (Ultra Fluido)</div>
+                    </div>
+                </div>
+
+                <div class="setting-checkbox">
+                    <label class="switch-label">
+                        <input type="checkbox" id="chk-audio" checked>
+                        <span><i class="fa-solid fa-volume-high"></i> Capturar Áudio do Jogo / Sistema (Stereo)</span>
+                    </label>
+                </div>
+
+                <!-- NOVO: ISOLAMENTO DE ÁUDIO DAS SALAS DE VOZ -->
+                <div class="setting-checkbox highlight-box">
+                    <label class="switch-label">
+                        <input type="checkbox" id="chk-isolate-voice" checked>
+                        <span><i class="fa-solid fa-shield-halved text-green"></i> <b>Isolar Áudio: Não transmitir voz dos amigos</b></span>
+                    </label>
+                    <p class="hint">
+                        Evita eco na live! Ao selecionar a tela no popup do navegador, selecione a <b>Janela do Jogo</b> ou <b>Aba</b> em vez da tela inteira, garantindo que apenas o som do jogo seja capturado.
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" id="btn-cancel-stream">Cancelar</button>
+                <button class="btn-start-stream" id="btn-confirm-stream">
+                    <i class="fa-solid fa-bolt"></i> Começar a Transmitir (60 FPS)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIGURAÇÕES PADRÃO DO DISCORD (MEU PERFIL + VOZ & VÍDEO) -->
+    <div class="modal-backdrop" id="user-settings-modal" style="display: none;">
+        <div class="settings-modal-box">
+            <!-- Sidebar de abas das configurações -->
+            <div class="settings-sidebar">
+                <div class="settings-category">CONFIGURAÇÕES DE USUÁRIO</div>
+                <div class="settings-tab active" data-tab="profile"><i class="fa-solid fa-user"></i> Meu Perfil</div>
+                <div class="settings-category">CONFIGURAÇÕES DO APLICATIVO</div>
+                <div class="settings-tab" data-tab="voice"><i class="fa-solid fa-microphone-lines"></i> Voz & Vídeo</div>
+                <div class="settings-tab" data-tab="stream"><i class="fa-solid fa-display"></i> Transmissão 60FPS</div>
+            </div>
+
+            <!-- Conteúdo da aba -->
+            <div class="settings-content">
+                <button class="settings-close-btn" id="btn-close-settings" title="ESC">
+                    <div class="esc-circle"><i class="fa-solid fa-xmark"></i></div>
+                    <span>ESC</span>
+                </button>
+
+                <!-- ABA 1: MEU PERFIL -->
+                <div class="settings-page active" id="tab-page-profile">
+                    <h2>Meu Perfil</h2>
+                    
+                    <div class="profile-card-preview">
+                        <div class="preview-banner" id="settings-preview-banner"></div>
+                        <div class="preview-body">
+                            <div class="preview-avatar" id="settings-preview-avatar">U</div>
+                            <div class="preview-names">
+                                <h3 id="settings-preview-name">Você</h3>
+                                <span id="settings-preview-tag">#6060</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>NOME DE EXIBIÇÃO / NOME PRÓPRIO</label>
+                        <input type="text" id="input-username" class="settings-input" placeholder="Digite seu novo nome..." maxlength="32">
+                    </div>
+
+                    <div class="form-group">
+                        <label>COR DO AVATAR</label>
+                        <div class="avatar-color-picker">
+                            <div class="color-dot active" data-color="#5865F2" style="background:#5865F2"></div>
+                            <div class="color-dot" data-color="#23A55A" style="background:#23A55A"></div>
+                            <div class="color-dot" data-color="#F23F43" style="background:#F23F43"></div>
+                            <div class="color-dot" data-color="#FEE75C" style="background:#FEE75C"></div>
+                            <div class="color-dot" data-color="#EB459E" style="background:#EB459E"></div>
+                            <div class="color-dot" data-color="#9B59B6" style="background:#9B59B6"></div>
+                            <div class="color-dot" data-color="#E67E22" style="background:#E67E22"></div>
+                            <div class="color-dot" data-color="#1ABC9C" style="background:#1ABC9C"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="btn-save-settings" id="btn-save-profile">
+                            <i class="fa-solid fa-floppy-disk"></i> Salvar Alterações
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ABA 2: VOZ & VÍDEO -->
+                <div class="settings-page" id="tab-page-voice">
+                    <h2>Configurações de Voz</h2>
+
+                    <div class="device-select-grid">
+                        <div class="form-group">
+                            <label>DISPOSITIVO DE ENTRADA (MICROFONE)</label>
+                            <select id="select-audio-input" class="settings-select">
+                                <option value="">Microfone Padrão do Sistema</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>DISPOSITIVO DE SAÍDA (FONES / CAIXA DE SOM)</label>
+                            <select id="select-audio-output" class="settings-select">
+                                <option value="">Dispositivo Padrão do Sistema</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- TESTE DE MICROFONE DO DISCORD COM BARRA VERDE -->
+                    <div class="mic-test-box">
+                        <label>TESTE DE MICROFONE</label>
+                        <p class="hint">Está com problemas para falar? Teste seu microfone aqui:</p>
+                        <div class="mic-meter-wrap">
+                            <button class="btn-mic-test" id="btn-toggle-mic-test">Vamos testar</button>
+                            <div class="mic-meter-bar">
+                                <div class="mic-meter-fill" id="mic-test-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setting-checkbox" style="margin-top: 16px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="chk-echo-cancellation" checked>
+                            <span>Cancelamento de Eco Acústico</span>
+                        </label>
+                    </div>
+                    <div class="setting-checkbox">
+                        <label class="switch-label">
+                            <input type="checkbox" id="chk-noise-suppression" checked>
+                            <span>Supressão de Ruído de Fundo</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ABA 3: TRANSMISSÃO 60FPS -->
+                <div class="settings-page" id="tab-page-stream">
+                    <h2>Configurações de Transmissão</h2>
+                    <p class="modal-desc">Configure o codec, taxa de bits e isolamento da transmissão:</p>
+
+                    <div class="setting-group" style="margin-top: 16px;">
+                        <label>TAXA MÁXIMA DE TRANSMISSÃO (BITRATE)</label>
+                        <div class="option-cards" id="settings-opt-bitrate">
+                            <div class="opt-card" data-bitrate="6000">6 Mbps</div>
+                            <div class="opt-card active highlight" data-bitrate="12000">12 Mbps (Alta Qualidade)</div>
+                            <div class="opt-card highlight" data-bitrate="20000">20 Mbps (2K Sem Perdas)</div>
+                        </div>
+                    </div>
+
+                    <div class="setting-checkbox highlight-box" style="margin-top: 16px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="settings-chk-isolate" checked>
+                            <span><b>Isolamento de Áudio das Salas de Voz Ativo</b></span>
+                        </label>
+                        <p class="hint">
+                            Quando ativado, os áudios recebidos das salas de voz dos amigos são reproduzidos de forma isolada, impedindo retorno e eco na sua transmissão de tela.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MENU DE CONTEXTO DO DISCORD (BOTÃO DIREITO NO NOME DO AMIGO) -->
+    <div class="discord-context-menu" id="user-context-menu" style="display: none;">
+        <div class="ctx-header">
+            <div class="ctx-avatar" id="ctx-user-avatar">A</div>
+            <div class="ctx-user-details">
+                <span class="ctx-username" id="ctx-username">Amigo</span>
+                <span class="ctx-tag" id="ctx-tag">#0000</span>
+            </div>
+        </div>
+        <div class="ctx-divider"></div>
+        
+        <!-- Controle de Volume Individual do Amigo (0 a 200%) -->
+        <div class="ctx-item-slider">
+            <div class="ctx-slider-label">
+                <span>Volume do Usuário</span>
+                <span id="ctx-vol-val">100%</span>
+            </div>
+            <input type="range" id="ctx-volume-slider" min="0" max="200" value="100" class="ctx-slider">
+        </div>
+
+        <div class="ctx-divider"></div>
+
+        <div class="ctx-item" id="ctx-btn-mute">
+            <i class="fa-solid fa-volume-xmark"></i>
+            <span id="ctx-mute-text">Silenciar para você</span>
+        </div>
+        <div class="ctx-item" id="ctx-btn-mention">
+            <i class="fa-solid fa-at"></i>
+            <span>Mencionar no Chat</span>
+        </div>
+        <div class="ctx-item" id="ctx-btn-watch-stream" style="display: none;">
+            <i class="fa-solid fa-tv text-green"></i>
+            <span>Assistir à Transmissão</span>
+        </div>
+        <div class="ctx-item" id="ctx-btn-copy-id">
+            <i class="fa-solid fa-fingerprint"></i>
+            <span>Copiar ID do Usuário</span>
+        </div>
+
+        <div class="ctx-divider"></div>
+        
+        <!-- Mover Usuário para Outra Sala de Voz -->
+        <div class="ctx-item ctx-has-submenu" id="ctx-item-move">
+            <i class="fa-solid fa-arrows-split-up-and-left text-green"></i>
+            <span>Mover Usuário para...</span>
+            <i class="fa-solid fa-chevron-right ctx-arrow"></i>
+            <div class="ctx-submenu" id="ctx-submenu-channels">
+                <div class="ctx-submenu-item" data-channel="geral"><i class="fa-solid fa-volume-high"></i> 🔊 Geral</div>
+                <div class="ctx-submenu-item" data-channel="jogos-60fps"><i class="fa-solid fa-gamepad"></i> 🎮 Jogos 60FPS</div>
+                <div class="ctx-submenu-item" data-channel="cinema"><i class="fa-solid fa-film"></i> 🎬 Cinema & Resenha</div>
+                <div class="ctx-submenu-item" data-channel="competitivo"><i class="fa-solid fa-trophy"></i> 🏆 Competitivo / Ranked</div>
+                <div class="ctx-submenu-item" data-channel="bate-papo"><i class="fa-solid fa-mug-hot"></i> ☕ Bate-papo & Chill</div>
+                <div class="ctx-submenu-item text-red" data-channel="afk"><i class="fa-solid fa-bed"></i> 💤 AFK / Ausente</div>
+            </div>
+        </div>
+
+        <div class="ctx-divider"></div>
+        <div class="ctx-item text-red" id="ctx-btn-disconnect-voice">
+            <i class="fa-solid fa-phone-slash"></i>
+            <span>Mover para AFK / Desconectar</span>
+        </div>
+    </div>
+
+    <!-- Container de Notificações Toast -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
