@@ -2468,3 +2468,35 @@ body, html {
     70% { box-shadow: 0 0 0 6px rgba(35, 165, 90, 0); }
     100% { box-shadow: 0 0 0 0 rgba(35, 165, 90, 0); }
 }
+
+
+/* BADGES DE CARGO: DONO 👑 E ADM 🛡️ */
+.badge-role-adm {
+    background-color: rgba(35, 165, 90, 0.2) !important;
+    border: 1px solid #23a55a !important;
+    color: #23a55a !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    padding: 1px 5px !important;
+    border-radius: 3px !important;
+    margin-left: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    vertical-align: middle !important;
+}
+
+.badge-role-dono {
+    background: linear-gradient(135deg, rgba(241, 196, 15, 0.25), rgba(230, 126, 34, 0.25)) !important;
+    border: 1px solid #f1c40f !important;
+    color: #f1c40f !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    padding: 1px 5px !important;
+    border-radius: 3px !important;
+    margin-left: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    vertical-align: middle !important;
+}

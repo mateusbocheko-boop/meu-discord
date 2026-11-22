@@ -174,6 +174,26 @@ def save_owners(data):
 
 server_owners = load_owners()
 
+ADMINS_FILE = BASE_DIR / "admins.json"
+
+def load_admins():
+    if ADMINS_FILE.exists():
+        try:
+            with open(ADMINS_FILE, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+def save_admins(data):
+    try:
+        with open(ADMINS_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(data), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Erro ao salvar administradores: {e}")
+
+server_admins = load_admins()
+
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -575,7 +595,9 @@ async def websocket_handler(request):
                 # EXCLUSIVIDADE ABSOLUTA: Apenas DIM (DIM#4095) ou o assistente Tester pode ser Dono!
                 clean_name = username.strip().upper()
                 is_user_owner = (clean_name == "DIM") or (clean_name.startswith("DIM")) or (clean_name in ("TESTER", "ADMINTEST"))
+                is_user_admin = (user_id in server_admins)
                 clients[ws]["isOwner"] = is_user_owner
+                clients[ws]["isAdmin"] = is_user_admin
 
                 is_new_member = (user_id not in server_members)
                 server_members[user_id] = {
@@ -583,7 +605,8 @@ async def websocket_handler(request):
                     "username": username,
                     "avatar": avatar,
                     "joinedAt": server_members.get(user_id, {}).get("joinedAt", int(time.time())),
-                    "isOwner": is_user_owner
+                    "isOwner": is_user_owner,
+                    "isAdmin": is_user_admin
                 }
                 save_members(server_members)
 
@@ -600,6 +623,8 @@ async def websocket_handler(request):
                     "cinemaRooms": { r: get_cinema_state(r) for r in cinema_rooms },
                     "channels": server_channels,
                     "isOwner": is_user_owner,
+                    "isAdmin": is_user_admin,
+                    "admins": list(server_admins),
                     "banned": list(server_banned)
                 }))
 
@@ -787,7 +812,9 @@ async def websocket_handler(request):
                         "username": clients[ws]["username"],
                         "avatar": clients[ws]["avatar"],
                         "text": data.get("text", ""),
-                        "timestamp": data.get("timestamp")
+                        "timestamp": data.get("timestamp"),
+                        "isOwner": clients[ws].get("isOwner", False),
+                        "isAdmin": clients[ws].get("isAdmin", False)
                     })
 
             # 8. Transmissão IPTV Cinema Sincronizada
@@ -856,14 +883,97 @@ async def websocket_handler(request):
                         "message": "Acesso negado! O Modo Dono é exclusivo para DIM#4095."
                     }))
 
-            elif msg_type in ("admin_stop_stream", "admin_disconnect_voice", "admin_kick_user", "admin_ban_user", "admin_unban_user", "admin_create_channel", "admin_delete_channel"):
-                # TRAVA DE SEGURANÇA TOTAL: NENHUM OUTRO USUÁRIO PODE EXECUTAR AÇÕES DE DONO!
+            elif msg_type == "admin_toggle_role":
+                # EXCLUSIVO DO DONO: Apenas DIM (DIM#4095) pode dar ou tirar cargo de ADM!
                 if not clients.get(ws, {}).get("isOwner"):
                     await ws.send_str(json.dumps({
                         "type": "error",
-                        "message": "Acesso negado! Apenas o Dono (DIM#4095) pode executar ações administrativas."
+                        "message": "Acesso negado! Apenas o Dono do Servidor (DIM#4095) pode conceder ou remover o cargo de Administrador."
                     }))
                     continue
+
+                target_id = data.get("targetUserId")
+                if not target_id:
+                    continue
+
+                target_name = ""
+                for u in clients.values():
+                    if u.get("id") == target_id:
+                        target_name = u.get("username", "")
+                        break
+                if not target_name and target_id in server_members:
+                    target_name = server_members[target_id].get("username", "")
+
+                clean_tname = target_name.strip().upper()
+                if clean_tname == "DIM" or clean_tname.startswith("DIM") or ("4095" in target_name):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "O Dono do servidor já possui todos os privilégios supremos."
+                    }))
+                    continue
+
+                if target_id in server_admins:
+                    server_admins.remove(target_id)
+                    is_now_admin = False
+                    action_msg = f"🛡️ O cargo de Administrador (ADM) de <b>{target_name}</b> foi removido pelo Dono."
+                else:
+                    server_admins.add(target_id)
+                    is_now_admin = True
+                    action_msg = f"🛡️ O usuário <b>{target_name}</b> foi promovido a <b>Administrador (ADM)</b> pelo Dono!"
+
+                save_admins(server_admins)
+
+                if target_id in server_members:
+                    server_members[target_id]["isAdmin"] = is_now_admin
+                    save_members(server_members)
+
+                for target_ws, u in clients.items():
+                    if u.get("id") == target_id:
+                        u["isAdmin"] = is_now_admin
+                        try:
+                            await target_ws.send_str(json.dumps({
+                                "type": "admin_role_updated",
+                                "isAdmin": is_now_admin
+                            }))
+                        except Exception:
+                            pass
+
+                await broadcast({
+                    "type": "role_update",
+                    "userId": target_id,
+                    "isAdmin": is_now_admin,
+                    "admins": list(server_admins)
+                })
+
+                await broadcast({
+                    "type": "chat_message",
+                    "senderId": "system",
+                    "username": "Servidor",
+                    "avatar": "#5865F2",
+                    "text": action_msg,
+                    "timestamp": time.strftime("%H:%M")
+                })
+
+            elif msg_type in ("admin_stop_stream", "admin_disconnect_voice", "admin_kick_user", "admin_ban_user", "admin_unban_user", "admin_create_channel", "admin_delete_channel"):
+                is_owner = clients.get(ws, {}).get("isOwner", False)
+                is_admin = clients.get(ws, {}).get("isAdmin", False)
+                is_mod_cmd = msg_type in ("admin_stop_stream", "admin_disconnect_voice", "admin_kick_user", "admin_ban_user")
+
+                if is_mod_cmd:
+                    if not (is_owner or is_admin):
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Acesso negado! Apenas o Dono e Administradores podem executar esta ação."
+                        }))
+                        continue
+                else:
+                    # Comandos supremos exclusivos do Dono: criar/excluir salas e desbanir
+                    if not is_owner:
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Acesso negado! Apenas o Dono do Servidor (DIM#4095) pode criar/excluir salas ou desbanir usuários."
+                        }))
+                        continue
 
                 if msg_type == "admin_stop_stream":
                     target_id = data.get("targetUserId")
@@ -946,6 +1056,13 @@ async def websocket_handler(request):
                         }))
                         continue
 
+                    if not is_owner and target_id in server_admins:
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Acesso negado: Apenas o Dono pode expulsar outro Administrador."
+                        }))
+                        continue
+
                     for target_ws, u in list(clients.items()):
                         if u.get("id") == target_id:
                             try:
@@ -995,6 +1112,13 @@ async def websocket_handler(request):
                         await ws.send_str(json.dumps({
                             "type": "error",
                             "message": "Ação proibida: O Dono do Servidor (DIM#4095) não pode ser banido!"
+                        }))
+                        continue
+
+                    if not is_owner and target_id in server_admins:
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Acesso negado: Apenas o Dono pode banir outro Administrador."
                         }))
                         continue
 

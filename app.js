@@ -377,6 +377,8 @@ const state = {
     activeStreams: new Map(), // userId -> { stream, username, info }
     currentlyWatchingUserId: null,
     isWatchingStream: true,
+    serverAdmins: new Set(),
+    isAdmin: false,
 
     // Controle individual de volume e mudo local para cada amigo
     userVolumes: new Map(), // userId -> volume (0 a 200)
@@ -524,11 +526,44 @@ async function handleServerMessage(data) {
             if (data.banned) {
                 state.bannedUsers = data.banned;
             }
+            if (data.admins) {
+                state.serverAdmins = new Set(data.admins);
+            }
+            if (data.isAdmin !== undefined) {
+                state.isAdmin = !!data.isAdmin;
+            }
             if (data.isOwner !== undefined) {
                 state.isOwner = data.isOwner || (false);
                 updateOwnerUI();
             }
             renderChannels();
+            renderMembersSidebar();
+            break;
+
+        case 'role_update':
+            if (!state.serverAdmins) state.serverAdmins = new Set();
+            if (data.admins) {
+                state.serverAdmins = new Set(data.admins);
+            } else if (data.isAdmin) {
+                state.serverAdmins.add(data.userId);
+            } else {
+                state.serverAdmins.delete(data.userId);
+            }
+            if (data.userId === state.userId) {
+                state.isAdmin = !!data.isAdmin;
+            }
+            const rUser = state.users.get(data.userId);
+            if (rUser) rUser.isAdmin = !!data.isAdmin;
+            const rMember = state.serverMembers.get(data.userId);
+            if (rMember) rMember.isAdmin = !!data.isAdmin;
+            renderVoiceUsers();
+            renderMembersSidebar();
+            break;
+
+        case 'admin_role_updated':
+            state.isAdmin = !!data.isAdmin;
+            showToast(data.isAdmin ? '🛡️ <b>Você agora é Administrador do servidor!</b>' : '🛡️ <b>Seu cargo de Administrador foi removido.</b>', 5000);
+            renderVoiceUsers();
             renderMembersSidebar();
             break;
 
@@ -1749,16 +1784,44 @@ function openUserContextMenu(e, userId) {
     const watchBtn = document.getElementById('ctx-btn-watch-stream');
     watchBtn.style.display = state.activeStreams.has(userId) ? 'flex' : 'none';
 
-    // Exibe ou oculta opções exclusivas de Administrador/Dono
+    // Identifica se o alvo é o Dono supremo do servidor
+    const isTargetOwner = (user && user.isOwner) || (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (user?.userTag?.includes('4095'));
+    const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin));
+
+    // Opção exclusiva do Dono: Dar ou Remover cargo de ADM
+    const toggleAdminBtn = document.getElementById('ctx-btn-toggle-admin');
+    if (toggleAdminBtn) {
+        if (state.isOwner && !isSelf && !isTargetOwner) {
+            toggleAdminBtn.style.display = 'flex';
+            const icon = document.getElementById('ctx-admin-icon');
+            const text = document.getElementById('ctx-admin-role-text');
+            if (isTargetAdmin) {
+                if (icon) icon.className = 'fa-solid fa-shield-slash text-red';
+                if (text) text.textContent = 'Remover Cargo de ADM';
+                toggleAdminBtn.classList.remove('text-green');
+                toggleAdminBtn.classList.add('text-red');
+            } else {
+                if (icon) icon.className = 'fa-solid fa-shield-halved text-green';
+                if (text) text.textContent = 'Dar Cargo de ADM';
+                toggleAdminBtn.classList.remove('text-red');
+                toggleAdminBtn.classList.add('text-green');
+            }
+        } else {
+            toggleAdminBtn.style.display = 'none';
+        }
+    }
+
+    // Opções de moderação (visíveis para Dono E Administradores, exceto contra o Dono)
+    const canModerate = (state.isOwner || state.isAdmin) && !isSelf && !isTargetOwner;
     const adminItems = document.querySelectorAll('.admin-only');
     adminItems.forEach(el => {
-        el.style.display = (state.isOwner && !isSelf) ? 'flex' : 'none';
+        el.style.display = canModerate ? 'flex' : 'none';
     });
 
     const stopStreamBtn = document.getElementById('ctx-btn-force-stop-stream');
     if (stopStreamBtn) {
         const isStreaming = user?.isStreaming || state.activeStreams.has(userId);
-        stopStreamBtn.style.display = (state.isOwner && isStreaming && !isSelf) ? 'flex' : 'none';
+        stopStreamBtn.style.display = (canModerate && isStreaming) ? 'flex' : 'none';
     }
 
     // Posiciona menu na tela sem vazar das bordas
@@ -1936,9 +1999,20 @@ function createVoiceUserRow(userId, username, avatarColor, isStreaming, isSelf) 
     const isDeafened = !!vState.isDeafened;
     const isSpeaking = !!vState.isSpeaking;
 
+    const isUserOwner = (userId === state.userId && state.isOwner) || (safeName.toLowerCase() === 'dim') || (safeName.toLowerCase().startsWith('dim'));
+    const isUserAdmin = !isUserOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (userId === state.userId && state.isAdmin));
+
+    let roleIcon = '';
+    if (isUserOwner) {
+        roleIcon = '<i class="fa-solid fa-crown text-yellow" style="font-size:10px;margin-left:5px;" title="Dono"></i>';
+    } else if (isUserAdmin) {
+        roleIcon = '<i class="fa-solid fa-shield-halved text-green" style="font-size:10px;margin-left:5px;" title="Administrador"></i>';
+    }
+
     row.innerHTML = `
         <div class="voice-user-avatar${isSpeaking ? ' speaking' : ''}" style="background:${color}">${initial}</div>
         <span>${escapeHtml(safeName)}${isSelf ? ' (Você)' : ''}</span>
+        ${roleIcon}
         <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}"></span>
         ${isDeafened ? '<i class="fa-solid fa-ear-deaf voice-deafen-icon" title="Ensurdecido (Áudio Desativado)"></i>' : ''}
         ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado"></i>' : ''}
@@ -2293,11 +2367,22 @@ function renderChatMessage(data) {
     const row = document.createElement('div');
     row.className = 'chat-message-row';
     const time = data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isAuthorOwner = data.isOwner || (data.username && data.username.trim().toLowerCase() === 'dim') || (data.username && data.username.trim().toLowerCase().startsWith('dim'));
+    const isAuthorAdmin = !isAuthorOwner && (data.isAdmin || (state.serverAdmins && state.serverAdmins.has(data.senderId)));
+
+    let roleBadge = '';
+    if (isAuthorOwner) {
+        roleBadge = '<span class="badge-role-dono"><i class="fa-solid fa-crown"></i> DONO</span>';
+    } else if (isAuthorAdmin) {
+        roleBadge = '<span class="badge-role-adm"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
+    }
+
     row.innerHTML = `
         <div class="chat-avatar" style="background:${data.avatar}">${data.username[0].toUpperCase()}</div>
         <div class="chat-content">
-            <div>
+            <div style="display:flex;align-items:center;gap:6px;">
                 <span class="chat-author" style="cursor:pointer;">${escapeHtml(data.username)}</span>
+                ${roleBadge}
                 <span class="chat-time">${time}</span>
             </div>
             <div class="chat-text">${escapeHtml(data.text)}</div>
@@ -2406,13 +2491,24 @@ function renderMembersSidebar() {
         const isDeafened = !!vState.isDeafened;
         const isSpeaking = !!vState.isSpeaking;
 
+        const isMemberOwner = member.isOwner || (member.username && member.username.trim().toLowerCase() === 'dim') || (member.username && member.username.trim().toLowerCase().startsWith('dim'));
+        const isMemberAdmin = !isMemberOwner && ((state.serverAdmins && state.serverAdmins.has(member.id)) || member.isAdmin);
+
+        let roleBadge = '';
+        if (isMemberOwner) {
+            roleBadge = '<span class="badge-role-dono" title="Dono do Servidor"><i class="fa-solid fa-crown"></i> DONO</span>';
+        } else if (isMemberAdmin) {
+            roleBadge = '<span class="badge-role-adm" title="Administrador"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
+        }
+
         row.innerHTML = `
             <div class="member-avatar-wrap">
                 <div class="member-avatar" style="background-color: ${color};">${avatarLetter}</div>
                 <div class="member-status-dot ${isOnline ? 'online' : 'offline'}"></div>
             </div>
-            <div class="member-name-wrap" style="display:flex;align-items:center;">
+            <div class="member-name-wrap" style="display:flex;align-items:center;flex-wrap:wrap;">
                 <span class="member-name ${isOnline ? 'online' : 'offline'}">${nameDisplay}</span>
+                ${roleBadge}
                 <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}" style="margin-left:5px;"></span>
                 ${isDeafened ? '<i class="fa-solid fa-ear-deaf voice-deafen-icon" title="Ensurdecido (Áudio Desativado)" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
                 ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
@@ -2939,6 +3035,22 @@ function setupEventListeners() {
     });
 
     // Ações de Admin no Menu de Contexto
+    on('ctx-btn-toggle-admin', 'click', () => {
+        if (!state.activeContextUserId) return;
+        const uid = state.activeContextUserId;
+        const u = state.users.get(uid) || state.serverMembers.get(uid);
+        const name = u ? u.username : 'o usuário';
+        const isAdm = (state.serverAdmins && state.serverAdmins.has(uid)) || (u && u.isAdmin);
+        const actionText = isAdm ? `remover o cargo de Administrador (ADM) de ${name}` : `conceder o cargo de Administrador (ADM) para ${name}`;
+        if (confirm(`👑 Deseja realmente ${actionText}?`)) {
+            sendWs({
+                type: 'admin_toggle_role',
+                targetUserId: uid
+            });
+        }
+        closeUserContextMenu();
+    });
+
     on('ctx-btn-force-stop-stream', 'click', () => {
         if (state.activeContextUserId) {
             adminStopStream(state.activeContextUserId);
