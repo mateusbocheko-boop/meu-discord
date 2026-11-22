@@ -180,6 +180,8 @@ def is_user_vip(user_id, username):
         return False
     if not vdata.get("isVip"):
         return False
+    if vdata.get("isLifetime"):
+        return True
     expires = vdata.get("expiresAt")
     if expires and time.time() > expires:
         vdata["isVip"] = False
@@ -1060,16 +1062,40 @@ async def websocket_handler(request):
                     continue
 
                 vdata = server_vips.get(target_id, {})
-                # Verifica se é VIP atualmente
                 currently_vip = bool(vdata.get("isVip", False))
-                if currently_vip:
+                action = data.get("action")
+                is_lifetime = bool(data.get("isLifetime", False))
+                duration_val = data.get("duration", 30)
+
+                # Busca nome do usuário alvo para mensagem
+                target_user = None
+                for u in clients.values():
+                    if u.get("id") == target_id:
+                        target_user = u.get("username")
+                        break
+                target_name = target_user or vdata.get("username", "Membro")
+                vdata["username"] = target_name
+
+                # Se for revogação explícita ou toggle de quem já é VIP sem ação definida
+                if action == "revoke" or (currently_vip and action != "grant"):
                     vdata["isVip"] = False
                     vdata["expiresAt"] = 0
-                    action_msg = f"⭐ O Acesso VIP de <b>{vdata.get('username', target_id)}</b> foi encerrado pelo Dono."
+                    vdata["isLifetime"] = False
+                    action_msg = f"⭐ O Acesso VIP de <b>{target_name}</b> foi encerrado pelo Dono."
                 else:
                     vdata["isVip"] = True
-                    vdata["expiresAt"] = time.time() + (30 * 86400)
-                    action_msg = f"⭐ O usuário <b>{vdata.get('username', target_id)}</b> recebeu 30 Dias de Acesso [VIP] do Dono!"
+                    if is_lifetime or str(duration_val).lower() == "lifetime":
+                        vdata["isLifetime"] = True
+                        vdata["expiresAt"] = None
+                        action_msg = f"👑 O usuário <b>{target_name}</b> recebeu Passe VIP VITALÍCIO do Dono (Nunca Expira)!"
+                    else:
+                        vdata["isLifetime"] = False
+                        try:
+                            days = max(1, int(duration_val))
+                        except Exception:
+                            days = 30
+                        vdata["expiresAt"] = time.time() + (days * 86400)
+                        action_msg = f"⭐ O usuário <b>{target_name}</b> recebeu {days} Dias de Acesso [VIP] do Dono!"
 
                 server_vips[target_id] = vdata
                 save_vips(server_vips)

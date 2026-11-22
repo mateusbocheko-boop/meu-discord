@@ -3499,3 +3499,26 @@ body, html {
     box-shadow: 0 0 10px rgba(168, 85, 247, 0.4) !important;
     letter-spacing: 0.3px !important;
 }
+
+/* CHIPS DE DIAS DO MODAL VIP */
+.btn-vip-chip {
+    background: #1e1f22;
+    border: 1px solid #383a40;
+    color: #dbdee1;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn-vip-chip:hover {
+    background: #2b2d31;
+    border-color: #ffd700;
+    color: #ffd700;
+}
+.btn-vip-chip.active {
+    background: rgba(255, 215, 0, 0.2);
+    border-color: #ffd700;
+    color: #ffd700;
+}

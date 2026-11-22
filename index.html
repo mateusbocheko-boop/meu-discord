@@ -862,7 +862,58 @@
         </div>
     </div>
 
-    <!-- MODAL DE ASSINATURA VIP (PIX / CINEMA & FILMES) -->
+    
+    <!-- MODAL DE CONCEDER VIP PERSONALIZADO (EXCLUSIVO DO DONO DIM) -->
+    <div class="modal-backdrop" id="grant-vip-modal" style="display: none;">
+        <div class="modal-box" style="max-width: 420px; border: 1px solid rgba(255, 215, 0, 0.45); box-shadow: 0 0 35px rgba(255, 215, 0, 0.25);">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-crown" style="color: #ffd700;"></i> Conceder Acesso VIP</h3>
+                <button class="modal-close" id="btn-close-grant-vip-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 16px;">
+                <div style="background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px; text-align: center;">
+                    <div style="font-size: 11px; color: #ffd700; font-weight: 700; text-transform: uppercase;">Membro Selecionado:</div>
+                    <div id="grant-vip-username" style="font-size: 17px; font-weight: 800; color: #ffffff; margin-top: 4px;">Amigo</div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 11px; font-weight: 700; color: #b5bac1; text-transform: uppercase; margin-bottom: 8px;">DURAÇÃO EM DIAS</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="grant-vip-days-input" min="1" max="9999" value="30" placeholder="Ex: 30" style="flex: 1; padding: 10px 12px; background: #080b11; border: 1px solid #383a40; border-radius: 6px; color: #ffd700; font-size: 16px; font-weight: 800; text-align: center; outline: none;">
+                        <span style="display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #949ba4;">Dias</span>
+                    </div>
+
+                    <!-- Atalhos rápidos de dias -->
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;">
+                        <button type="button" class="btn-vip-chip" data-days="7">7d</button>
+                        <button type="button" class="btn-vip-chip" data-days="15">15d</button>
+                        <button type="button" class="btn-vip-chip active" data-days="30">30d</button>
+                        <button type="button" class="btn-vip-chip" data-days="60">60d</button>
+                        <button type="button" class="btn-vip-chip" data-days="90">90d</button>
+                        <button type="button" class="btn-vip-chip" data-days="365">1 Ano</button>
+                    </div>
+
+                    <!-- Opção de VIP Vitalício -->
+                    <label style="display: flex; align-items: center; gap: 10px; background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 140, 0, 0.1)); border: 1px solid rgba(255, 215, 0, 0.35); padding: 12px; border-radius: 8px; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="grant-vip-lifetime-check" style="width: 18px; height: 18px; cursor: pointer; accent-color: #ffd700;">
+                        <div>
+                            <div style="font-size: 13px; font-weight: 800; color: #ffd700;">⭐ VIP Vitalício (Nunca Paga / Acesso Permanente)</div>
+                            <div style="font-size: 10.5px; color: #949ba4;">Sem prazo de validade, acesso eterno para este integrante.</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button id="btn-confirm-grant-vip" style="flex: 1; background: linear-gradient(135deg, #ffd700, #ff8c00); color: #080b11; border: none; padding: 12px; border-radius: 6px; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(255, 215, 0, 0.35); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fa-solid fa-crown"></i> Confirmar e Ativar VIP
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+<!-- MODAL DE ASSINATURA VIP (PIX / CINEMA & FILMES) -->
     <div class="modal-backdrop" id="vip-modal" style="display: none;">
         <div class="modal-box" style="max-width: 440px; text-align: center; border: 1px solid rgba(255, 215, 0, 0.4); box-shadow: 0 0 35px rgba(255, 215, 0, 0.2);">
             <div class="modal-header" style="justify-content: flex-end; border: none; padding-bottom: 0;">

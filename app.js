@@ -1982,7 +1982,7 @@ function openUserContextMenu(e, userId) {
                 toggleVipBtn.style.color = '#ff3366';
             } else {
                 if (icon) icon.className = 'fa-solid fa-crown text-gold';
-                if (text) text.textContent = 'Dar 30 Dias VIP [VIP]';
+                if (text) text.textContent = 'Conceder VIP (Dias / Vitalício)';
                 toggleVipBtn.style.color = '#ffd700';
             }
         } else {
@@ -3735,11 +3735,81 @@ function setupEventListeners() {
     on('ctx-btn-toggle-vip', 'click', () => {
         if (!state.activeContextUserId) return;
         const uid = state.activeContextUserId;
+        const isTargetVip = state.vips ? state.vips.has(uid) : false;
+
+        if (isTargetVip) {
+            // Se já tem VIP, remove direto
+            sendWs({
+                type: 'admin_toggle_vip',
+                targetUserId: uid,
+                action: 'revoke'
+            });
+            closeUserContextMenu();
+        } else {
+            // Se não tem VIP, abre o modal para escolher dias ou vitalício
+            state.activeGrantVipUserId = uid;
+            const targetUser = state.users.get(uid) || state.serverMembers.get(uid);
+            const targetName = targetUser ? targetUser.username : 'Membro';
+            const nameEl = document.getElementById('grant-vip-username');
+            if (nameEl) nameEl.textContent = targetName;
+            
+            const modal = document.getElementById('grant-vip-modal');
+            if (modal) modal.style.display = 'flex';
+            closeUserContextMenu();
+        }
+    });
+
+    // Fechar Modal de Conceder VIP
+    on('btn-close-grant-vip-modal', 'click', () => {
+        const modal = document.getElementById('grant-vip-modal');
+        if (modal) modal.style.display = 'none';
+    });
+
+    // Chips de seleção rápida de dias
+    document.querySelectorAll('.btn-vip-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('.btn-vip-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            const days = chip.getAttribute('data-days');
+            const input = document.getElementById('grant-vip-days-input');
+            const check = document.getElementById('grant-vip-lifetime-check');
+            if (input) input.value = days;
+            if (check) check.checked = false;
+        });
+    });
+
+    // Checkbox de Vitalício
+    const lifetimeCheck = document.getElementById('grant-vip-lifetime-check');
+    if (lifetimeCheck) {
+        lifetimeCheck.addEventListener('change', (e) => {
+            const input = document.getElementById('grant-vip-days-input');
+            if (e.target.checked) {
+                document.querySelectorAll('.btn-vip-chip').forEach(c => c.classList.remove('active'));
+                if (input) input.style.opacity = '0.4';
+            } else {
+                if (input) input.style.opacity = '1';
+            }
+        });
+    }
+
+    // Botão de Confirmar e Ativar VIP com dias ou vitalício
+    on('btn-confirm-grant-vip', 'click', () => {
+        if (!state.activeGrantVipUserId) return;
+        const isLifetime = document.getElementById('grant-vip-lifetime-check')?.checked || false;
+        const daysInput = document.getElementById('grant-vip-days-input');
+        const daysVal = daysInput ? parseInt(daysInput.value) || 30 : 30;
+
         sendWs({
             type: 'admin_toggle_vip',
-            targetUserId: uid
+            targetUserId: state.activeGrantVipUserId,
+            action: 'grant',
+            isLifetime: isLifetime,
+            duration: isLifetime ? 'lifetime' : daysVal
         });
-        closeUserContextMenu();
+
+        const modal = document.getElementById('grant-vip-modal');
+        if (modal) modal.style.display = 'none';
+        showToast(isLifetime ? '👑 Concedendo VIP VITALÍCIO...' : `⭐ Concedendo ${daysVal} dias de VIP...`);
     });
 
     // 10. Gavetas do Menu Mobile
