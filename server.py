@@ -22,16 +22,17 @@ if sys.platform == 'win32':
 APP_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = APP_DIR / "public"
 
-# Garante que a pasta public exista (caso o upload do GitHub tenha colocado os arquivos na raiz)
-if not PUBLIC_DIR.exists():
-    try:
-        PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
-        for fname in ["index.html", "style.css", "app.js", "icon.ico"]:
-            src_f = APP_DIR / fname
-            if src_f.exists():
-                shutil.copy2(src_f, PUBLIC_DIR / fname)
-    except Exception as e:
-        print(f"Aviso ao preparar pasta public: {e}")
+# Garante que a pasta public exista e SEMPRE sincroniza arquivos da raiz para public/ (caso o upload do GitHub tenha sido feito na raiz)
+try:
+    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    for fname in ["index.html", "style.css", "app.js", "icon.ico"]:
+        src_f = APP_DIR / fname
+        dst_f = PUBLIC_DIR / fname
+        if src_f.exists():
+            shutil.copy2(src_f, dst_f)
+            print(f"[Sync] Arquivo {fname} sincronizado da raiz para public/")
+except Exception as e:
+    print(f"Aviso ao preparar pasta public: {e}")
 
 CLOUDFLARED_EXE = APP_DIR / "cloudflared.exe"
 
@@ -823,31 +824,47 @@ async def websocket_handler(request):
                     match_user = (target_id == "all" or u.get("id") == target_id)
                     match_channel = (channel_id and u.get("voiceChannel") == channel_id)
                     if match_user or match_channel:
-                        if u.get("isStreaming"):
-                            u["isStreaming"] = False
-                            u["streamInfo"] = None
-                            stopped_count += 1
-                            await broadcast({
-                                "type": "stream_stopped",
-                                "userId": u.get("id")
-                            })
+                        u["isStreaming"] = False
+                        u["streamInfo"] = None
+                        stopped_count += 1
+                        try:
+                            await target_ws.send_str(json.dumps({
+                                "type": "force_stop_stream"
+                            }))
+                        except Exception:
+                            pass
+                        await broadcast({
+                            "type": "stream_stopped",
+                            "userId": u.get("id")
+                        })
+                if target_id and target_id != "all":
+                    await broadcast({
+                        "type": "stream_stopped",
+                        "userId": target_id
+                    })
                 await broadcast({
                     "type": "chat_message",
                     "senderId": "system",
                     "username": "🛡️ Sistema",
                     "avatar": "#ED4245",
-                    "text": "👑 <b>O Dono do Servidor encerrou as transmissões de tela ativas/travadas.</b>",
+                    "text": "👑 O Dono do Servidor encerrou as transmissões de tela ativas/travadas.",
                     "timestamp": time.strftime("%H:%M")
                 })
 
             elif msg_type == "admin_disconnect_voice":
                 target_id = data.get("targetUserId")
-                for target_ws, u in clients.items():
+                for target_ws, u in list(clients.items()):
                     if u.get("id") == target_id:
                         u["voiceChannel"] = None
                         if u.get("isStreaming"):
                             u["isStreaming"] = False
                             u["streamInfo"] = None
+                            try:
+                                await target_ws.send_str(json.dumps({
+                                    "type": "force_stop_stream"
+                                }))
+                            except Exception:
+                                pass
                             await broadcast({
                                 "type": "stream_stopped",
                                 "userId": target_id
@@ -885,11 +902,44 @@ async def websocket_handler(request):
 
             elif msg_type == "admin_ban_user":
                 target_id = data.get("targetUserId")
+                target_username = data.get("targetUsername")
+                
+                # Se não tem ID direto ou se foi passado nome, busca em server_members
+                banned_name = target_username
+                if not target_id and target_username:
+                    for m_id, m in server_members.items():
+                        if m.get("username", "").strip().lower() == target_username.strip().lower():
+                            target_id = m_id
+                            banned_name = m.get("username")
+                            break
+                    if not target_id:
+                        target_id = target_username
+
+                # Se temos target_id, busca o nome se ainda não souber
+                if target_id and not banned_name:
+                    if target_id in server_members:
+                        banned_name = server_members[target_id].get("username")
+                    else:
+                        for u in clients.values():
+                            if u.get("id") == target_id:
+                                banned_name = u.get("username")
+                                break
+                    if not banned_name:
+                        banned_name = target_id
+
                 if target_id:
+                    # Adiciona ID e possíveis IDs associados ao nome aos banidos
                     server_banned.add(target_id)
+                    for m_id, m in server_members.items():
+                        if m.get("username", "").strip().lower() == str(banned_name).strip().lower():
+                            server_banned.add(m_id)
                     save_banned(server_banned)
+
+                    # Desconecta imediatamente e encerra qualquer stream
                     for target_ws, u in list(clients.items()):
-                        if u.get("id") == target_id:
+                        match_u = (u.get("id") == target_id or u.get("username", "").strip().lower() == str(banned_name).strip().lower())
+                        if match_u:
+                            u_id = u.get("id")
                             try:
                                 await target_ws.send_str(json.dumps({
                                     "type": "force_disconnect",
@@ -901,19 +951,28 @@ async def websocket_handler(request):
                             clients.pop(target_ws, None)
                             await broadcast({
                                 "type": "user_left",
-                                "userId": target_id,
+                                "userId": u_id,
                                 "username": u.get("username", "Usuário")
                             })
-                            await check_empty_cinema_rooms()
-                            break
+
+                    await broadcast({
+                        "type": "stream_stopped",
+                        "userId": target_id
+                    })
+                    await broadcast({
+                        "type": "user_banned",
+                        "userId": target_id,
+                        "bannedList": list(server_banned)
+                    })
                     await broadcast({
                         "type": "chat_message",
                         "senderId": "system",
                         "username": "🛡️ Sistema",
                         "avatar": "#ED4245",
-                        "text": "🔨 <b>Um usuário foi BANIDO permanentemente pelo Dono do Servidor.</b>",
+                        "text": f"🔨 O usuário <b>{banned_name}</b> foi BANIDO permanentemente pelo Dono do Servidor.",
                         "timestamp": time.strftime("%H:%M")
                     })
+                    await check_empty_cinema_rooms()
 
             elif msg_type == "admin_unban_user":
                 target_id = data.get("targetUserId")

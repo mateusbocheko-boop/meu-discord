@@ -51,17 +51,26 @@ function closeOwnerModal() {
 function renderBannedList() {
     const listEl = document.getElementById('owner-banned-list');
     if (!listEl) return;
-    if (!state.bannedUsers || state.bannedUsers.length === 0) {
+    const banned = state.bannedUsers || [];
+    if (!banned.length) {
         listEl.innerHTML = '<div style="padding: 8px; color: #949ba4;">Nenhum usuário banido no momento.</div>';
         return;
     }
     listEl.innerHTML = '';
-    state.bannedUsers.forEach(uid => {
+    banned.forEach(uid => {
+        const m = state.serverMembers?.get(uid);
+        const name = m ? m.username : uid;
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #2b2d31;';
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid #2b2d31;';
         row.innerHTML = `
-            <span style="font-family:monospace;color:#f23f43;">ID: ${escapeHtml(uid)}</span>
-            <button style="background:#5865F2;color:#fff;border:none;padding:4px 10px;border-radius:3px;font-size:11px;font-weight:700;cursor:pointer;">Desbanir</button>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fa-solid fa-ban" style="color:#da373c;"></i>
+                <div>
+                    <div style="color:#fff;font-weight:600;font-size:13px;">${escapeHtml(name)}</div>
+                    <div style="font-family:monospace;color:#949ba4;font-size:11px;">${escapeHtml(uid)}</div>
+                </div>
+            </div>
+            <button style="background:#23a55a;color:#fff;border:none;padding:5px 12px;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;">Desbanir</button>
         `;
         row.querySelector('button').onclick = () => adminUnbanUser(uid);
         listEl.appendChild(row);
@@ -107,12 +116,13 @@ function adminKickUser(targetUserId) {
     showToast('👑 Usuário expulso do servidor.');
 }
 
-function adminBanUser(targetUserId) {
+function adminBanUser(targetUserId, targetUsername) {
     sendWs({
         type: 'admin_ban_user',
-        targetUserId: targetUserId
+        targetUserId: targetUserId,
+        targetUsername: targetUsername
     });
-    showToast('🔨 Usuário BANIDO permanentemente.');
+    showToast(`🔨 Enviada ordem de BAN para o servidor...`);
 }
 
 function adminUnbanUser(targetUserId) {
@@ -125,11 +135,12 @@ function adminUnbanUser(targetUserId) {
     showToast('✅ Usuário desbanido.');
 }
 
-function adminCreateChannel(type, name) {
+function adminCreateChannel(name, type = 'voice', icon = '') {
     sendWs({
         type: 'admin_create_channel',
         channelType: type,
-        name: name
+        name: name,
+        icon: icon
     });
 }
 
@@ -210,7 +221,7 @@ function renderChannels() {
                 <i class="fa-solid ${iconClass}"></i>
                 <span>${escapeHtml(ch.name.replace(/^[🔊🎮🎬🍿⚽🏆☕💤]\s*/, ''))}</span>
                 <span class="live-pill" id="live-tag-${ch.id}" style="display: none;">AO VIVO</span>
-                ${(state.isOwner && !['geral', 'jogos-60fps', 'cinema-1', 'cinema-2', 'cinema-3', 'afk'].includes(ch.id)) ? `<button class="btn-del-channel" title="Excluir Sala"><i class="fa-solid fa-xmark"></i></button>` : ''}
+                ${(state.isOwner && ch.id !== 'geral') ? `<button class="btn-del-channel" title="Excluir Sala"><i class="fa-solid fa-xmark"></i></button>` : ''}
             </div>
             <div class="voice-users" id="voice-users-${ch.id}"></div>
         `;
@@ -670,7 +681,17 @@ async function handleServerMessage(data) {
             showToast(`🔴 <b>${escapeHtml(data.username)}</b> iniciou uma transmissão 60 FPS!`);
             break;
 
+        case 'force_stop_stream':
+            if (state.isStreaming) {
+                stopScreenShare();
+            }
+            showToast('⚠️ Sua transmissão foi encerrada pelo Dono do Servidor.');
+            break;
+
         case 'stream_stopped':
+            if (data.userId === state.userId && state.isStreaming) {
+                stopScreenShare();
+            }
             const st = state.users.get(data.userId);
             if (st) {
                 st.isStreaming = false;
@@ -678,6 +699,21 @@ async function handleServerMessage(data) {
             }
             removeStream(data.userId);
             renderVoiceUsers();
+            break;
+
+        case 'user_banned':
+            if (data.bannedList) {
+                state.bannedUsers = data.bannedList;
+            }
+            if (data.userId) {
+                removeStream(data.userId);
+                closePeerConnection(data.userId);
+                state.users.delete(data.userId);
+                state.onlineUserIds.delete(data.userId);
+            }
+            renderVoiceUsers();
+            renderMembersSidebar();
+            renderBannedList();
             break;
 
         case 'chat_message':
@@ -823,6 +859,9 @@ async function handleWebRTCOffer(data) {
 async function handleWebRTCAnswer(data) {
     const pc = state.peerConnections.get(data.sender);
     if (pc) {
+        if (pc.signalingState !== 'have-local-offer') {
+            return;
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
         drainIceQueue(data.sender, pc);
     }
@@ -1128,9 +1167,9 @@ function openUserContextMenu(e, userId) {
     e.stopPropagation();
 
     state.activeContextUserId = userId;
-    const user = state.users.get(userId);
+    const user = state.users.get(userId) || state.serverMembers.get(userId);
     const name = user ? user.username : (userId === state.userId ? state.username : 'Amigo');
-    const avatar = user ? user.avatar : state.avatarColor;
+    const avatar = user ? (user.avatar || user.avatarColor) : state.avatarColor;
     const isSelf = (userId === state.userId);
 
     const menu = document.getElementById('user-context-menu');
@@ -1678,6 +1717,9 @@ function renderMembersSidebar() {
         const isOnline = state.onlineUserIds.has(member.id) || state.users.has(member.id);
         const row = document.createElement('div');
         row.className = 'member-row';
+        row.setAttribute('data-user-id', member.id);
+        row.style.cursor = 'pointer';
+        row.oncontextmenu = (e) => openUserContextMenu(e, member.id);
         const isMe = (member.id === state.userId);
         const nameDisplay = isMe ? `${escapeHtml(member.username)} (Você)` : escapeHtml(member.username);
         const avatarLetter = (member.username || 'U')[0].toUpperCase();
@@ -2177,7 +2219,7 @@ function setupEventListeners() {
 
     on('ctx-btn-kick-user', 'click', () => {
         if (state.activeContextUserId) {
-            const u = state.users.get(state.activeContextUserId);
+            const u = state.users.get(state.activeContextUserId) || state.serverMembers.get(state.activeContextUserId);
             const name = u ? u.username : 'o usuário';
             if (confirm(`👑 Deseja expulsar ${name} do servidor?`)) {
                 adminKickUser(state.activeContextUserId);
@@ -2188,14 +2230,48 @@ function setupEventListeners() {
 
     on('ctx-btn-ban-user', 'click', () => {
         if (state.activeContextUserId) {
-            const u = state.users.get(state.activeContextUserId);
+            const u = state.users.get(state.activeContextUserId) || state.serverMembers.get(state.activeContextUserId);
             const name = u ? u.username : 'o usuário';
             if (confirm(`🔨 ATENÇÃO: Deseja realmente BANIR permanentemente ${name} deste servidor?`)) {
-                adminBanUser(state.activeContextUserId);
+                adminBanUser(state.activeContextUserId, name);
             }
         }
         closeUserContextMenu();
     });
+
+    const btnSubmitBan = document.getElementById('btn-submit-ban-user');
+    const inputBanUser = document.getElementById('input-ban-user-name');
+    if (btnSubmitBan && inputBanUser) {
+        btnSubmitBan.onclick = () => {
+            const val = inputBanUser.value.trim();
+            if (!val) {
+                alert('Digite o apelido ou ID do usuário a ser banido.');
+                return;
+            }
+            if (confirm(`🔨 Deseja realmente BANIR permanentemente "${val}" do servidor?`)) {
+                let targetId = null;
+                for (const m of (state.serverMembers?.values() || [])) {
+                    if (m.username && m.username.toLowerCase() === val.toLowerCase()) {
+                        targetId = m.id;
+                        break;
+                    }
+                }
+                if (!targetId) {
+                    for (const u of (state.users?.values() || [])) {
+                        if (u.username && u.username.toLowerCase() === val.toLowerCase()) {
+                            targetId = u.id;
+                            break;
+                        }
+                    }
+                }
+                adminBanUser(targetId || val, val);
+                inputBanUser.value = '';
+            }
+        };
+        inputBanUser.onkeydown = (e) => {
+            if (e.key === 'Enter') btnSubmitBan.click();
+        };
+    }
 
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
