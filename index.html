@@ -272,17 +272,47 @@
                     </div>
                 </div>
 
-                <!-- BARRA LATERAL DIREITA DE MEMBROS (INTEGRANTES) -->
+                <!-- BARRA LATERAL DIREITA DE MEMBROS COM CARGOS (MESTRE DOS MAGOS / ADM / VIP / DISPONÍVEIS) -->
                 <aside class="members-sidebar" id="members-sidebar">
-                    <div class="members-section-header">
-                        <span>DISPONÍVEL — <b id="online-count">1</b></span>
+                    <!-- 1. MESTRE DOS MAGOS -->
+                    <div class="members-section" id="section-mestre" style="display: none;">
+                        <div class="members-section-header header-mestre">
+                            <span>🧙‍♂️ MESTRE DOS MAGOS — <b id="count-mestre">0</b></span>
+                        </div>
+                        <div class="members-list" id="members-list-mestre"></div>
                     </div>
-                    <div class="members-list" id="members-list-online"></div>
 
-                    <div class="members-section-header" style="margin-top: 14px;">
-                        <span>OFFLINE — <b id="offline-count">0</b></span>
+                    <!-- 2. ADM -->
+                    <div class="members-section" id="section-adm" style="display: none; margin-top: 10px;">
+                        <div class="members-section-header header-adm">
+                            <span>🛡️ ADM — <b id="count-adm">0</b></span>
+                        </div>
+                        <div class="members-list" id="members-list-adm"></div>
                     </div>
-                    <div class="members-list" id="members-list-offline"></div>
+
+                    <!-- 3. VIP -->
+                    <div class="members-section" id="section-vip" style="display: none; margin-top: 10px;">
+                        <div class="members-section-header header-vip">
+                            <span>👑 VIP — <b id="count-vip">0</b></span>
+                        </div>
+                        <div class="members-list" id="members-list-vip"></div>
+                    </div>
+
+                    <!-- 4. DISPONÍVEIS -->
+                    <div class="members-section" id="section-disponiveis" style="display: none; margin-top: 10px;">
+                        <div class="members-section-header header-disponiveis">
+                            <span>🟢 DISPONÍVEIS — <b id="count-disponiveis">0</b></span>
+                        </div>
+                        <div class="members-list" id="members-list-disponiveis"></div>
+                    </div>
+
+                    <!-- 5. OFFLINE -->
+                    <div class="members-section" id="section-offline" style="display: none; margin-top: 14px;">
+                        <div class="members-section-header header-offline">
+                            <span>⚫ OFFLINE — <b id="count-offline">0</b></span>
+                        </div>
+                        <div class="members-list" id="members-list-offline"></div>
+                    </div>
                 </aside>
             </div>
         </main>

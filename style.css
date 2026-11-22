@@ -3462,3 +3462,40 @@ body, html {
     background-color: #ed4245 !important;
     color: #ffffff !important;
 }
+
+/* ESTILOS DE CATEGORIAS DE CARGOS NA LISTA DE MEMBROS */
+.header-mestre {
+    color: #c084fc !important;
+    text-shadow: 0 0 10px rgba(192, 132, 252, 0.45) !important;
+}
+.header-adm {
+    color: #38bdf8 !important;
+    text-shadow: 0 0 8px rgba(56, 189, 248, 0.35) !important;
+}
+.header-vip {
+    color: #facc15 !important;
+    text-shadow: 0 0 10px rgba(250, 204, 21, 0.45) !important;
+}
+.header-disponiveis {
+    color: #94a3b8 !important;
+}
+.header-offline {
+    color: #64748b !important;
+}
+
+.badge-role-mestre {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.35), rgba(236, 72, 153, 0.35)) !important;
+    border: 1px solid #a855f7 !important;
+    color: #f3e8ff !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    padding: 1px 6px !important;
+    border-radius: 3px !important;
+    margin-left: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    vertical-align: middle !important;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.4) !important;
+    letter-spacing: 0.3px !important;
+}
