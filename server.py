@@ -204,6 +204,31 @@ async def iptv_series_info_handler(request):
         print(f"[IPTV] Erro ao buscar info da série {series_id}: {e}")
     return web.json_response({})
 
+async def iptv_direct_stream_handler(request):
+    stream_id = request.match_info.get("stream_id")
+    target_url = f"{IPTV_DNS}/live/{IPTV_USER}/{IPTV_PASS}/{stream_id}.ts"
+    try:
+        session = await get_http_session()
+        headers = {"User-Agent": "IPTVSmartersPro"}
+        async with session.get(target_url, headers=headers, allow_redirects=True) as resp:
+            response = web.StreamResponse(
+                status=resp.status,
+                headers={
+                    "Content-Type": "video/mp2t",
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-cache, no-store",
+                    "Connection": "keep-alive"
+                }
+            )
+            await response.prepare(request)
+            async for chunk in resp.content.iter_chunked(65536):
+                await response.write(chunk)
+            await response.write_eof()
+            return response
+    except Exception as e:
+        print(f"[IPTV] Erro no stream direto TS: {e}")
+    return web.Response(status=502)
+
 async def iptv_live_m3u8_handler(request):
     stream_id = request.match_info.get("stream_id")
     url = f"{IPTV_DNS}/live/{IPTV_USER}/{IPTV_PASS}/{stream_id}.m3u8"
@@ -643,6 +668,7 @@ def init_app(port=8080):
     app.router.add_get("/api/iptv/categories", iptv_categories_handler)
     app.router.add_get("/api/iptv/streams", iptv_streams_handler)
     app.router.add_get("/api/iptv/series_info", iptv_series_info_handler)
+    app.router.add_get("/api/iptv/stream/{stream_id}.ts", iptv_direct_stream_handler)
     app.router.add_get("/api/iptv/live/{stream_id}.m3u8", iptv_live_m3u8_handler)
     app.router.add_get("/api/iptv/ts", iptv_ts_chunk_handler)
     app.router.add_get("/api/iptv/vod/{stream_id}", iptv_vod_stream_handler)

@@ -97,6 +97,7 @@ const state = {
     // Estado do IPTV e das 3 Salas de Cinema
     cinemaRooms: { 'cinema-1': null, 'cinema-2': null, 'cinema-3': null },
     hlsInstance: null,
+    mpegtsInstance: null,
     currentIptvType: 'live',
     currentIptvCategory: null,
     iptvCategories: [],
@@ -1865,6 +1866,27 @@ function startVideoPlayback(video) {
     }
 }
 
+
+function loadHlsFallback(m3u8Url, video) {
+    if (window.Hls && Hls.isSupported()) {
+        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+        hls.loadSource(m3u8Url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => startVideoPlayback(video));
+        hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+                else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+                else hls.destroy();
+            }
+        });
+        state.hlsInstance = hls;
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = m3u8Url;
+        startVideoPlayback(video);
+    }
+}
+
 function playCinemaStream(cinema) {
     const stage = document.getElementById('video-stage');
     const video = document.getElementById('stage-video');
@@ -1901,36 +1923,41 @@ function playCinemaStream(cinema) {
         }
     };
 
+    if (state.mpegtsInstance) {
+        try { state.mpegtsInstance.destroy(); } catch (e) {}
+        state.mpegtsInstance = null;
+    }
+    if (state.hlsInstance) {
+        try { state.hlsInstance.destroy(); } catch (e) {}
+        state.hlsInstance = null;
+    }
+
     if (cinema.streamType === 'live') {
-        const streamUrl = `/api/iptv/live/${cinema.streamId}.m3u8`;
-        if (window.Hls && Hls.isSupported()) {
-            const hls = new Hls({
-                enableWorker: true,
-                lowLatencyMode: true,
-                backBufferLength: 60
-            });
-            hls.loadSource(streamUrl);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                seekToPosition();
-                video.play().catch(() => {});
-            });
-            hls.on(Hls.Events.ERROR, (event, data) => {
-                if (data.fatal) {
-                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                        hls.startLoad();
-                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                        hls.recoverMediaError();
-                    } else {
-                        hls.destroy();
-                    }
-                }
-            });
-            state.hlsInstance = hls;
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = streamUrl;
-            seekToPosition();
-            video.play().catch(() => {});
+        const tsUrl = `/api/iptv/stream/${cinema.streamId}.ts`;
+        const m3u8Url = `/api/iptv/live/${cinema.streamId}.m3u8`;
+
+        if (window.mpegts && mpegts.getFeatureList().mseLivePlayback) {
+            try {
+                const player = mpegts.createPlayer({
+                    type: 'mse',
+                    isLive: true,
+                    url: tsUrl
+                }, {
+                    enableWorker: true,
+                    lazyLoad: false,
+                    liveBufferLatencyChasing: true,
+                    autoCleanupSourceBuffer: true
+                });
+                player.attachMediaElement(video);
+                player.load();
+                startVideoPlayback(video);
+                state.mpegtsInstance = player;
+            } catch (err) {
+                console.warn('Erro ao inicializar mpegts, fallback para HLS:', err);
+                loadHlsFallback(m3u8Url, video);
+            }
+        } else {
+            loadHlsFallback(m3u8Url, video);
         }
     } else {
         const vodType = cinema.streamType === 'series' ? 'series' : 'movie';
