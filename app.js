@@ -674,6 +674,7 @@ async function handleServerMessage(data) {
             }
 
             if (state.currentVoiceChannel && data.user.voiceChannel === state.currentVoiceChannel) {
+                playDiscordVoiceJoinSound();
                 initiatePeerConnection(data.user.id);
             }
             break;
@@ -699,6 +700,10 @@ async function handleServerMessage(data) {
             break;
 
         case 'user_left':
+            const leavingUser = state.users.get(data.userId);
+            if (leavingUser && state.currentVoiceChannel && leavingUser.voiceChannel === state.currentVoiceChannel) {
+                playDiscordVoiceLeaveSound();
+            }
             state.users.delete(data.userId);
             state.onlineUserIds.delete(data.userId);
             removeStream(data.userId);
@@ -764,6 +769,7 @@ async function handleServerMessage(data) {
                 }
             } else {
                 let u = state.users.get(data.userId);
+                const prevChannel = u ? u.voiceChannel : null;
                 if (u) {
                     u.voiceChannel = data.channelId;
                 } else {
@@ -777,6 +783,15 @@ async function handleServerMessage(data) {
                     state.users.set(data.userId, u);
                 }
                 renderVoiceUsers();
+
+                if (state.currentVoiceChannel) {
+                    if (data.channelId === state.currentVoiceChannel && prevChannel !== state.currentVoiceChannel) {
+                        playDiscordVoiceJoinSound();
+                    } else if (prevChannel === state.currentVoiceChannel && data.channelId !== state.currentVoiceChannel) {
+                        playDiscordVoiceLeaveSound();
+                    }
+                }
+
                 if (data.channelId === state.currentVoiceChannel) {
                     if (state.userId < data.userId) {
                         initiatePeerConnection(data.userId);
@@ -2071,6 +2086,7 @@ function moveUserToChannel(userId, newChannel) {
 // Sair da Sala de Voz (Desconectar)
 function leaveVoiceChannel(notifyServer = true) {
     if (!state.currentVoiceChannel) return;
+    playDiscordVoiceLeaveSound();
     
     // Limpa quaisquer transmissões ativas que estavam sendo assistidas nesta sala
     state.activeStreams.clear();
@@ -2131,6 +2147,7 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
 
     const oldChannel = state.currentVoiceChannel;
     state.currentVoiceChannel = newChannel;
+    playDiscordVoiceJoinSound();
     state.isWatchingStream = true;
     updateWatchButtonsVisibility();
     document.querySelectorAll('.voice-channel').forEach(el => {
@@ -2424,6 +2441,123 @@ function closeMobileDrawers() {
     if (channelsSidebar) channelsSidebar.classList.remove('mobile-open');
     if (membersSidebar) membersSidebar.classList.remove('mobile-open');
     if (backdrop) backdrop.style.display = 'none';
+}
+
+// --- SONS DE VOZ IDÊNTICOS AO DISCORD (SINTETIZADOS WEB AUDIO API) ---
+function playDiscordVoiceJoinSound() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const now = ctx.currentTime;
+        const masterGain = ctx.createGain();
+        masterGain.gain.setValueAtTime(0.25, now);
+        masterGain.connect(ctx.destination);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2600, now);
+        filter.connect(masterGain);
+
+        // Som de Conexão à Sala de Voz do Discord:
+        // Chime ascendente duplo com afinação quente (D5 587Hz -> A5 880Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(587.33, now);
+        gain1.gain.setValueAtTime(0, now);
+        gain1.gain.linearRampToValueAtTime(0.40, now + 0.02);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc1.connect(gain1);
+        gain1.connect(filter);
+        osc1.start(now);
+        osc1.stop(now + 0.19);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(880, now + 0.08);
+        gain2.gain.setValueAtTime(0, now + 0.08);
+        gain2.gain.linearRampToValueAtTime(0.45, now + 0.10);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        osc2.connect(gain2);
+        gain2.connect(filter);
+        osc2.start(now + 0.08);
+        osc2.stop(now + 0.40);
+
+        // Corpo harmônico suave estilo Discord
+        const sub = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        sub.type = 'triangle';
+        sub.frequency.setValueAtTime(293.66, now);
+        sub.frequency.setValueAtTime(440, now + 0.08);
+        subGain.gain.setValueAtTime(0.08, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        sub.connect(subGain);
+        subGain.connect(filter);
+        sub.start(now);
+        sub.stop(now + 0.38);
+    } catch (e) {}
+}
+
+function playDiscordVoiceLeaveSound() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const now = ctx.currentTime;
+        const masterGain = ctx.createGain();
+        masterGain.gain.setValueAtTime(0.25, now);
+        masterGain.connect(ctx.destination);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2400, now);
+        filter.connect(masterGain);
+
+        // Som de Desconexão da Sala de Voz do Discord:
+        // Chime descendente duplo (A5 880Hz / G5 784Hz -> D5 587Hz / E5 659Hz -> G4 392Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(783.99, now);
+        gain1.gain.setValueAtTime(0, now);
+        gain1.gain.linearRampToValueAtTime(0.40, now + 0.02);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc1.connect(gain1);
+        gain1.connect(filter);
+        osc1.start(now);
+        osc1.stop(now + 0.19);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(440, now + 0.08);
+        gain2.gain.setValueAtTime(0, now + 0.08);
+        gain2.gain.linearRampToValueAtTime(0.45, now + 0.10);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+        osc2.connect(gain2);
+        gain2.connect(filter);
+        osc2.start(now + 0.08);
+        osc2.stop(now + 0.42);
+
+        // Sub harmônico suave
+        const sub = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        sub.type = 'triangle';
+        sub.frequency.setValueAtTime(392, now);
+        sub.frequency.setValueAtTime(220, now + 0.08);
+        subGain.gain.setValueAtTime(0.08, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        sub.connect(subGain);
+        subGain.connect(filter);
+        sub.start(now);
+        sub.stop(now + 0.40);
+    } catch (e) {}
 }
 
 // --- SOM DE NOTIFICAÇÃO AO ENTRAR NO SERVIDOR (SINTETIZADO WEB AUDIO API) ---
@@ -3313,7 +3447,19 @@ function startVideoPlayback(video) {
 
 function loadHlsFallback(m3u8Url, video) {
     if (window.Hls && Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+        const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 10,
+            maxBufferLength: 8,
+            maxMaxBufferLength: 15,
+            liveSyncDurationCount: 2,
+            liveMaxLatencyDurationCount: 4,
+            maxBufferHole: 0.5,
+            highBufferWatchdogPeriod: 2,
+            nudgeOffset: 0.1,
+            nudgeMaxRetry: 5
+        });
         hls.loadSource(m3u8Url);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => startVideoPlayback(video));
@@ -3412,10 +3558,20 @@ function playCinemaStream(cinema) {
                     isLive: true,
                     url: tsUrl
                 }, {
-                    enableWorker: false, // Executa diretamente no thread principal via MSE, eliminando falhas de worker blob
+                    enableWorker: false, // Executa diretamente via MSE para compatibilidade total
                     lazyLoad: false,
-                    liveBufferLatencyChasing: true,
-                    autoCleanupSourceBuffer: true
+                    lazyLoadMaxDuration: 0.2,
+                    lazyLoadRecoverDuration: 0.1,
+                    deferLoadAfterSourceOpen: false,
+                    enableStashBuffer: false, // ZERO delay: envia direto para o MSE sem acumular buffer interno!
+                    stashInitialSize: 128,
+                    autoCleanupSourceBuffer: true,
+                    autoCleanupMaxBackwardDuration: 10,
+                    autoCleanupMinBackwardDuration: 5,
+                    liveBufferLatencyChasing: true, // Auto-avança se o cliente ficar para trás, eliminando delay!
+                    liveBufferLatencyMaxLatency: 2.0, // Máximo 2s de atraso para transmissão ao vivo!
+                    liveBufferLatencyMinRemain: 0.4,
+                    fixAudioTimestampGap: false
                 });
                 player.attachMediaElement(video);
                 player.load();
@@ -3431,6 +3587,7 @@ function playCinemaStream(cinema) {
     } else {
         const vodType = cinema.streamType === 'series' ? 'series' : 'movie';
         const vodUrl = `/api/iptv/vod/${cinema.streamId}?ext=${cinema.ext || 'mp4'}&type=${vodType}`;
+        video.preload = 'auto';
         video.src = vodUrl;
         video.onloadedmetadata = () => {
             seekToPosition();

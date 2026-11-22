@@ -68,8 +68,19 @@ http_session = None
 async def get_http_session():
     global http_session
     if http_session is None or http_session.closed:
-        timeout = aiohttp.ClientTimeout(total=30, connect=10)
-        http_session = aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": "IPTVSmartersPro"})
+        connector = aiohttp.TCPConnector(
+            limit=200,
+            limit_per_host=50,
+            ttl_dns_cache=300,
+            keepalive_timeout=75,
+            enable_cleanup_closed=True
+        )
+        timeout = aiohttp.ClientTimeout(total=None, connect=10, sock_read=30)
+        http_session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=timeout,
+            headers={"User-Agent": "IPTVSmartersPro/2.2.2.1"}
+        )
     return http_session
 
 # Estado do Servidor
@@ -339,19 +350,22 @@ class ChannelBroadcaster:
     async def run(self):
         self.is_running = True
         url = f"{IPTV_DNS}/live/{IPTV_USER}/{IPTV_PASS}/{self.stream_id}.ts"
-        headers = {"User-Agent": "IPTVSmartersPro"}
+        headers = {"User-Agent": "IPTVSmartersPro/2.2.2.1"}
         try:
             session = await get_http_session()
             async with session.get(url, headers=headers, allow_redirects=True) as resp:
                 if resp.status == 200:
-                    async for chunk in resp.content.iter_chunked(65536):
+                    async for chunk in resp.content.iter_chunked(32768):
                         if not self.is_running or not self.subscribers:
                             break
                         dead = []
                         for q in list(self.subscribers):
                             try:
-                                if q.qsize() > 60:
-                                    q.get_nowait()
+                                while q.qsize() > 8:
+                                    try:
+                                        q.get_nowait()
+                                    except Exception:
+                                        break
                                 q.put_nowait(chunk)
                             except Exception:
                                 dead.append(q)
@@ -371,7 +385,7 @@ async def iptv_direct_stream_handler(request):
         broadcaster = ChannelBroadcaster(stream_id)
         active_channel_broadcasters[stream_id] = broadcaster
         broadcaster.task = asyncio.create_task(broadcaster.run())
-        await asyncio.sleep(0.35)
+        await asyncio.sleep(0.05)
 
     user_queue = asyncio.Queue()
     broadcaster.subscribers.add(user_queue)
@@ -381,7 +395,10 @@ async def iptv_direct_stream_handler(request):
         headers={
             "Content-Type": "video/mp2t",
             "Access-Control-Allow-Origin": "*",
-            "Cache-Control": "no-cache, no-store",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Accel-Buffering": "no",
             "Connection": "keep-alive"
         }
     )
@@ -390,7 +407,7 @@ async def iptv_direct_stream_handler(request):
     try:
         while broadcaster.is_running:
             try:
-                chunk = await asyncio.wait_for(user_queue.get(), timeout=12.0)
+                chunk = await asyncio.wait_for(user_queue.get(), timeout=10.0)
                 await response.write(chunk)
             except asyncio.TimeoutError:
                 if not broadcaster.is_running:
@@ -412,7 +429,8 @@ async def iptv_live_m3u8_handler(request):
     url = f"{IPTV_DNS}/live/{IPTV_USER}/{IPTV_PASS}/{stream_id}.m3u8"
     try:
         session = await get_http_session()
-        async with session.get(url, allow_redirects=True) as resp:
+        headers = {"User-Agent": "IPTVSmartersPro/2.2.2.1"}
+        async with session.get(url, headers=headers, allow_redirects=True) as resp:
             if resp.status == 200:
                 text = await resp.text(encoding='utf-8', errors='ignore')
                 final_url = str(resp.url)
@@ -459,7 +477,7 @@ async def iptv_ts_chunk_handler(request):
     target_url = edge.rstrip("/") + "/" + path.lstrip("/")
     try:
         session = await get_http_session()
-        headers = {"User-Agent": "IPTVSmartersPro"}
+        headers = {"User-Agent": "IPTVSmartersPro/2.2.2.1"}
         if "Range" in request.headers:
             headers["Range"] = request.headers["Range"]
 
@@ -469,7 +487,7 @@ async def iptv_ts_chunk_handler(request):
                 headers={
                     "Content-Type": "video/mp2t",
                     "Access-Control-Allow-Origin": "*",
-                    "Cache-Control": "max-age=60"
+                    "Cache-Control": "public, max-age=30"
                 }
             )
             if "Content-Length" in resp.headers:
@@ -494,7 +512,7 @@ async def iptv_vod_stream_handler(request):
 
     try:
         session = await get_http_session()
-        headers = {"User-Agent": "IPTVSmartersPro"}
+        headers = {"User-Agent": "IPTVSmartersPro/2.2.2.1"}
         if "Range" in request.headers:
             headers["Range"] = request.headers["Range"]
 
@@ -510,24 +528,33 @@ async def iptv_vod_stream_handler(request):
             pass
 
         async with session.get(final_target, headers=headers, allow_redirects=True) as resp:
+            content_type = resp.headers.get("Content-Type", "video/mp4")
+            if "octet-stream" in content_type:
+                content_type = "video/mp4"
+
+            headers_out = {
+                "Content-Type": content_type,
+                "Access-Control-Allow-Origin": "*",
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=7200"
+            }
+            if "Content-Length" in resp.headers:
+                headers_out["Content-Length"] = resp.headers["Content-Length"]
+            if "Content-Range" in resp.headers:
+                headers_out["Content-Range"] = resp.headers["Content-Range"]
+
             response = web.StreamResponse(
                 status=resp.status,
-                headers={
-                    "Content-Type": resp.headers.get("Content-Type", "video/mp4"),
-                    "Access-Control-Allow-Origin": "*",
-                    "Accept-Ranges": "bytes"
-                }
+                headers=headers_out
             )
-            if "Content-Length" in resp.headers:
-                response.headers["Content-Length"] = resp.headers["Content-Length"]
-            if "Content-Range" in resp.headers:
-                response.headers["Content-Range"] = resp.headers["Content-Range"]
 
             await response.prepare(request)
-            async for chunk in resp.content.iter_chunked(65536):
+            async for chunk in resp.content.iter_chunked(131072):
                 await response.write(chunk)
             await response.write_eof()
             return response
+    except (asyncio.CancelledError, ConnectionResetError):
+        pass
     except Exception as e:
         print(f"[IPTV] Erro no stream VOD/Série: {e}")
     return web.Response(status=502)
