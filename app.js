@@ -1,4 +1,5 @@
 
+
 // Modal de Convidar Amigos com link visível e cópia à prova de falhas
 function openInviteModal() {
     const modal = document.getElementById('invite-modal');
@@ -224,6 +225,8 @@ async function handleServerMessage(data) {
             }
             if (data.cinema) {
                 showToast(`🎬 Transmissão iniciada em <b>${data.room}</b>: <b>${escapeHtml(data.cinema.streamName)}</b> (Controlado por ${escapeHtml(data.cinema.startedBy)})`);
+            } else {
+                showToast(`🎬 Transmissão na sala <b>${data.room}</b> finalizada.`);
             }
             break;
 
@@ -316,9 +319,18 @@ async function handleServerMessage(data) {
                     }
                 }
             } else {
-                const u = state.users.get(data.userId);
+                let u = state.users.get(data.userId);
                 if (u) {
                     u.voiceChannel = data.channelId;
+                } else {
+                    u = {
+                        id: data.userId,
+                        username: data.movedUser || 'Amigo',
+                        avatar: '#5865F2',
+                        voiceChannel: data.channelId,
+                        isStreaming: false
+                    };
+                    state.users.set(data.userId, u);
                 }
                 renderVoiceUsers();
                 if (data.channelId === state.currentVoiceChannel) {
@@ -572,7 +584,12 @@ async function startScreenShare() {
     const width = res === 1440 ? 2560 : (res === 1080 ? 1920 : 1280);
     const height = res === 1440 ? 1440 : (res === 1080 ? 1080 : 720);
 
-    // Garante que o usuário está em uma sala de voz para transmitir
+    // Bloqueia transmissão de tela em salas de cinema
+    if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
+        showToast('🚫 <b>Proibido transmitir tela nas salas de cinema!</b><br>As salas de cinema são exclusivas para IPTV (Filmes, Séries e TV). Entre na sala <b>🎮 Jogos 60FPS</b> para compartilhar tela.', 6000);
+        return;
+    }
+    // Se não estiver em nenhuma sala, conecta na sala de jogos
     if (!state.currentVoiceChannel) {
         switchVoiceChannel('jogos-60fps');
     }
@@ -682,14 +699,25 @@ function removeStream(userId) {
     state.activeStreams.delete(userId);
     renderStreamTabs();
 
-    if (state.currentlyWatchingUserId === userId) {
+    if (state.currentlyWatchingUserId === userId || state.activeStreams.size === 0) {
         const remaining = Array.from(state.activeStreams.keys());
         if (remaining.length > 0) {
             selectLiveStream(remaining[0]);
         } else {
             state.currentlyWatchingUserId = null;
-            document.getElementById('video-stage').style.display = 'none';
-            document.getElementById('stream-switcher-bar').style.display = 'none';
+            // Se não estiver com transmissão IPTV de cinema ativa, limpa o vídeo e oculta o palco
+            if (!state.currentCinemaStreamId) {
+                const stage = document.getElementById('video-stage');
+                const video = document.getElementById('stage-video');
+                if (video) {
+                    try { video.pause(); } catch (e) {}
+                    video.srcObject = null;
+                    video.src = '';
+                }
+                if (stage) stage.style.display = 'none';
+            }
+            const switcher = document.getElementById('stream-switcher-bar');
+            if (switcher) switcher.style.display = 'none';
             stopFpsCounter();
         }
     }
@@ -880,9 +908,12 @@ function createVoiceUserRow(userId, username, avatarColor, isStreaming, isSelf) 
     row.className = 'voice-user-row';
     row.draggable = true;
     row.setAttribute('data-user-id', userId);
+    const safeName = (username && typeof username === 'string' && username.trim().length > 0) ? username : 'Jogador';
+    const initial = safeName[0].toUpperCase();
+    const color = avatarColor || '#5865F2';
     row.innerHTML = `
-        <div class="voice-user-avatar" style="background:${avatarColor}">${username[0].toUpperCase()}</div>
-        <span>${escapeHtml(username)}${isSelf ? ' (Você)' : ''}</span>
+        <div class="voice-user-avatar" style="background:${color}">${initial}</div>
+        <span>${escapeHtml(safeName)}${isSelf ? ' (Você)' : ''}</span>
         ${isStreaming ? '<span class="live-pill" style="margin-left:auto;font-size:9px;">LIVE 60FPS</span>' : ''}
     `;
 
@@ -996,6 +1027,18 @@ function switchVoiceChannel(newChannel, notifyServer = true) {
         'bate-papo': '☕ Bate-papo & Chill',
         'afk': '💤 AFK / Ausente'
     };
+
+    // Se estiver transmitindo tela do PC e entrar em sala de cinema, encerra a transmissão de tela na hora
+    if (newChannel && newChannel.startsWith('cinema-') && state.isStreaming) {
+        stopScreenShare();
+        showToast('ℹ️ Sua transmissão de tela foi pausada porque salas de cinema são exclusivas para IPTV.');
+    }
+
+    // Oculta botão de transmitir tela na barra quando estiver em sala de cinema
+    const btnStreamToggle = document.getElementById('btn-stream-toggle');
+    if (btnStreamToggle) {
+        btnStreamToggle.style.display = (newChannel && newChannel.startsWith('cinema-')) ? 'none' : 'flex';
+    }
 
     // Verifica se a sala de cinema já possui transmissão ativa
     checkRoomCinemaStream(newChannel);
@@ -1360,11 +1403,15 @@ function updateMyProfileUI() {
 }
 
 function setupEventListeners() {
+    const on = (id, event, fn) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener(event, fn);
+    };
+
     // 1. Troca de Canais de Voz ao Clicar & Suporte a Drag and Drop para Mover Usuários
     document.querySelectorAll('.voice-channel').forEach(el => {
         el.onclick = () => switchVoiceChannel(el.dataset.channel);
 
-        // DRAG AND DROP: Permite arrastar qualquer usuário para esta sala
         el.ondragover = (e) => {
             e.preventDefault();
             el.classList.add('drag-over');
@@ -1388,22 +1435,36 @@ function setupEventListeners() {
             document.querySelectorAll('.channel-item[data-type="text"]').forEach(c => c.classList.remove('active'));
             el.classList.add('active');
             state.currentTextChannel = el.dataset.channel;
-            document.getElementById('current-channel-title').textContent = el.dataset.channel;
-            document.getElementById('chat-input').placeholder = `Conversar em #${el.dataset.channel}...`;
+            const titleEl = document.getElementById('current-channel-title');
+            if (titleEl) titleEl.textContent = el.dataset.channel;
+            const inputEl = document.getElementById('chat-input');
+            if (inputEl) inputEl.placeholder = `Conversar em #${el.dataset.channel}...`;
         };
     });
 
     // 3. Botões de Transmissão de Tela
     const streamModal = document.getElementById('stream-modal');
-    document.getElementById('btn-stream-toggle').onclick = () => {
-        if (state.isStreaming) stopScreenShare();
-        else streamModal.style.display = 'flex';
-    };
-    document.getElementById('btn-quick-stream').onclick = () => {
-        streamModal.style.display = 'flex';
-    };
-    document.getElementById('btn-close-modal').onclick = () => streamModal.style.display = 'none';
-    document.getElementById('btn-cancel-stream').onclick = () => streamModal.style.display = 'none';
+    on('btn-stream-toggle', 'click', () => {
+        if (state.isStreaming) {
+            stopScreenShare();
+            return;
+        }
+        // PROIBIÇÃO: Em salas de cinema é PROIBIDO transmitir tela do PC (apenas IPTV)!
+        if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
+            showToast('🚫 <b>Transmissão de tela proibida no Cinema!</b><br>As salas de cinema são exclusivas para Filmes, Séries e TV via IPTV.<br>Para transmitir seu jogo ou tela, entre na sala <b>🎮 Jogos 60FPS</b> ou <b>🔊 Geral</b>.', 6000);
+            return;
+        }
+        if (streamModal) streamModal.style.display = 'flex';
+    });
+    on('btn-quick-stream', 'click', () => {
+        if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
+            showToast('🚫 <b>Transmissão de tela proibida no Cinema!</b><br>Use a sala 🎮 Jogos 60FPS para transmitir sua tela.', 5000);
+            return;
+        }
+        if (streamModal) streamModal.style.display = 'flex';
+    });
+    on('btn-close-modal', 'click', () => { if (streamModal) streamModal.style.display = 'none'; });
+    on('btn-cancel-stream', 'click', () => { if (streamModal) streamModal.style.display = 'none'; });
 
     // Opções do modal de stream
     document.querySelectorAll('#opt-resolution .opt-card').forEach(c => {
@@ -1425,23 +1486,21 @@ function setupEventListeners() {
     const chkIsolate = document.getElementById('chk-isolate-voice');
     if (chkIsolate) chkIsolate.onchange = (e) => state.streamConfig.isolateVoice = e.target.checked;
 
-    document.getElementById('btn-confirm-stream').onclick = () => {
-        streamModal.style.display = 'none';
+    on('btn-confirm-stream', 'click', () => {
+        if (streamModal) streamModal.style.display = 'none';
         startScreenShare();
-    };
+    });
 
     // 4. Convidar Amigos (Abre Modal de Convite)
-    const btnCopyInv = document.getElementById('btn-copy-invite');
-    if (btnCopyInv) btnCopyInv.onclick = openInviteModal;
-    const btnCloseInv = document.getElementById('btn-close-invite-modal');
-    if (btnCloseInv) btnCloseInv.onclick = closeInviteModal;
-    const btnCopyModal = document.getElementById('btn-copy-invite-modal');
-    if (btnCopyModal) btnCopyModal.onclick = copyInviteLink;
+    on('btn-copy-invite', 'click', openInviteModal);
+    on('btn-close-invite-modal', 'click', closeInviteModal);
+    on('btn-copy-invite-modal', 'click', copyInviteLink);
 
     // 5. Chat Input
     const chatInput = document.getElementById('chat-input');
     const sendBtn = document.getElementById('btn-send-message');
     const doSend = () => {
+        if (!chatInput) return;
         const text = chatInput.value.trim();
         if (text) {
             sendWs({
@@ -1452,103 +1511,110 @@ function setupEventListeners() {
             chatInput.value = '';
         }
     };
-    sendBtn.onclick = doSend;
-    chatInput.onkeydown = (e) => { if (e.key === 'Enter') doSend(); };
+    if (sendBtn) sendBtn.onclick = doSend;
+    if (chatInput) chatInput.onkeydown = (e) => { if (e.key === 'Enter') doSend(); };
 
-    // 6. Controles de Áudio da Tela
+    // 6. Controles de Áudio e Vídeo
     const volSlider = document.getElementById('vid-volume-slider');
     const vid = document.getElementById('stage-video');
-    volSlider.oninput = (e) => {
-        vid.volume = parseFloat(e.target.value);
-        vid.muted = (vid.volume === 0);
-    };
-    document.getElementById('btn-vid-vol').onclick = () => {
+    if (volSlider && vid) {
+        volSlider.oninput = (e) => {
+            vid.volume = parseFloat(e.target.value);
+            vid.muted = (vid.volume === 0);
+        };
+    }
+    on('btn-vid-vol', 'click', () => {
+        if (!vid) return;
         vid.muted = !vid.muted;
-        volSlider.value = vid.muted ? 0 : 1;
-    };
-    document.getElementById('btn-vid-fullscreen').onclick = () => {
-        if (vid.requestFullscreen) vid.requestFullscreen();
-    };
+        if (volSlider) volSlider.value = vid.muted ? 0 : 1;
+    });
+    on('btn-vid-fullscreen', 'click', () => {
+        if (vid && vid.requestFullscreen) vid.requestFullscreen();
+    });
 
-    const btnVidPlay = document.getElementById('btn-vid-play');
-    if (btnVidPlay) {
-        btnVidPlay.onclick = () => {
-            const currentRoom = state.currentVoiceChannel;
-            const cinema = (currentRoom && state.cinemaRooms) ? state.cinemaRooms[currentRoom] : null;
-            const isOwner = cinema && (cinema.startedById === state.userId);
+    // Play/Pause do Vídeo - APENAS O DONO PODE PAUSAR
+    on('btn-vid-play', 'click', () => {
+        if (!vid) return;
+        const currentRoom = state.currentVoiceChannel;
+        const cinema = (currentRoom && state.cinemaRooms) ? state.cinemaRooms[currentRoom] : null;
+        const isOwner = cinema && (cinema.startedById === state.userId);
 
-            if (!isOwner) {
-                showToast('🔒 Apenas quem iniciou o filme pode pausar ou mexer no tempo.');
-                return;
-            }
+        if (!isOwner) {
+            showToast('🔒 Apenas quem iniciou o filme pode pausar ou mexer no tempo.');
+            return;
+        }
 
-            if (vid.paused) {
-                vid.play().then(() => {
-                    btnVidPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
-                }).catch(() => {});
-            } else {
-                vid.pause();
-                btnVidPlay.innerHTML = '<i class="fa-solid fa-play"></i>';
-            }
-        };
-    }
-
-    const btnBigPlay = document.getElementById('btn-big-play');
-    if (btnBigPlay) {
-        btnBigPlay.onclick = () => {
-            vid.muted = false;
+        const btnPlay = document.getElementById('btn-vid-play');
+        if (vid.paused) {
             vid.play().then(() => {
-                const overlay = document.getElementById('video-play-overlay');
-                if (overlay) overlay.style.display = 'none';
-                if (btnVidPlay) btnVidPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
-            }).catch(e => console.error(e));
-        };
-    }
+                if (btnPlay) btnPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+            }).catch(() => {});
+        } else {
+            vid.pause();
+            if (btnPlay) btnPlay.innerHTML = '<i class="fa-solid fa-play"></i>';
+        }
+    });
 
-    // Clique no vídeo para tocar/pausar ou tirar o mudo
-    vid.onclick = () => {
-        if (vid.muted) {
-            vid.muted = false;
-            showToast('🔊 Áudio ativado!');
+    on('btn-big-play', 'click', () => {
+        if (!vid) return;
+        vid.muted = false;
+        vid.play().then(() => {
             const overlay = document.getElementById('video-play-overlay');
             if (overlay) overlay.style.display = 'none';
-        }
-    };
+            const btnPlay = document.getElementById('btn-vid-play');
+            if (btnPlay) btnPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+        }).catch(e => console.error(e));
+    });
+
+    if (vid) {
+        vid.onclick = () => {
+            if (vid.muted) {
+                vid.muted = false;
+                showToast('🔊 Áudio ativado!');
+                const overlay = document.getElementById('video-play-overlay');
+                if (overlay) overlay.style.display = 'none';
+            }
+        };
+    }
 
     // 7. Mute e Deafen
-    document.getElementById('btn-mic').onclick = () => {
+    on('btn-mic', 'click', () => {
         state.isMuted = !state.isMuted;
-        document.getElementById('btn-mic').classList.toggle('active', state.isMuted);
+        const micBtn = document.getElementById('btn-mic');
+        if (micBtn) micBtn.classList.toggle('active', state.isMuted);
         if (state.localAudioStream) {
             state.localAudioStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
         }
         showToast(state.isMuted ? '🔇 Microfone silenciado.' : '🎙️ Microfone ativado.');
-    };
+    });
 
-    document.getElementById('btn-deafen').onclick = () => {
+    on('btn-deafen', 'click', () => {
         state.isDeafened = !state.isDeafened;
-        document.getElementById('btn-deafen').classList.toggle('active', state.isDeafened);
+        const deafenBtn = document.getElementById('btn-deafen');
+        if (deafenBtn) deafenBtn.classList.toggle('active', state.isDeafened);
         state.remoteAudioElements.forEach(a => a.muted = state.isDeafened);
-        vid.muted = state.isDeafened;
+        if (vid) vid.muted = state.isDeafened;
         showToast(state.isDeafened ? '🎧 Áudio ensurdecido.' : '🔊 Áudio reativado.');
-    };
+    });
 
-    // 8. MENU DE CONTEXTO DO DISCORD (LISTENERS)
+    // 8. Menu de Contexto
     const ctxVolSlider = document.getElementById('ctx-volume-slider');
-    ctxVolSlider.oninput = (e) => {
-        const val = parseInt(e.target.value);
-        document.getElementById('ctx-vol-val').textContent = `${val}%`;
-        if (state.activeContextUserId) {
-            state.userVolumes.set(state.activeContextUserId, val);
-            applyUserVolume(state.activeContextUserId);
-            // Salva preferência
-            const obj = {};
-            state.userVolumes.forEach((v, k) => obj[k] = v);
-            localStorage.setItem('dc_user_volumes', JSON.stringify(obj));
-        }
-    };
+    if (ctxVolSlider) {
+        ctxVolSlider.oninput = (e) => {
+            const val = parseInt(e.target.value);
+            const valEl = document.getElementById('ctx-vol-val');
+            if (valEl) valEl.textContent = `${val}%`;
+            if (state.activeContextUserId) {
+                state.userVolumes.set(state.activeContextUserId, val);
+                applyUserVolume(state.activeContextUserId);
+                const obj = {};
+                state.userVolumes.forEach((v, k) => obj[k] = v);
+                localStorage.setItem('dc_user_volumes', JSON.stringify(obj));
+            }
+        };
+    }
 
-    document.getElementById('ctx-btn-mute').onclick = () => {
+    on('ctx-btn-mute', 'click', () => {
         if (!state.activeContextUserId) return;
         const uid = state.activeContextUserId;
         if (state.userMutedLocally.has(uid)) {
@@ -1560,69 +1626,70 @@ function setupEventListeners() {
         }
         applyUserVolume(uid);
         closeUserContextMenu();
-    };
+    });
 
-    document.getElementById('ctx-btn-mention').onclick = () => {
+    on('ctx-btn-mention', 'click', () => {
         if (!state.activeContextUserId) return;
         const user = state.users.get(state.activeContextUserId);
         const name = user ? user.username : 'Amigo';
-        chatInput.value += `@${name} `;
-        chatInput.focus();
+        if (chatInput) {
+            chatInput.value += `@${name} `;
+            chatInput.focus();
+        }
         closeUserContextMenu();
-    };
+    });
 
-    document.getElementById('ctx-btn-watch-stream').onclick = () => {
+    on('ctx-btn-watch-stream', 'click', () => {
         if (state.activeContextUserId) {
             selectLiveStream(state.activeContextUserId);
         }
         closeUserContextMenu();
-    };
+    });
 
-    document.getElementById('ctx-btn-copy-id').onclick = () => {
+    on('ctx-btn-copy-id', 'click', () => {
         if (state.activeContextUserId) {
             navigator.clipboard.writeText(state.activeContextUserId);
             showToast('📋 ID copiado para a Área de Transferência.');
         }
         closeUserContextMenu();
-    };
+    });
 
-    // Mover usuário através do submenu do botão direito
     document.querySelectorAll('#ctx-submenu-channels .ctx-submenu-item').forEach(item => {
         item.onclick = (e) => {
             e.stopPropagation();
             if (state.activeContextUserId) {
-                const targetChannel = item.dataset.channel;
-                moveUserToChannel(state.activeContextUserId, targetChannel);
+                moveUserToChannel(state.activeContextUserId, item.dataset.channel);
             }
             closeUserContextMenu();
         };
     });
 
-    document.getElementById('ctx-btn-disconnect-voice').onclick = () => {
+    on('ctx-btn-disconnect-voice', 'click', () => {
         if (state.activeContextUserId) {
             moveUserToChannel(state.activeContextUserId, 'afk');
         }
         closeUserContextMenu();
-    };
+    });
 
-    // Fecha menu de contexto ao clicar em qualquer outro lugar
     window.addEventListener('click', (e) => {
         const menu = document.getElementById('user-context-menu');
         if (menu && !menu.contains(e.target)) closeUserContextMenu();
     });
 
-    // 9. CONFIGURAÇÕES DO USUÁRIO (MODAL DISCORD)
-    document.getElementById('btn-settings').onclick = () => openUserSettingsModal('profile');
-    document.getElementById('user-footer-avatar-wrap').onclick = () => openUserSettingsModal('profile');
-    document.getElementById('user-footer-info').onclick = () => openUserSettingsModal('profile');
-    document.getElementById('btn-open-settings-rail').onclick = () => openUserSettingsModal('profile');
-    document.getElementById('btn-close-settings').onclick = closeUserSettingsModal;
+    // 9. Configurações de Perfil
+    const openProfile = () => openUserSettingsModal('profile');
+    on('btn-settings', 'click', openProfile);
+    on('user-footer-avatar-wrap', 'click', openProfile);
+    on('user-footer-info', 'click', openProfile);
+    on('btn-open-settings-rail', 'click', openProfile);
+    on('btn-close-settings', 'click', closeUserSettingsModal);
 
     document.querySelectorAll('.settings-tab').forEach(t => {
         t.onclick = () => switchSettingsTab(t.dataset.tab);
     });
 
-    document.getElementById('input-username').oninput = updateSettingsPreview;
+    const inputUser = document.getElementById('input-username');
+    if (inputUser) inputUser.oninput = updateSettingsPreview;
 
     document.querySelectorAll('.color-dot').forEach(dot => {
         dot.onclick = () => {
@@ -1633,43 +1700,33 @@ function setupEventListeners() {
         };
     });
 
-    document.getElementById('btn-save-profile').onclick = saveUserProfile;
-    document.getElementById('btn-toggle-mic-test').onclick = toggleMicTest;
+    on('btn-save-profile', 'click', saveUserProfile);
+    on('btn-toggle-mic-test', 'click', toggleMicTest);
 
-    // Dispositivo de Entrada de Áudio
-    document.getElementById('select-audio-input').onchange = (e) => {
+    on('select-audio-input', 'change', (e) => {
         if (state.localAudioStream) {
             state.localAudioStream.getTracks().forEach(t => t.stop());
         }
         startMicrophone(e.target.value);
-    };
+    });
 
-    // Dispositivo de Saída de Áudio (setSinkId)
-    document.getElementById('select-audio-output').onchange = async (e) => {
+    on('select-audio-output', 'change', async (e) => {
         const deviceId = e.target.value;
         if (deviceId && 'setSinkId' in HTMLMediaElement.prototype) {
             state.remoteAudioElements.forEach(async el => {
                 try { await el.setSinkId(deviceId); } catch (err) {}
             });
-            const vid = document.getElementById('stage-video');
             if (vid) {
                 try { await vid.setSinkId(deviceId); } catch (err) {}
             }
             showToast('Dispositivo de saída atualizado.');
         }
-    };
+    });
 
-    // Desconectar da sala de voz
-    const btnDisc = document.getElementById('btn-disconnect-voice');
-    if (btnDisc) btnDisc.onclick = () => leaveVoiceChannel();
-
-    // Botões IPTV e Cinema
-    const btnIptv = document.getElementById('btn-open-iptv');
-    if (btnIptv) btnIptv.onclick = openIptvModal;
-    const btnCloseIptv = document.getElementById('btn-close-iptv-modal');
-    if (btnCloseIptv) btnCloseIptv.onclick = closeIptvModal;
-    const btnStopCinema = document.getElementById('btn-stop-cinema');
-    if (btnStopCinema) btnStopCinema.onclick = stopCinemaStream;
+    on('btn-disconnect-voice', 'click', () => leaveVoiceChannel());
+    on('btn-open-iptv', 'click', openIptvModal);
+    on('btn-close-iptv-modal', 'click', closeIptvModal);
+    on('btn-stop-cinema', 'click', stopCinemaStream);
 
     document.querySelectorAll('.iptv-type-btn').forEach(btn => {
         btn.onclick = () => {
@@ -1695,18 +1752,17 @@ function setupEventListeners() {
         };
     }
 
-    // Fechar modais com tecla ESC
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeUserSettingsModal();
             closeUserContextMenu();
             closeIptvModal();
-            document.getElementById('stream-modal').style.display = 'none';
+            closeInviteModal();
+            if (streamModal) streamModal.style.display = 'none';
         }
     });
 
-
-    // 10. GAVETAS DO MENU MOBILE
+    // 10. Gavetas do Menu Mobile
     const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
     const btnToggleMembers = document.getElementById('btn-toggle-members');
     const mobileBackdrop = document.getElementById('mobile-sidebar-backdrop');
@@ -1741,7 +1797,7 @@ function setupEventListeners() {
         mobileBackdrop.onclick = closeMobileDrawers;
     }
 
-    // 11. CADASTRO DE NOVO INTEGRANTE
+    // 11. Cadastro de Novo Integrante
     const registerColorDots = document.querySelectorAll('#register-color-options .color-dot');
     registerColorDots.forEach(dot => {
         dot.onclick = () => {
@@ -1776,16 +1832,6 @@ function setupEventListeners() {
             avatar: state.avatarColor
         });
         showToast(`🎉 Bem-vindo(a), <b>${escapeHtml(state.username)}</b>!`);
-
-        // No celular, abre imediatamente a lista de canais para o usuário escolher em qual entrar
-        if (window.innerWidth <= 850 && !state.currentVoiceChannel) {
-            const channelsSidebar = document.querySelector('.channels-sidebar');
-            const mobileBackdrop = document.getElementById('mobile-sidebar-backdrop');
-            if (channelsSidebar) {
-                channelsSidebar.classList.add('mobile-open');
-                if (mobileBackdrop) mobileBackdrop.style.display = 'block';
-            }
-        }
     };
 
     if (btnRegisterSubmit) btnRegisterSubmit.onclick = submitRegistration;
@@ -1809,38 +1855,57 @@ function setupEventListeners() {
     });
 }
 
-// --- CONTROLE DE TRANSMISSÃO IPTV NAS 3 SALAS DE CINEMA ---
-function checkRoomCinemaStream(room) {
-    const stopBtn = document.getElementById('btn-stop-cinema');
-    if (!room || !room.startsWith('cinema-')) {
-        if (state.hlsInstance) {
+function stopCinemaPlayback() {
+    state.currentCinemaStreamId = null;
+    if (state.mpegtsInstance) {
+        try {
+            state.mpegtsInstance.pause();
+            state.mpegtsInstance.unload();
+            state.mpegtsInstance.detachMediaElement();
+            state.mpegtsInstance.destroy();
+        } catch (e) {}
+        state.mpegtsInstance = null;
+    }
+    if (state.hlsInstance) {
+        try {
             state.hlsInstance.destroy();
-            state.hlsInstance = null;
-        }
-        if (stopBtn) stopBtn.style.display = 'none';
+        } catch (e) {}
+        state.hlsInstance = null;
+    }
+    if (cinemaSyncInterval) {
+        clearInterval(cinemaSyncInterval);
+        cinemaSyncInterval = null;
+    }
+    const stage = document.getElementById('video-stage');
+    const video = document.getElementById('stage-video');
+    if (video) {
+        try { video.pause(); } catch(e) {}
+        video.onpause = null;
+        video.onplay = null;
+        video.onseeked = null;
+        video.srcObject = null;
+        video.src = '';
+    }
+    const overlay = document.getElementById('video-play-overlay');
+    if (overlay) overlay.style.display = 'none';
+    const stopBtn = document.getElementById('btn-stop-cinema');
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (stage && !state.currentlyWatchingUserId) {
+        stage.style.display = 'none';
+    }
+}
+
+function checkRoomCinemaStream(room) {
+    if (!room || !room.startsWith('cinema-')) {
+        stopCinemaPlayback();
         return;
     }
 
     const cinema = state.cinemaRooms ? state.cinemaRooms[room] : null;
     if (cinema) {
         playCinemaStream(cinema);
-        if (stopBtn) stopBtn.style.display = 'flex';
     } else {
-        if (state.hlsInstance) {
-            state.hlsInstance.destroy();
-            state.hlsInstance = null;
-        }
-        const stage = document.getElementById('video-stage');
-        const video = document.getElementById('stage-video');
-        if (video) {
-            video.pause();
-            video.srcObject = null;
-            video.src = '';
-        }
-        if (stage && !state.currentlyWatchingUserId) {
-            stage.style.display = 'none';
-        }
-        if (stopBtn) stopBtn.style.display = 'none';
+        stopCinemaPlayback();
     }
 }
 
@@ -1899,10 +1964,9 @@ function loadHlsFallback(m3u8Url, video) {
 function playCinemaStream(cinema) {
     const stage = document.getElementById('video-stage');
     const video = document.getElementById('stage-video');
-    if (!stage || !video) return;
+    if (!stage || !video || !cinema) return;
 
     stage.style.display = 'flex';
-    video.srcObject = null;
 
     const isOwner = (cinema.startedById === state.userId);
     const stopBtn = document.getElementById('btn-stop-cinema');
@@ -1917,8 +1981,37 @@ function playCinemaStream(cinema) {
     document.getElementById('hud-res').textContent = '1080p FHD';
     document.getElementById('hud-fps').textContent = '60 FPS';
 
+    const btnPlay = document.getElementById('btn-vid-play');
+    if (btnPlay) {
+        btnPlay.style.display = isOwner ? 'flex' : 'none';
+    }
+    const lockBadge = document.getElementById('hud-sync-lock-badge');
+    if (lockBadge) {
+        lockBadge.style.display = isOwner ? 'none' : 'inline-flex';
+    }
+
+    // Se já estiver tocando EXATAMENTE este mesmo stream, apenas atualiza sync sem destruir o player
+    if (state.currentCinemaStreamId === cinema.streamId && (state.mpegtsInstance || state.hlsInstance || (video.src && video.src.length > 0))) {
+        if (!isOwner) {
+            applyCinemaSync(cinema);
+        }
+        return;
+    }
+
+    state.currentCinemaStreamId = cinema.streamId;
+    video.srcObject = null;
+
+    if (state.mpegtsInstance) {
+        try {
+            state.mpegtsInstance.pause();
+            state.mpegtsInstance.unload();
+            state.mpegtsInstance.detachMediaElement();
+            state.mpegtsInstance.destroy();
+        } catch (e) {}
+        state.mpegtsInstance = null;
+    }
     if (state.hlsInstance) {
-        state.hlsInstance.destroy();
+        try { state.hlsInstance.destroy(); } catch (e) {}
         state.hlsInstance = null;
     }
     if (cinemaSyncInterval) {
@@ -1931,15 +2024,6 @@ function playCinemaStream(cinema) {
             try { video.currentTime = cinema.currentTime; } catch (e) {}
         }
     };
-
-    if (state.mpegtsInstance) {
-        try { state.mpegtsInstance.destroy(); } catch (e) {}
-        state.mpegtsInstance = null;
-    }
-    if (state.hlsInstance) {
-        try { state.hlsInstance.destroy(); } catch (e) {}
-        state.hlsInstance = null;
-    }
 
     if (cinema.streamType === 'live') {
         const tsUrl = `/api/iptv/stream/${cinema.streamId}.ts`;
@@ -2038,6 +2122,8 @@ function stopCinemaStream() {
         showToast('Entre em uma das salas de cinema para parar a transmissão.');
         return;
     }
+    stopCinemaPlayback();
+    if (state.cinemaRooms) state.cinemaRooms[room] = null;
     sendWs({
         type: 'cinema_stop',
         room: room
