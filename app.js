@@ -2886,9 +2886,57 @@ function setupEventListeners() {
         vid.muted = !vid.muted;
         if (volSlider) volSlider.value = vid.muted ? 0 : 1;
     });
-    on('btn-vid-fullscreen', 'click', () => {
-        if (vid && vid.requestFullscreen) vid.requestFullscreen();
-    });
+    function toggleVideoFullscreen(forceClose = false) {
+        const stage = document.getElementById('video-stage');
+        const vid = document.getElementById('stage-video');
+        if (!stage) return;
+
+        const isCurrentlyFs = stage.classList.contains('is-fullscreen') || !!document.fullscreenElement || !!document.webkitFullscreenElement;
+
+        if (forceClose || isCurrentlyFs) {
+            stage.classList.remove('is-fullscreen');
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+            if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+                window.screen.orientation.unlock().catch(() => {});
+            }
+            showToast('Saindo da tela cheia.');
+        } else {
+            stage.classList.add('is-fullscreen');
+            if (stage.requestFullscreen) {
+                stage.requestFullscreen().catch(() => {});
+            } else if (vid && vid.requestFullscreen) {
+                vid.requestFullscreen().catch(() => {});
+            } else if (vid && vid.webkitEnterFullscreen) {
+                vid.webkitEnterFullscreen();
+            }
+            if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+                window.screen.orientation.lock('landscape').catch(() => {});
+            }
+            showToast('📺 Tela cheia ativada! Toque 2x ou no botão para sair.');
+        }
+    }
+
+    on('btn-vid-fullscreen', 'click', () => toggleVideoFullscreen());
+    on('btn-exit-fullscreen', 'click', () => toggleVideoFullscreen(true));
+
+    // Toque duplo no vídeo para alternar tela cheia no celular
+    let lastTapTime = 0;
+    if (vid) {
+        vid.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTapTime;
+            if (tapLength < 350 && tapLength > 50) {
+                e.preventDefault();
+                toggleVideoFullscreen();
+            }
+            lastTapTime = currentTime;
+        });
+        vid.ondblclick = () => toggleVideoFullscreen();
+    }
 
     // Play/Pause do Vídeo - APENAS O DONO PODE PAUSAR
     on('btn-vid-play', 'click', () => {
@@ -3359,6 +3407,55 @@ function setupEventListeners() {
     if (mobileBackdrop) {
         mobileBackdrop.onclick = closeMobileDrawers;
     }
+
+    // Gestos de Deslizar (Swipe) para navegar pro lado no celular (Salas e Membros)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+
+    document.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchend', (e) => {
+        if (e.changedTouches && e.changedTouches.length === 1) {
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            const elapsed = Date.now() - touchStartTime;
+
+            // Identifica swipe horizontal nítido (> 40px e predominantemente horizontal)
+            if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3 && elapsed < 450) {
+                const isChannelsOpen = channelsSidebar && channelsSidebar.classList.contains('mobile-open');
+                const isMembersOpen = membersSidebar && membersSidebar.classList.contains('mobile-open');
+
+                if (deltaX > 0) {
+                    // Arrastou da ESQUERDA para a DIREITA
+                    if (isMembersOpen) {
+                        closeMobileDrawers();
+                    } else if (!isChannelsOpen && touchStartX < 120) {
+                        closeMobileDrawers();
+                        if (channelsSidebar) channelsSidebar.classList.add('mobile-open');
+                        if (mobileBackdrop) mobileBackdrop.style.display = 'block';
+                    }
+                } else {
+                    // Arrastou da DIREITA para a ESQUERDA
+                    if (isChannelsOpen) {
+                        closeMobileDrawers();
+                    } else if (!isMembersOpen && touchStartX > window.innerWidth - 120) {
+                        closeMobileDrawers();
+                        if (membersSidebar) membersSidebar.classList.add('mobile-open');
+                        if (mobileBackdrop) mobileBackdrop.style.display = 'block';
+                    }
+                }
+            }
+        }
+    }, { passive: true });
 
     // 11. Cadastro de Novo Integrante
     const registerColorDots = document.querySelectorAll('#register-color-options .color-dot');
