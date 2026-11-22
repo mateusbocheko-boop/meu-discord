@@ -494,6 +494,7 @@ const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const wsUrl = `${protocol}//${window.location.host}/ws`;
 let socket = null;
 
+function send(data) { sendWs(data); }
 function sendWs(data) {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(data));
@@ -621,9 +622,16 @@ async function handleServerMessage(data) {
             } else {
                 state.vips.delete(data.userId);
             }
+            // Sincroniza objetos nos mapas locais de membros e usuários
+            const sm = state.serverMembers.get(data.userId);
+            if (sm) sm.isVip = !!data.isVip;
+            const su = state.users.get(data.userId);
+            if (su) su.isVip = !!data.isVip;
+
             if (data.userId === state.userId) {
                 state.isVip = !!data.isVip;
             }
+            showToast(data.isVip ? '⭐ Selo VIP ativado para o usuário!' : '⭐ Selo VIP removido com sucesso!');
             renderMembersSidebar();
             renderVoiceUsers();
             break;
@@ -1930,7 +1938,7 @@ function openUserContextMenu(e, userId) {
     if (toggleVipBtn) {
         if (state.isOwner && !isSelf) {
             toggleVipBtn.style.display = 'flex';
-            const isTargetVip = (state.vips && state.vips.has(userId)) || (user && user.isVip);
+            const isTargetVip = state.vips ? state.vips.has(userId) : false;
             const icon = document.getElementById('ctx-vip-icon');
             const text = document.getElementById('ctx-vip-role-text');
             if (isTargetVip) {
@@ -2856,7 +2864,7 @@ function renderMembersSidebar() {
 
         const isMemberAdmin = !isMemberMestre && (member.isAdmin || (state.serverAdmins && state.serverAdmins.has(member.id)) || member.isOwner);
 
-        const isMemberVip = !isMemberMestre && !isMemberAdmin && ((state.vips && state.vips.has(member.id)) || member.isVip);
+        const isMemberVip = !isMemberMestre && !isMemberAdmin && (state.vips ? state.vips.has(member.id) : false);
 
         let roleBadge = '';
         if (isMemberMestre) {
@@ -2865,7 +2873,7 @@ function renderMembersSidebar() {
             roleBadge = '<span class="badge-role-adm" title="Administrador"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
         }
 
-        const hasVipPass = (state.vips && state.vips.has(member.id)) || member.isVip || isMemberMestre;
+        const hasVipPass = isMemberMestre || (state.vips ? state.vips.has(member.id) : false);
         let vipBadge = '';
         if (hasVipPass) {
             vipBadge = '<span class="badge-vip" title="Membro VIP Kord"><i class="fa-solid fa-crown"></i> VIP</span>';
@@ -3691,9 +3699,10 @@ function setupEventListeners() {
     // Opção exclusiva do Dono no Menu de Contexto: Dar / Remover VIP
     on('ctx-btn-toggle-vip', 'click', () => {
         if (!state.activeContextUserId) return;
-        send({
+        const uid = state.activeContextUserId;
+        sendWs({
             type: 'admin_toggle_vip',
-            targetUserId: state.activeContextUserId
+            targetUserId: uid
         });
         closeUserContextMenu();
     });
@@ -4472,7 +4481,7 @@ function renderUserServers() {
 
 function switchServer(srvId) {
     if (state.currentServerId === srvId) return;
-    send({ type: 'switch_server', serverId: srvId });
+    sendWs({ type: 'switch_server', serverId: srvId });
 }
 
 function openCreateServerModal() {

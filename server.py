@@ -1047,7 +1047,8 @@ async def websocket_handler(request):
             elif msg_type == "admin_toggle_vip":
                 # EXCLUSIVO DO DONO MÁXIMO DA PLATAFORMA (DIM): Apenas DIM pode conceder ou remover VIP!
                 sender_name = clients.get(ws, {}).get("username", "").strip().upper()
-                if sender_name != "DIM" and not sender_name.startswith("DIM"):
+                sender_is_owner = clients.get(ws, {}).get("isOwner", False)
+                if not (sender_is_owner or sender_name == "DIM" or sender_name.startswith("DIM")):
                     await ws.send_str(json.dumps({
                         "type": "error",
                         "message": "Acesso negado! Apenas o Dono Supremo da Plataforma (DIM#4095) pode conceder ou revogar VIP."
@@ -1059,9 +1060,11 @@ async def websocket_handler(request):
                     continue
 
                 vdata = server_vips.get(target_id, {})
-                currently_vip = vdata.get("isVip", False)
+                # Verifica se é VIP atualmente
+                currently_vip = bool(vdata.get("isVip", False))
                 if currently_vip:
                     vdata["isVip"] = False
+                    vdata["expiresAt"] = 0
                     action_msg = f"⭐ O Acesso VIP de <b>{vdata.get('username', target_id)}</b> foi encerrado pelo Dono."
                 else:
                     vdata["isVip"] = True
@@ -1070,6 +1073,10 @@ async def websocket_handler(request):
 
                 server_vips[target_id] = vdata
                 save_vips(server_vips)
+
+                if target_id in server_members:
+                    server_members[target_id]["isVip"] = vdata["isVip"]
+                    save_members(server_members)
 
                 for target_ws, u in clients.items():
                     if u.get("id") == target_id:
