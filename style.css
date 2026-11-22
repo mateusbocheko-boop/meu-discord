@@ -215,20 +215,60 @@ body, html {
 }
 
 .voice-user-avatar {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background-color: #5865f2;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
+    position: relative;
+    transition: box-shadow 0.15s ease, outline 0.15s ease;
 }
 
 .voice-user-avatar.speaking {
-    outline: 2px solid #23a55a;
+    outline: 2px solid #23a55a !important;
+    box-shadow: 0 0 8px #23a55a !important;
+    animation: dc-pulse-speaking 0.8s infinite alternate;
+}
+
+@keyframes dc-pulse-speaking {
+    0% {
+        box-shadow: 0 0 2px #23a55a;
+        transform: scale(1);
+    }
+    100% {
+        box-shadow: 0 0 10px #23a55a;
+        transform: scale(1.08);
+    }
+}
+
+.voice-speaking-dot {
+    display: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #23a55a;
+    margin-left: 4px;
+}
+
+.voice-speaking-dot.active {
+    display: inline-block;
+    animation: dc-blink-dot 0.6s infinite alternate;
+}
+
+@keyframes dc-blink-dot {
+    0% { opacity: 0.4; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1.2); }
+}
+
+.voice-mute-icon {
+    color: #f23f43 !important;
+    font-size: 11px !important;
+    margin-left: 6px !important;
 }
 
 /* PAINEL DE VOZ CONECTADA */

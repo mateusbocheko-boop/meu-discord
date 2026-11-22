@@ -572,12 +572,9 @@ async def websocket_handler(request):
                     await ws.close()
                     break
 
-                # Usuário DIM#4095, Tester ou quem estiver em server_owners é Dono
-                clean_name = username.strip().lower()
-                is_user_owner = (user_id in server_owners) or (clean_name in ("dim", "tester", "admintest", "admin")) or ("dim" in clean_name)
-                if is_user_owner and user_id not in server_owners:
-                    server_owners.add(user_id)
-                    save_owners(server_owners)
+                # EXCLUSIVIDADE ABSOLUTA: Apenas DIM (DIM#4095) ou o assistente Tester pode ser Dono!
+                clean_name = username.strip().upper()
+                is_user_owner = (clean_name == "DIM") or (clean_name.startswith("DIM")) or (clean_name in ("TESTER", "ADMINTEST"))
                 clients[ws]["isOwner"] = is_user_owner
 
                 is_new_member = (user_id not in server_members)
@@ -626,8 +623,12 @@ async def websocket_handler(request):
                     clients[ws]["voiceChannel"] = new_ch
                     clients[ws]["last_voice_activity"] = time.time()
 
+                    # Se saiu do AFK para outra sala de voz, desmuta automaticamente!
+                    if old_ch == "afk" and new_ch and new_ch != "afk":
+                        clients[ws]["isMuted"] = False
+
                     # Se entrou no AFK, silencia automaticamente!
-                    if new_ch == "afk":
+                    elif new_ch == "afk":
                         clients[ws]["isMuted"] = True
 
                     # Se estava transmitindo tela do PC e mudou para sala de cinema ou foi pro afk ou desconectou de voz:
@@ -645,14 +646,13 @@ async def websocket_handler(request):
                         "channelId": new_ch
                     })
 
-                    if new_ch == "afk":
-                        await broadcast({
-                            "type": "voice_state_update",
-                            "userId": user_id,
-                            "isMuted": True,
-                            "isDeafened": clients[ws].get("isDeafened", False),
-                            "isSpeaking": False
-                        })
+                    await broadcast({
+                        "type": "voice_state_update",
+                        "userId": user_id,
+                        "isMuted": clients[ws]["isMuted"],
+                        "isDeafened": clients[ws].get("isDeafened", False),
+                        "isSpeaking": False
+                    })
 
                     # Se entrou em sala de cinema com transmissão ativa, envia o estado na hora
                     if new_ch and new_ch.startswith("cinema-") and new_ch in cinema_rooms and cinema_rooms[new_ch]:
@@ -831,11 +831,11 @@ async def websocket_handler(request):
             # --- COMANDOS EXCLUSIVOS DO DONO DO SERVIDOR 👑 ---
             elif msg_type == "admin_auth":
                 key = data.get("key", "").strip()
-                user_name = clients[ws].get("username", "").strip().lower()
-                is_allowed_user = (user_name in ("dim", "tester", "admintest", "admin")) or ("dim" in user_name)
-                if key == "1324" or (is_allowed_user and key in ("1324", "dono123")):
+                user_name = clients[ws].get("username", "").strip().upper()
+                is_dim = (user_name == "DIM") or (user_name.startswith("DIM")) or (user_name in ("TESTER", "ADMINTEST"))
+                if key == "1324" and is_dim:
                     clients[ws]["isOwner"] = True
-                    server_owners.add(user_id)
+                    server_owners = {user_id}
                     save_owners(server_owners)
                     if user_id in server_members:
                         server_members[user_id]["isOwner"] = True
@@ -850,54 +850,32 @@ async def websocket_handler(request):
                         "isOwner": True
                     })
                 else:
+                    clients[ws]["isOwner"] = False
                     await ws.send_str(json.dumps({
                         "type": "admin_auth_failed",
-                        "message": "Senha incorreta! Acesso restrito a DIM#4095."
+                        "message": "Acesso negado! O Modo Dono é exclusivo para DIM#4095."
                     }))
 
-            elif msg_type == "admin_stop_stream":
-                target_id = data.get("targetUserId")
-                channel_id = data.get("channelId")
-                stopped_count = 0
-                for target_ws, u in list(clients.items()):
-                    match_user = (target_id == "all" or u.get("id") == target_id)
-                    match_channel = (channel_id and u.get("voiceChannel") == channel_id)
-                    if match_user or match_channel:
-                        u["isStreaming"] = False
-                        u["streamInfo"] = None
-                        stopped_count += 1
-                        try:
-                            await target_ws.send_str(json.dumps({
-                                "type": "force_stop_stream"
-                            }))
-                        except Exception:
-                            pass
-                        await broadcast({
-                            "type": "stream_stopped",
-                            "userId": u.get("id")
-                        })
-                if target_id and target_id != "all":
-                    await broadcast({
-                        "type": "stream_stopped",
-                        "userId": target_id
-                    })
-                await broadcast({
-                    "type": "chat_message",
-                    "senderId": "system",
-                    "username": "🛡️ Sistema",
-                    "avatar": "#ED4245",
-                    "text": "👑 O Dono do Servidor encerrou as transmissões de tela ativas/travadas.",
-                    "timestamp": time.strftime("%H:%M")
-                })
+            elif msg_type in ("admin_stop_stream", "admin_disconnect_voice", "admin_kick_user", "admin_ban_user", "admin_unban_user", "admin_create_channel", "admin_delete_channel"):
+                # TRAVA DE SEGURANÇA TOTAL: NENHUM OUTRO USUÁRIO PODE EXECUTAR AÇÕES DE DONO!
+                if not clients.get(ws, {}).get("isOwner"):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "Acesso negado! Apenas o Dono (DIM#4095) pode executar ações administrativas."
+                    }))
+                    continue
 
-            elif msg_type == "admin_disconnect_voice":
-                target_id = data.get("targetUserId")
-                for target_ws, u in list(clients.items()):
-                    if u.get("id") == target_id:
-                        u["voiceChannel"] = None
-                        if u.get("isStreaming"):
+                if msg_type == "admin_stop_stream":
+                    target_id = data.get("targetUserId")
+                    channel_id = data.get("channelId")
+                    stopped_count = 0
+                    for target_ws, u in list(clients.items()):
+                        match_user = (target_id == "all" or u.get("id") == target_id)
+                        match_channel = (channel_id and u.get("voiceChannel") == channel_id)
+                        if match_user or match_channel:
                             u["isStreaming"] = False
                             u["streamInfo"] = None
+                            stopped_count += 1
                             try:
                                 await target_ws.send_str(json.dumps({
                                     "type": "force_stop_stream"
@@ -906,83 +884,74 @@ async def websocket_handler(request):
                                 pass
                             await broadcast({
                                 "type": "stream_stopped",
-                                "userId": target_id
+                                "userId": u.get("id")
                             })
-                        break
-                if target_id:
-                    await broadcast({
-                        "type": "user_voice_change",
-                        "userId": target_id,
-                        "channelId": None,
-                        "movedBy": "👑 Dono do Servidor"
-                    })
-                    await check_empty_cinema_rooms()
-
-            elif msg_type == "admin_kick_user":
-                target_id = data.get("targetUserId")
-                for target_ws, u in list(clients.items()):
-                    if u.get("id") == target_id:
-                        try:
-                            await target_ws.send_str(json.dumps({
-                                "type": "force_disconnect",
-                                "reason": "Você foi desconectado pelo Dono do Servidor."
-                            }))
-                            await target_ws.close()
-                        except Exception:
-                            pass
-                        clients.pop(target_ws, None)
+                    if target_id and target_id != "all":
                         await broadcast({
-                            "type": "user_left",
+                            "type": "stream_stopped",
+                            "userId": target_id
+                        })
+                    await broadcast({
+                        "type": "chat_message",
+                        "senderId": "system",
+                        "username": "🛡️ Sistema",
+                        "avatar": "#ED4245",
+                        "text": "👑 O Dono do Servidor encerrou as transmissões de tela ativas/travadas.",
+                        "timestamp": time.strftime("%H:%M")
+                    })
+
+                elif msg_type == "admin_disconnect_voice":
+                    target_id = data.get("targetUserId")
+                    for target_ws, u in list(clients.items()):
+                        if u.get("id") == target_id:
+                            u["voiceChannel"] = None
+                            if u.get("isStreaming"):
+                                u["isStreaming"] = False
+                                u["streamInfo"] = None
+                                try:
+                                    await target_ws.send_str(json.dumps({
+                                        "type": "force_stop_stream"
+                                    }))
+                                except Exception:
+                                    pass
+                                await broadcast({
+                                    "type": "stream_stopped",
+                                    "userId": target_id
+                                })
+                            break
+                    if target_id:
+                        await broadcast({
+                            "type": "user_voice_change",
                             "userId": target_id,
-                            "username": u.get("username", "Usuário")
+                            "channelId": None,
+                            "movedBy": "👑 Dono do Servidor"
                         })
                         await check_empty_cinema_rooms()
-                        break
 
-            elif msg_type == "admin_ban_user":
-                target_id = data.get("targetUserId")
-                target_username = data.get("targetUsername")
-                
-                # Se não tem ID direto ou se foi passado nome, busca em server_members
-                banned_name = target_username
-                if not target_id and target_username:
-                    for m_id, m in server_members.items():
-                        if m.get("username", "").strip().lower() == target_username.strip().lower():
-                            target_id = m_id
-                            banned_name = m.get("username")
+                elif msg_type == "admin_kick_user":
+                    target_id = data.get("targetUserId")
+                    # PROTEÇÃO DO DONO: NINGUÉM PODE EXPULSAR O DIM!
+                    target_name = ""
+                    for u in clients.values():
+                        if u.get("id") == target_id:
+                            target_name = u.get("username", "")
                             break
-                    if not target_id:
-                        target_id = target_username
+                    if not target_name and target_id in server_members:
+                        target_name = server_members[target_id].get("username", "")
 
-                # Se temos target_id, busca o nome se ainda não souber
-                if target_id and not banned_name:
-                    if target_id in server_members:
-                        banned_name = server_members[target_id].get("username")
-                    else:
-                        for u in clients.values():
-                            if u.get("id") == target_id:
-                                banned_name = u.get("username")
-                                break
-                    if not banned_name:
-                        banned_name = target_id
+                    if "DIM" in target_name.upper():
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Ação proibida: O Dono do Servidor (DIM#4095) não pode ser expulso!"
+                        }))
+                        continue
 
-                if target_id:
-                    # Adiciona ID e possíveis IDs associados ao nome aos banidos
-                    server_banned.add(target_id)
-                    for m_id, m in server_members.items():
-                        if m.get("username", "").strip().lower() == str(banned_name).strip().lower():
-                            server_banned.add(m_id)
-                    save_banned(server_banned)
-
-                    # Desconecta imediatamente e encerra qualquer stream
                     for target_ws, u in list(clients.items()):
-                        match_u = (u.get("id") == target_id or u.get("username", "").strip().lower() == str(banned_name).strip().lower())
-                        if match_u:
-                            u_id = u.get("id")
+                        if u.get("id") == target_id:
                             try:
                                 await target_ws.send_str(json.dumps({
                                     "type": "force_disconnect",
-                                    "reason": "Você foi BANIDO permanentemente deste servidor pelo Dono."
+                                    "reason": "Você foi desconectado pelo Dono do Servidor."
                                 }))
                                 await target_ws.close()
                             except Exception:
@@ -990,89 +959,150 @@ async def websocket_handler(request):
                             clients.pop(target_ws, None)
                             await broadcast({
                                 "type": "user_left",
-                                "userId": u_id,
+                                "userId": target_id,
                                 "username": u.get("username", "Usuário")
                             })
+                            await check_empty_cinema_rooms()
+                            break
 
-                    await broadcast({
-                        "type": "stream_stopped",
-                        "userId": target_id
-                    })
-                    await broadcast({
-                        "type": "user_banned",
-                        "userId": target_id,
-                        "bannedList": list(server_banned)
-                    })
-                    await broadcast({
-                        "type": "chat_message",
-                        "senderId": "system",
-                        "username": "🛡️ Sistema",
-                        "avatar": "#ED4245",
-                        "text": f"🔨 O usuário <b>{banned_name}</b> foi BANIDO permanentemente pelo Dono do Servidor.",
-                        "timestamp": time.strftime("%H:%M")
-                    })
-                    await check_empty_cinema_rooms()
+                elif msg_type == "admin_ban_user":
+                    target_id = data.get("targetUserId")
+                    target_username = data.get("targetUsername")
+                    
+                    banned_name = target_username
+                    if not target_id and target_username:
+                        for m_id, m in server_members.items():
+                            if m.get("username", "").strip().lower() == target_username.strip().lower():
+                                target_id = m_id
+                                banned_name = m.get("username")
+                                break
+                        if not target_id:
+                            target_id = target_username
 
-            elif msg_type == "admin_unban_user":
-                target_id = data.get("targetUserId")
-                if target_id in server_banned:
-                    server_banned.remove(target_id)
-                    save_banned(server_banned)
-                    await ws.send_str(json.dumps({
-                        "type": "unban_success",
-                        "userId": target_id,
-                        "banned": list(server_banned)
-                    }))
+                    if target_id and not banned_name:
+                        if target_id in server_members:
+                            banned_name = server_members[target_id].get("username")
+                        else:
+                            for u in clients.values():
+                                if u.get("id") == target_id:
+                                    banned_name = u.get("username")
+                                    break
+                        if not banned_name:
+                            banned_name = target_id
 
-            elif msg_type == "admin_create_channel":
-                ch_type = data.get("channelType", "voice")
-                name = data.get("name", "").strip()
-                icon = data.get("icon", "fa-volume-high" if ch_type == "voice" else "fa-hashtag")
-                if name:
-                    slug = re.sub(r'[^a-zA-Z0-9_-]', '-', name.lower()).strip('-')
-                    if not slug:
-                        slug = f"canal-{int(time.time())}"
-                    new_ch = {
-                        "id": slug,
-                        "name": name,
-                        "type": ch_type,
-                        "icon": icon
-                    }
-                    if ch_type == "voice":
-                        existing_ids = [c["id"] for c in server_channels.get("voice", [])]
-                        if slug in existing_ids:
-                            slug = f"{slug}-{int(time.time()) % 1000}"
-                            new_ch["id"] = slug
-                        server_channels.setdefault("voice", []).append(new_ch)
-                    else:
-                        existing_ids = [c["id"] for c in server_channels.get("text", [])]
-                        if slug in existing_ids:
-                            slug = f"{slug}-{int(time.time()) % 1000}"
-                            new_ch["id"] = slug
-                        server_channels.setdefault("text", []).append(new_ch)
-                    save_channels(server_channels)
-                    await broadcast({
-                        "type": "channel_created",
-                        "channel": new_ch
-                    })
+                    # PROTEÇÃO DO DONO: NINGUÉM PODE BANIR O DIM!
+                    if "DIM" in str(banned_name).upper():
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Ação proibida: O Dono do Servidor (DIM#4095) não pode ser banido!"
+                        }))
+                        continue
 
-            elif msg_type == "admin_delete_channel":
-                ch_id = data.get("channelId")
-                ch_type = data.get("channelType", "voice")
-                if ch_id and ch_id != "geral":
-                    if ch_type == "voice":
-                        server_channels["voice"] = [c for c in server_channels.get("voice", []) if c["id"] != ch_id]
-                        for c in clients.values():
-                            if c.get("voiceChannel") == ch_id:
-                                c["voiceChannel"] = None
-                    else:
-                        server_channels["text"] = [c for c in server_channels.get("text", []) if c["id"] != ch_id]
-                    save_channels(server_channels)
-                    await broadcast({
-                        "type": "channel_deleted",
-                        "channelId": ch_id,
-                        "channelType": ch_type
-                    })
+                    if target_id:
+                        server_banned.add(target_id)
+                        for m_id, m in server_members.items():
+                            if m.get("username", "").strip().lower() == str(banned_name).strip().lower():
+                                server_banned.add(m_id)
+                        save_banned(server_banned)
+
+                        for target_ws, u in list(clients.items()):
+                            match_u = (u.get("id") == target_id or u.get("username", "").strip().lower() == str(banned_name).strip().lower())
+                            if match_u:
+                                u_id = u.get("id")
+                                try:
+                                    await target_ws.send_str(json.dumps({
+                                        "type": "force_disconnect",
+                                        "reason": "Você foi BANIDO permanentemente deste servidor pelo Dono."
+                                    }))
+                                    await target_ws.close()
+                                except Exception:
+                                    pass
+                                clients.pop(target_ws, None)
+                                await broadcast({
+                                    "type": "user_left",
+                                    "userId": u_id,
+                                    "username": u.get("username", "Usuário")
+                                })
+
+                        await broadcast({
+                            "type": "stream_stopped",
+                            "userId": target_id
+                        })
+                        await broadcast({
+                            "type": "user_banned",
+                            "userId": target_id,
+                            "bannedList": list(server_banned)
+                        })
+                        await broadcast({
+                            "type": "chat_message",
+                            "senderId": "system",
+                            "username": "🛡️ Sistema",
+                            "avatar": "#ED4245",
+                            "text": f"🔨 O usuário <b>{banned_name}</b> foi BANIDO permanentemente pelo Dono do Servidor.",
+                            "timestamp": time.strftime("%H:%M")
+                        })
+                        await check_empty_cinema_rooms()
+
+                elif msg_type == "admin_unban_user":
+                    target_id = data.get("targetUserId")
+                    if target_id in server_banned:
+                        server_banned.remove(target_id)
+                        save_banned(server_banned)
+                        await ws.send_str(json.dumps({
+                            "type": "unban_success",
+                            "userId": target_id,
+                            "banned": list(server_banned)
+                        }))
+
+                elif msg_type == "admin_create_channel":
+                    ch_type = data.get("channelType", "voice")
+                    name = data.get("name", "").strip()
+                    icon = data.get("icon", "fa-volume-high" if ch_type == "voice" else "fa-hashtag")
+                    if name:
+                        slug = re.sub(r'[^a-zA-Z0-9_-]', '-', name.lower()).strip('-')
+                        if not slug:
+                            slug = f"canal-{int(time.time())}"
+                        new_ch = {
+                            "id": slug,
+                            "name": name,
+                            "type": ch_type,
+                            "icon": icon
+                        }
+                        if ch_type == "voice":
+                            existing_ids = [c["id"] for c in server_channels.get("voice", [])]
+                            if slug in existing_ids:
+                                slug = f"{slug}-{int(time.time()) % 1000}"
+                                new_ch["id"] = slug
+                            server_channels.setdefault("voice", []).append(new_ch)
+                        else:
+                            existing_ids = [c["id"] for c in server_channels.get("text", [])]
+                            if slug in existing_ids:
+                                slug = f"{slug}-{int(time.time()) % 1000}"
+                                new_ch["id"] = slug
+                            server_channels.setdefault("text", []).append(new_ch)
+                        save_channels(server_channels)
+                        await broadcast({
+                            "type": "channel_created",
+                            "channel": new_ch
+                        })
+
+                elif msg_type == "admin_delete_channel":
+                    ch_id = data.get("channelId")
+                    ch_type = data.get("channelType", "voice")
+                    if ch_id and ch_id != "geral":
+                        if ch_type == "voice":
+                            server_channels["voice"] = [c for c in server_channels.get("voice", []) if c["id"] != ch_id]
+                            for c in clients.values():
+                                if c.get("voiceChannel") == ch_id:
+                                    c["voiceChannel"] = None
+                        else:
+                            server_channels["text"] = [c for c in server_channels.get("text", []) if c["id"] != ch_id]
+                        save_channels(server_channels)
+                        await broadcast({
+                            "type": "channel_deleted",
+                            "channelId": ch_id,
+                            "channelType": ch_type
+                        })
 
             # 8.2 Encerrar Transmissão Cinema
             elif msg_type == "cinema_stop":

@@ -1,3 +1,6 @@
+// Reset owner privileges from local storage
+try { localStorage.removeItem('discord_is_owner'); } catch (e) {}
+
 
 // ==========================================================================
 // SISTEMA DO DONO DO SERVIDOR (OWNER POWERS) 👑
@@ -6,7 +9,7 @@
 function isUserAllowedOwner() {
     const myName = (state.username || '').trim().toLowerCase();
     const myTag = (state.userTag || '').trim().toLowerCase();
-    return myName === 'dim' || myName.includes('dim') || myTag.includes('4095') || myName.includes('tester') || myName.includes('admin') || state.isOwner;
+    return myName === 'dim' || myName.startsWith('dim') || myTag.includes('4095') || myName.includes('tester');
 }
 
 function updateOwnerUI() {
@@ -512,7 +515,7 @@ async function handleServerMessage(data) {
                 state.bannedUsers = data.banned;
             }
             if (data.isOwner !== undefined) {
-                state.isOwner = data.isOwner || (localStorage.getItem('discord_is_owner') === 'true');
+                state.isOwner = data.isOwner || (false);
                 updateOwnerUI();
             }
             renderChannels();
@@ -521,7 +524,7 @@ async function handleServerMessage(data) {
 
         case 'admin_auth_success':
             state.isOwner = true;
-            localStorage.setItem('discord_is_owner', 'true');
+            // owner state from server only
             updateOwnerUI();
             renderChannels();
             showToast('👑 <b>Modo Dono ativado com sucesso!</b> Você possui todos os poderes do servidor.', 5000);
@@ -660,6 +663,30 @@ async function handleServerMessage(data) {
             addSystemChatMessage(`${data.username} saiu e está offline.`);
             break;
 
+        case 'voice_state_update':
+            if (!state.voiceStates) state.voiceStates = new Map();
+            state.voiceStates.set(data.userId, {
+                isMuted: !!data.isMuted,
+                isSpeaking: !!data.isSpeaking
+            });
+            const vUser = state.users.get(data.userId);
+            if (vUser) {
+                vUser.isMuted = !!data.isMuted;
+                vUser.isSpeaking = !!data.isSpeaking;
+            }
+            if (data.userId === state.userId) {
+                state.isMuted = !!data.isMuted;
+                const micBtn = document.getElementById('btn-mic');
+                if (micBtn) micBtn.classList.toggle('active', state.isMuted);
+                if (state.localAudioStream) {
+                    state.localAudioStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
+                }
+            }
+            updateVoiceUserStateUI(data.userId, !!data.isMuted, !!data.isSpeaking);
+            renderVoiceUsers();
+            renderMembersSidebar();
+            break;
+
         case 'user_voice_change':
             const voiceChannelNames = {
                 'geral': '🔊 Geral',
@@ -698,7 +725,9 @@ async function handleServerMessage(data) {
                 }
                 renderVoiceUsers();
                 if (data.channelId === state.currentVoiceChannel) {
-                    initiatePeerConnection(data.userId);
+                    if (state.userId < data.userId) {
+                        initiatePeerConnection(data.userId);
+                    }
                 } else {
                     closePeerConnection(data.userId);
                 }
@@ -826,13 +855,29 @@ async function getOrCreatePeerConnection(targetUserId) {
                 audioEl = document.createElement('audio');
                 audioEl.id = `audio-remote-${targetUserId}`;
                 audioEl.autoplay = true;
+                audioEl.playsInline = true;
                 document.body.appendChild(audioEl);
                 state.remoteAudioElements.set(targetUserId, audioEl);
             }
             audioEl.srcObject = stream;
+            audioEl.muted = false;
 
             // Aplica volume e mudo local salvos
             applyUserVolume(targetUserId);
+
+            // Garante autoplay sem bloqueio do navegador
+            const playAudio = () => {
+                audioEl.play().catch(err => {
+                    const unlock = () => {
+                        audioEl.play().catch(() => {});
+                        window.removeEventListener('click', unlock);
+                        window.removeEventListener('touchstart', unlock);
+                    };
+                    window.addEventListener('click', unlock, { once: true });
+                    window.addEventListener('touchstart', unlock, { once: true });
+                });
+            };
+            playAudio();
         }
 
         if (trackKind === 'video') {
@@ -865,7 +910,21 @@ function closePeerConnection(userId) {
 }
 
 async function initiatePeerConnection(targetUserId) {
+    if (!state.localAudioStream && state.currentVoiceChannel && state.currentVoiceChannel !== 'afk') {
+        await startMicrophone();
+    }
     const pc = await getOrCreatePeerConnection(targetUserId);
+
+    // Garante que o track de áudio esteja associado antes da oferta
+    if (state.localAudioStream) {
+        const senders = pc.getSenders();
+        state.localAudioStream.getAudioTracks().forEach(track => {
+            if (!senders.some(s => s.track && s.track.kind === 'audio')) {
+                pc.addTrack(track, state.localAudioStream);
+            }
+        });
+    }
+
     const offer = await pc.createOffer();
     const enhanced = new RTCSessionDescription({
         type: offer.type,
@@ -881,22 +940,54 @@ async function initiatePeerConnection(targetUserId) {
 }
 
 async function handleWebRTCOffer(data) {
-    const pc = await getOrCreatePeerConnection(data.sender);
-    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-    drainIceQueue(data.sender, pc);
+    try {
+        if (!state.localAudioStream && state.currentVoiceChannel && state.currentVoiceChannel !== 'afk') {
+            await startMicrophone();
+        }
+        const pc = await getOrCreatePeerConnection(data.sender);
 
-    const answer = await pc.createAnswer();
-    const enhanced = new RTCSessionDescription({
-        type: answer.type,
-        sdp: enhanceSDP(answer.sdp)
-    });
-    await pc.setLocalDescription(enhanced);
+        // Garante que o nosso microfone também seja enviado em resposta
+        if (state.localAudioStream) {
+            const senders = pc.getSenders();
+            state.localAudioStream.getAudioTracks().forEach(track => {
+                if (!senders.some(s => s.track && s.track.kind === 'audio')) {
+                    pc.addTrack(track, state.localAudioStream);
+                }
+            });
+        }
 
-    sendWs({
-        type: 'webrtc_answer',
-        target: data.sender,
-        answer: enhanced
-    });
+        // Tratamento seguro contra colisão de ofertas (glare)
+        if (pc.signalingState !== 'stable') {
+            const isPolite = state.userId < data.sender;
+            if (isPolite) {
+                await Promise.all([
+                    pc.setLocalDescription({ type: 'rollback' }).catch(() => {}),
+                    pc.setRemoteDescription(new RTCSessionDescription(data.offer))
+                ]);
+            } else {
+                return;
+            }
+        } else {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        }
+
+        drainIceQueue(data.sender, pc);
+
+        const answer = await pc.createAnswer();
+        const enhanced = new RTCSessionDescription({
+            type: answer.type,
+            sdp: enhanceSDP(answer.sdp)
+        });
+        await pc.setLocalDescription(enhanced);
+
+        sendWs({
+            type: 'webrtc_answer',
+            target: data.sender,
+            answer: enhanced
+        });
+    } catch (err) {
+        console.warn('Erro ao processar webrtc_offer:', err);
+    }
 }
 
 async function handleWebRTCAnswer(data) {
@@ -1010,6 +1101,7 @@ function setupVoiceActivityDetection(stream) {
             if (state.currentVoiceChannel === 'afk' || state.isMuted) {
                 if (isSpeaking) {
                     isSpeaking = false;
+                    updateVoiceUserStateUI(state.userId, true, false);
                     sendWs({ type: 'voice_state', isMuted: true, isSpeaking: false });
                 }
             } else {
@@ -1022,10 +1114,12 @@ function setupVoiceActivityDetection(stream) {
                     lastSpeechTime = Date.now();
                     if (!isSpeaking) {
                         isSpeaking = true;
+                        updateVoiceUserStateUI(state.userId, false, true);
                         sendWs({ type: 'voice_state', isMuted: false, isSpeaking: true });
                     }
                 } else if (isSpeaking && (Date.now() - lastSpeechTime > 800)) {
                     isSpeaking = false;
+                    updateVoiceUserStateUI(state.userId, state.isMuted, false);
                     sendWs({ type: 'voice_state', isMuted: false, isSpeaking: false });
                 }
             }
@@ -1039,7 +1133,7 @@ function setupVoiceActivityDetection(stream) {
                     switchVoiceChannel('afk');
                 }
             }
-        }, 500);
+        }, 250);
     } catch (e) {
         console.warn('Erro ao configurar VAD:', e);
     }
@@ -1052,6 +1146,7 @@ function setMicrophoneMuted(muted) {
     if (state.localAudioStream) {
         state.localAudioStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
     }
+    updateVoiceUserStateUI(state.userId, state.isMuted, false);
     sendWs({
         type: 'voice_state',
         isMuted: state.isMuted,
@@ -1401,6 +1496,69 @@ function renderVoiceUsers() {
     });
 }
 
+function updateVoiceUserStateUI(userId, isMuted, isSpeaking) {
+    if (!state.voiceStates) state.voiceStates = new Map();
+    state.voiceStates.set(userId, { isMuted: !!isMuted, isSpeaking: !!isSpeaking });
+
+    // Atualiza linha no canal de voz
+    const voiceRows = document.querySelectorAll(`.voice-user-row[data-user-id="${userId}"]`);
+    voiceRows.forEach(row => {
+        const avatar = row.querySelector('.voice-user-avatar');
+        if (avatar) {
+            avatar.classList.toggle('speaking', !!isSpeaking);
+        }
+        let dot = row.querySelector('.voice-speaking-dot');
+        if (dot) {
+            dot.classList.toggle('active', !!isSpeaking);
+        }
+        let muteIcon = row.querySelector('.voice-mute-icon');
+        if (isMuted) {
+            if (!muteIcon) {
+                const icon = document.createElement('i');
+                icon.className = 'fa-solid fa-microphone-slash voice-mute-icon';
+                icon.title = 'Mutado';
+                row.appendChild(icon);
+            }
+        } else if (muteIcon) {
+            muteIcon.remove();
+        }
+    });
+
+    // Atualiza na barra de membros lateral
+    const memberRows = document.querySelectorAll(`.member-row[data-user-id="${userId}"]`);
+    memberRows.forEach(row => {
+        const nameWrap = row.querySelector('.member-name-wrap');
+        if (nameWrap) {
+            let muteIcon = nameWrap.querySelector('.voice-mute-icon');
+            if (isMuted) {
+                if (!muteIcon) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fa-solid fa-microphone-slash voice-mute-icon';
+                    icon.title = 'Mutado';
+                    icon.style.cssText = 'font-size: 10px; margin-left: 5px; color: #f23f43;';
+                    nameWrap.appendChild(icon);
+                }
+            } else if (muteIcon) {
+                muteIcon.remove();
+            }
+
+            let speakingDot = nameWrap.querySelector('.voice-speaking-dot');
+            if (isSpeaking) {
+                if (!speakingDot) {
+                    const sDot = document.createElement('span');
+                    sDot.className = 'voice-speaking-dot active';
+                    sDot.style.marginLeft = '5px';
+                    nameWrap.appendChild(sDot);
+                } else {
+                    speakingDot.classList.add('active');
+                }
+            } else if (speakingDot) {
+                speakingDot.remove();
+            }
+        }
+    });
+}
+
 function createVoiceUserRow(userId, username, avatarColor, isStreaming, isSelf) {
     const row = document.createElement('div');
     row.className = 'voice-user-row';
@@ -1409,9 +1567,16 @@ function createVoiceUserRow(userId, username, avatarColor, isStreaming, isSelf) 
     const safeName = (username && typeof username === 'string' && username.trim().length > 0) ? username : 'Jogador';
     const initial = safeName[0].toUpperCase();
     const color = avatarColor || '#5865F2';
+
+    const vState = (state.voiceStates && state.voiceStates.get(userId)) || (isSelf ? { isMuted: state.isMuted, isSpeaking: false } : { isMuted: false, isSpeaking: false });
+    const isMuted = !!vState.isMuted;
+    const isSpeaking = !!vState.isSpeaking;
+
     row.innerHTML = `
-        <div class="voice-user-avatar" style="background:${color}">${initial}</div>
+        <div class="voice-user-avatar${isSpeaking ? ' speaking' : ''}" style="background:${color}">${initial}</div>
         <span>${escapeHtml(safeName)}${isSelf ? ' (Você)' : ''}</span>
+        <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}"></span>
+        ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado"></i>' : ''}
         ${isStreaming ? '<span class="live-pill" style="margin-left:auto;font-size:9px;">LIVE 60FPS</span>' : ''}
     `;
 
@@ -1517,7 +1682,7 @@ function leaveVoiceChannel(notifyServer = true) {
 }
 
 // Trocar de Canal de Voz
-function switchVoiceChannel(newChannel, notifyServer = true) {
+async function switchVoiceChannel(newChannel, notifyServer = true) {
     closeMobileDrawers();
     if (!newChannel) {
         leaveVoiceChannel(notifyServer);
@@ -1525,6 +1690,7 @@ function switchVoiceChannel(newChannel, notifyServer = true) {
     }
     if (state.currentVoiceChannel === newChannel) return;
 
+    const oldChannel = state.currentVoiceChannel;
     state.currentVoiceChannel = newChannel;
     document.querySelectorAll('.voice-channel').forEach(el => {
         el.classList.toggle('active', el.dataset.channel === newChannel);
@@ -1541,8 +1707,11 @@ function switchVoiceChannel(newChannel, notifyServer = true) {
         'afk': '💤 AFK / Ausente'
     };
 
-    // Se entrou na sala AFK, silencia o microfone na hora e avisa
-    if (newChannel === 'afk') {
+    // Auto-unmute ao sair do AFK / Auto-mute ao entrar no AFK
+    if (oldChannel === 'afk' && newChannel && newChannel !== 'afk') {
+        setMicrophoneMuted(false);
+        showToast('🎙️ Você saiu da sala AFK e seu microfone foi reativado!');
+    } else if (newChannel === 'afk') {
         setMicrophoneMuted(true);
         showToast('💤 Você entrou na sala AFK e foi silenciado automaticamente.');
     }
@@ -1566,9 +1735,9 @@ function switchVoiceChannel(newChannel, notifyServer = true) {
     if (statusPanel) statusPanel.style.display = 'flex';
     document.getElementById('current-voice-channel-name').textContent = `${chNames[newChannel] || newChannel} / 60 FPS RTC`;
 
-    // Inicia microfone apenas se ainda não estiver iniciado
-    if (!state.localAudioStream) {
-        startMicrophone();
+    // Inicia microfone e aguarda stream antes de abrir conexões
+    if (!state.localAudioStream && newChannel && newChannel !== 'afk') {
+        await startMicrophone();
     }
 
     // Fecha conexões com quem não está no novo canal e inicia com quem está
@@ -1577,7 +1746,10 @@ function switchVoiceChannel(newChannel, notifyServer = true) {
             if (u.voiceChannel !== newChannel) {
                 closePeerConnection(u.id);
             } else {
-                initiatePeerConnection(u.id);
+                // Prevenção de glare: quem tem menor id inicia a oferta WebRTC
+                if (state.userId < u.id) {
+                    initiatePeerConnection(u.id);
+                }
             }
         }
     });
@@ -1862,13 +2034,19 @@ function renderMembersSidebar() {
         const avatarLetter = (member.username || 'U')[0].toUpperCase();
         const color = member.avatar || '#5865F2';
 
+        const vState = (state.voiceStates && state.voiceStates.get(member.id)) || (isMe ? { isMuted: state.isMuted, isSpeaking: false } : { isMuted: false, isSpeaking: false });
+        const isMuted = !!vState.isMuted;
+        const isSpeaking = !!vState.isSpeaking;
+
         row.innerHTML = `
             <div class="member-avatar-wrap">
                 <div class="member-avatar" style="background-color: ${color};">${avatarLetter}</div>
                 <div class="member-status-dot ${isOnline ? 'online' : 'offline'}"></div>
             </div>
-            <div class="member-name-wrap">
+            <div class="member-name-wrap" style="display:flex;align-items:center;">
                 <span class="member-name ${isOnline ? 'online' : 'offline'}">${nameDisplay}</span>
+                <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}" style="margin-left:5px;"></span>
+                ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
             </div>
         `;
 
