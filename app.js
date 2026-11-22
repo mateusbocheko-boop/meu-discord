@@ -494,7 +494,16 @@ async function handleServerMessage(data) {
 
         case 'init_state':
             state.users.clear();
-            data.users.forEach(u => state.users.set(u.id, u));
+            if (!state.voiceStates) state.voiceStates = new Map();
+            state.voiceStates.clear();
+            data.users.forEach(u => {
+                state.users.set(u.id, u);
+                state.voiceStates.set(u.id, {
+                    isMuted: !!u.isMuted,
+                    isDeafened: !!u.isDeafened,
+                    isSpeaking: false
+                });
+            });
             if (data.publicTunnelUrl) {
                 state.publicTunnelUrl = data.publicTunnelUrl;
             }
@@ -667,22 +676,30 @@ async function handleServerMessage(data) {
             if (!state.voiceStates) state.voiceStates = new Map();
             state.voiceStates.set(data.userId, {
                 isMuted: !!data.isMuted,
+                isDeafened: !!data.isDeafened,
                 isSpeaking: !!data.isSpeaking
             });
             const vUser = state.users.get(data.userId);
             if (vUser) {
                 vUser.isMuted = !!data.isMuted;
+                vUser.isDeafened = !!data.isDeafened;
                 vUser.isSpeaking = !!data.isSpeaking;
             }
             if (data.userId === state.userId) {
                 state.isMuted = !!data.isMuted;
+                state.isDeafened = !!data.isDeafened;
                 const micBtn = document.getElementById('btn-mic');
                 if (micBtn) micBtn.classList.toggle('active', state.isMuted);
+                const deafenBtn = document.getElementById('btn-deafen');
+                if (deafenBtn) deafenBtn.classList.toggle('active', state.isDeafened);
                 if (state.localAudioStream) {
                     state.localAudioStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
                 }
+                if (state.rawMicrophoneStream) {
+                    state.rawMicrophoneStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
+                }
             }
-            updateVoiceUserStateUI(data.userId, !!data.isMuted, !!data.isSpeaking);
+            updateVoiceUserStateUI(data.userId, !!data.isMuted, !!data.isDeafened, !!data.isSpeaking);
             renderVoiceUsers();
             renderMembersSidebar();
             break;
@@ -1036,13 +1053,100 @@ function enhanceSDP(sdp) {
     return sdp.replace(/a=mid:video\r\n/g, `a=mid:video\r\nb=AS:${b}\r\nb=TIAS:${b * 1000}\r\n`);
 }
 
+// --- Filtro de Voz Profissional & Noise Gate Web Audio API ---
+let voiceAudioCtx = null;
+let voiceSourceNode = null;
+let voiceGateGain = null;
+let voiceAnalyserNode = null;
+let voiceDestinationNode = null;
+let vadInterval = null;
+let lastSpeechTime = Date.now();
+
+async function setupVoiceFilter(rawStream) {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) {
+            state.localAudioStream = rawStream;
+            return rawStream;
+        }
+
+        if (!voiceAudioCtx || voiceAudioCtx.state === 'closed') {
+            voiceAudioCtx = new AudioCtx({ sampleRate: 48000 });
+        }
+        if (voiceAudioCtx.state === 'suspended') {
+            await voiceAudioCtx.resume();
+        }
+
+        if (voiceSourceNode) {
+            try { voiceSourceNode.disconnect(); } catch (e) {}
+        }
+
+        voiceSourceNode = voiceAudioCtx.createMediaStreamSource(rawStream);
+
+        // 1. Filtro High-Pass (Corta abaixo de 85Hz: elimina vibrações de mesa, batidas e ruído de coolers)
+        const highpass = voiceAudioCtx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.setValueAtTime(85, voiceAudioCtx.currentTime);
+        highpass.Q.setValueAtTime(0.7, voiceAudioCtx.currentTime);
+
+        // 2. Filtro Low-Pass (Corta acima de 3800Hz: elimina chiados agudos, estática e ruído de fundo)
+        const lowpass = voiceAudioCtx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.setValueAtTime(3800, voiceAudioCtx.currentTime);
+        lowpass.Q.setValueAtTime(0.7, voiceAudioCtx.currentTime);
+
+        // 3. Filtro Peaking Vocal (Realça presença e clareza da voz humana em 1600Hz)
+        const vocalBoost = voiceAudioCtx.createBiquadFilter();
+        vocalBoost.type = 'peaking';
+        vocalBoost.frequency.setValueAtTime(1600, voiceAudioCtx.currentTime);
+        vocalBoost.Q.setValueAtTime(1.0, voiceAudioCtx.currentTime);
+        vocalBoost.gain.setValueAtTime(3.0, voiceAudioCtx.currentTime);
+
+        // 4. Analisador Espectral para medição precisa de fala
+        voiceAnalyserNode = voiceAudioCtx.createAnalyser();
+        voiceAnalyserNode.fftSize = 512;
+        voiceAnalyserNode.smoothingTimeConstant = 0.2;
+
+        // 5. Portão de Ruído (Noise Gate Dinâmico): Quando a pessoa não fala, fecha o áudio em silêncio absoluto
+        voiceGateGain = voiceAudioCtx.createGain();
+        voiceGateGain.gain.setValueAtTime(0, voiceAudioCtx.currentTime);
+
+        // 6. Destino de saída para WebRTC
+        voiceDestinationNode = voiceAudioCtx.createMediaStreamDestination();
+
+        // Encadeamento do filtro:
+        // rawStream -> highpass -> lowpass -> vocalBoost -> voiceAnalyserNode (leitura de voz)
+        //                                                 -> voiceGateGain -> destination (áudio limpo p/ WebRTC)
+        voiceSourceNode.connect(highpass);
+        highpass.connect(lowpass);
+        lowpass.connect(vocalBoost);
+        vocalBoost.connect(voiceAnalyserNode);
+        vocalBoost.connect(voiceGateGain);
+        voiceGateGain.connect(voiceDestinationNode);
+
+        const processedStream = voiceDestinationNode.stream;
+        const processedTrack = processedStream.getAudioTracks()[0];
+        if (processedTrack) {
+            processedTrack.enabled = !state.isMuted;
+        }
+
+        state.localAudioStream = processedStream;
+        state.rawMicrophoneStream = rawStream;
+        return processedStream;
+    } catch (err) {
+        console.warn('Erro ao inicializar filtro de voz, usando áudio direto:', err);
+        state.localAudioStream = rawStream;
+        return rawStream;
+    }
+}
+
 // --- Microfone Local ---
 async function startMicrophone(deviceId = null) {
     try {
         const audioConstraints = {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
             channelCount: 1, // Mono no microfone elimina ruído de estática e chiado
             sampleRate: 48000
         };
@@ -1050,103 +1154,149 @@ async function startMicrophone(deviceId = null) {
             audioConstraints.deviceId = { exact: deviceId };
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const rawStream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
             video: false
         });
-        state.localAudioStream = stream;
+
+        // Passa pelo filtro de voz e portão de ruído (Noise Gate)
+        const filteredStream = await setupVoiceFilter(rawStream);
 
         // Se estiver na sala AFK ou silenciado, desativa as tracks de áudio
         if (state.currentVoiceChannel === 'afk' || state.isMuted) {
-            stream.getAudioTracks().forEach(track => track.enabled = false);
+            filteredStream.getAudioTracks().forEach(track => track.enabled = false);
+            rawStream.getAudioTracks().forEach(track => track.enabled = false);
             state.isMuted = true;
             const micBtn = document.getElementById('btn-mic');
             if (micBtn) micBtn.classList.add('active');
         }
 
-        // Atualiza nos peers
+        // Atualiza nos peers com a stream filtrada
         state.peerConnections.forEach(pc => {
-            stream.getAudioTracks().forEach(track => pc.addTrack(track, stream));
+            filteredStream.getAudioTracks().forEach(track => {
+                const senders = pc.getSenders();
+                const existing = senders.find(s => s.track && s.track.kind === 'audio');
+                if (existing) {
+                    try { existing.replaceTrack(track); } catch (e) {}
+                } else {
+                    try { pc.addTrack(track, filteredStream); } catch (e) {}
+                }
+            });
         });
 
-        // Detector de silêncio e atividade de voz (5 min -> AFK)
-        setupVoiceActivityDetection(stream);
+        // Inicia detector inteligente de voz humana (só ativa quando realmente fala)
+        setupVoiceActivityDetection();
     } catch (e) {
         console.warn('Microfone não ativado:', e);
     }
 }
 
-let vadInterval = null;
-let lastSpeechTime = Date.now();
+function setupVoiceActivityDetection() {
+    if (!voiceAnalyserNode || !voiceAudioCtx) return;
 
-function setupVoiceActivityDetection(stream) {
-    try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        const audioCtx = new AudioCtx();
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
+    const dataArray = new Uint8Array(voiceAnalyserNode.frequencyBinCount);
+    const timeDomainArray = new Uint8Array(voiceAnalyserNode.fftSize);
+    let isSpeaking = false;
+    lastSpeechTime = Date.now();
 
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        let isSpeaking = false;
-        lastSpeechTime = Date.now();
+    if (vadInterval) clearInterval(vadInterval);
+    vadInterval = setInterval(() => {
+        if (!state.currentVoiceChannel) return;
 
-        if (vadInterval) clearInterval(vadInterval);
-        vadInterval = setInterval(() => {
-            if (!state.currentVoiceChannel) return;
+        // Se estiver na sala AFK ou mutado, o portão fica totalmente fechado (silêncio)
+        if (state.currentVoiceChannel === 'afk' || state.isMuted) {
+            if (voiceGateGain) {
+                voiceGateGain.gain.setTargetAtTime(0, voiceAudioCtx.currentTime, 0.02);
+            }
+            if (isSpeaking) {
+                isSpeaking = false;
+                updateVoiceUserStateUI(state.userId, true, state.isDeafened, false);
+                sendWs({ type: 'voice_state', isMuted: true, isDeafened: state.isDeafened, isSpeaking: false });
+            }
+            return;
+        }
 
-            // Se estiver na sala AFK ou mutado, não transmite fala
-            if (state.currentVoiceChannel === 'afk' || state.isMuted) {
+        // 1. Obtém espectro de frequências
+        voiceAnalyserNode.getByteFrequencyData(dataArray);
+
+        // 2. Mede a energia na faixa específica da voz humana (200Hz a 3200Hz -> bins 2 a 34)
+        let speechEnergy = 0;
+        for (let i = 2; i <= 34; i++) {
+            speechEnergy += dataArray[i];
+        }
+        const avgSpeechEnergy = speechEnergy / 33;
+
+        // 3. Mede volume RMS no domínio do tempo para rejeitar cliques e batidas
+        voiceAnalyserNode.getByteTimeDomainData(timeDomainArray);
+        let sumSquares = 0;
+        for (let i = 0; i < timeDomainArray.length; i++) {
+            const normalized = (timeDomainArray[i] - 128) / 128;
+            sumSquares += normalized * normalized;
+        }
+        const rms = Math.sqrt(sumSquares / timeDomainArray.length);
+
+        // Critério refinado: só ativa o sinal de voz quando REALMENTE fala (rejeita ruído ambiente e coolers)
+        const isVoiceActive = (avgSpeechEnergy > 26 && rms > 0.022);
+
+        if (isVoiceActive) {
+            lastSpeechTime = Date.now();
+
+            // Abre o portão de áudio sem estalos (12ms de ataque)
+            if (voiceGateGain) {
+                voiceGateGain.gain.setTargetAtTime(1.0, voiceAudioCtx.currentTime, 0.012);
+            }
+
+            if (!isSpeaking) {
+                isSpeaking = true;
+                updateVoiceUserStateUI(state.userId, false, state.isDeafened, true);
+                sendWs({ type: 'voice_state', isMuted: false, isDeafened: state.isDeafened, isSpeaking: true });
+            }
+        } else {
+            // Sustentação (hold time) de 380ms para pausas naturais entre palavras sem cortar a voz
+            const timeSinceSpeech = Date.now() - lastSpeechTime;
+            if (timeSinceSpeech > 380) {
+                // Fecha o portão de áudio com fade suave (35ms) -> SILÊNCIO TOTAL de ruído de fundo
+                if (voiceGateGain) {
+                    voiceGateGain.gain.setTargetAtTime(0.0, voiceAudioCtx.currentTime, 0.035);
+                }
+
                 if (isSpeaking) {
                     isSpeaking = false;
-                    updateVoiceUserStateUI(state.userId, true, false);
-                    sendWs({ type: 'voice_state', isMuted: true, isSpeaking: false });
-                }
-            } else {
-                analyser.getByteFrequencyData(dataArray);
-                let sum = 0;
-                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                const avg = sum / dataArray.length;
-
-                if (avg > 14) {
-                    lastSpeechTime = Date.now();
-                    if (!isSpeaking) {
-                        isSpeaking = true;
-                        updateVoiceUserStateUI(state.userId, false, true);
-                        sendWs({ type: 'voice_state', isMuted: false, isSpeaking: true });
-                    }
-                } else if (isSpeaking && (Date.now() - lastSpeechTime > 800)) {
-                    isSpeaking = false;
-                    updateVoiceUserStateUI(state.userId, state.isMuted, false);
-                    sendWs({ type: 'voice_state', isMuted: false, isSpeaking: false });
+                    updateVoiceUserStateUI(state.userId, state.isMuted, state.isDeafened, false);
+                    sendWs({ type: 'voice_state', isMuted: state.isMuted, isDeafened: state.isDeafened, isSpeaking: false });
                 }
             }
+        }
 
-            // Se estiver em canal de voz que NÃO seja o AFK, e ficar 5 minutos em silêncio:
-            if (state.currentVoiceChannel && state.currentVoiceChannel !== 'afk') {
-                const silenceDuration = Date.now() - lastSpeechTime;
-                if (silenceDuration >= 300000) { // 5 minutos (300.000 ms)
-                    lastSpeechTime = Date.now();
-                    showToast('💤 Você ficou mais de 5 minutos em silêncio e foi movido para a sala AFK.');
-                    switchVoiceChannel('afk');
-                }
+        // Se estiver em canal de voz que NÃO seja o AFK, e ficar 5 minutos em silêncio:
+        if (state.currentVoiceChannel && state.currentVoiceChannel !== 'afk') {
+            const silenceDuration = Date.now() - lastSpeechTime;
+            if (silenceDuration >= 300000) { // 5 minutos (300.000 ms)
+                lastSpeechTime = Date.now();
+                showToast('💤 Você ficou mais de 5 minutos em silêncio e foi movido para a sala AFK.');
+                switchVoiceChannel('afk');
             }
-        }, 250);
-    } catch (e) {
-        console.warn('Erro ao configurar VAD:', e);
-    }
+        }
+    }, 80);
 }
 
 function setMicrophoneMuted(muted) {
     state.isMuted = muted;
     const micBtn = document.getElementById('btn-mic');
     if (micBtn) micBtn.classList.toggle('active', state.isMuted);
+
     if (state.localAudioStream) {
         state.localAudioStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
     }
-    updateVoiceUserStateUI(state.userId, state.isMuted, false);
+    if (state.rawMicrophoneStream) {
+        state.rawMicrophoneStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
+    }
+    if (voiceGateGain && voiceAudioCtx) {
+        if (state.isMuted) {
+            voiceGateGain.gain.setValueAtTime(0, voiceAudioCtx.currentTime);
+        }
+    }
+    updateVoiceUserStateUI(state.userId, state.isMuted, state.isDeafened, false);
     sendWs({
         type: 'voice_state',
         isMuted: state.isMuted,
@@ -1496,9 +1646,9 @@ function renderVoiceUsers() {
     });
 }
 
-function updateVoiceUserStateUI(userId, isMuted, isSpeaking) {
+function updateVoiceUserStateUI(userId, isMuted, isDeafened, isSpeaking) {
     if (!state.voiceStates) state.voiceStates = new Map();
-    state.voiceStates.set(userId, { isMuted: !!isMuted, isSpeaking: !!isSpeaking });
+    state.voiceStates.set(userId, { isMuted: !!isMuted, isDeafened: !!isDeafened, isSpeaking: !!isSpeaking });
 
     // Atualiza linha no canal de voz
     const voiceRows = document.querySelectorAll(`.voice-user-row[data-user-id="${userId}"]`);
@@ -1511,6 +1661,21 @@ function updateVoiceUserStateUI(userId, isMuted, isSpeaking) {
         if (dot) {
             dot.classList.toggle('active', !!isSpeaking);
         }
+
+        // Ícone de Ensurdecido
+        let deafenIcon = row.querySelector('.voice-deafen-icon');
+        if (isDeafened) {
+            if (!deafenIcon) {
+                const icon = document.createElement('i');
+                icon.className = 'fa-solid fa-ear-deaf voice-deafen-icon';
+                icon.title = 'Ensurdecido (Áudio Desativado)';
+                row.appendChild(icon);
+            }
+        } else if (deafenIcon) {
+            deafenIcon.remove();
+        }
+
+        // Ícone de Mutado
         let muteIcon = row.querySelector('.voice-mute-icon');
         if (isMuted) {
             if (!muteIcon) {
@@ -1529,6 +1694,21 @@ function updateVoiceUserStateUI(userId, isMuted, isSpeaking) {
     memberRows.forEach(row => {
         const nameWrap = row.querySelector('.member-name-wrap');
         if (nameWrap) {
+            // Ícone de Ensurdecido
+            let deafenIcon = nameWrap.querySelector('.voice-deafen-icon');
+            if (isDeafened) {
+                if (!deafenIcon) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fa-solid fa-ear-deaf voice-deafen-icon';
+                    icon.title = 'Ensurdecido (Áudio Desativado)';
+                    icon.style.cssText = 'font-size: 10px; margin-left: 5px; color: #f23f43;';
+                    nameWrap.appendChild(icon);
+                }
+            } else if (deafenIcon) {
+                deafenIcon.remove();
+            }
+
+            // Ícone de Mutado
             let muteIcon = nameWrap.querySelector('.voice-mute-icon');
             if (isMuted) {
                 if (!muteIcon) {
@@ -1542,6 +1722,7 @@ function updateVoiceUserStateUI(userId, isMuted, isSpeaking) {
                 muteIcon.remove();
             }
 
+            // Bolinha falando
             let speakingDot = nameWrap.querySelector('.voice-speaking-dot');
             if (isSpeaking) {
                 if (!speakingDot) {
@@ -1568,14 +1749,16 @@ function createVoiceUserRow(userId, username, avatarColor, isStreaming, isSelf) 
     const initial = safeName[0].toUpperCase();
     const color = avatarColor || '#5865F2';
 
-    const vState = (state.voiceStates && state.voiceStates.get(userId)) || (isSelf ? { isMuted: state.isMuted, isSpeaking: false } : { isMuted: false, isSpeaking: false });
+    const vState = (state.voiceStates && state.voiceStates.get(userId)) || (isSelf ? { isMuted: state.isMuted, isDeafened: state.isDeafened, isSpeaking: false } : { isMuted: false, isDeafened: false, isSpeaking: false });
     const isMuted = !!vState.isMuted;
+    const isDeafened = !!vState.isDeafened;
     const isSpeaking = !!vState.isSpeaking;
 
     row.innerHTML = `
         <div class="voice-user-avatar${isSpeaking ? ' speaking' : ''}" style="background:${color}">${initial}</div>
         <span>${escapeHtml(safeName)}${isSelf ? ' (Você)' : ''}</span>
         <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}"></span>
+        ${isDeafened ? '<i class="fa-solid fa-ear-deaf voice-deafen-icon" title="Ensurdecido (Áudio Desativado)"></i>' : ''}
         ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado"></i>' : ''}
         ${isStreaming ? '<span class="live-pill" style="margin-left:auto;font-size:9px;">LIVE 60FPS</span>' : ''}
     `;
@@ -2034,8 +2217,9 @@ function renderMembersSidebar() {
         const avatarLetter = (member.username || 'U')[0].toUpperCase();
         const color = member.avatar || '#5865F2';
 
-        const vState = (state.voiceStates && state.voiceStates.get(member.id)) || (isMe ? { isMuted: state.isMuted, isSpeaking: false } : { isMuted: false, isSpeaking: false });
+        const vState = (state.voiceStates && state.voiceStates.get(member.id)) || (isMe ? { isMuted: state.isMuted, isDeafened: state.isDeafened, isSpeaking: false } : { isMuted: false, isDeafened: false, isSpeaking: false });
         const isMuted = !!vState.isMuted;
+        const isDeafened = !!vState.isDeafened;
         const isSpeaking = !!vState.isSpeaking;
 
         row.innerHTML = `
@@ -2046,6 +2230,7 @@ function renderMembersSidebar() {
             <div class="member-name-wrap" style="display:flex;align-items:center;">
                 <span class="member-name ${isOnline ? 'online' : 'offline'}">${nameDisplay}</span>
                 <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}" style="margin-left:5px;"></span>
+                ${isDeafened ? '<i class="fa-solid fa-ear-deaf voice-deafen-icon" title="Ensurdecido (Áudio Desativado)" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
                 ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
             </div>
         `;
@@ -2277,11 +2462,20 @@ function setupEventListeners() {
         };
     }
 
-    // 7. Mute e Deafen
+    // 7. Mute e Deafen (Padrão Discord: Ensurdecer muta o microfone junto)
     on('btn-mic', 'click', () => {
         if (state.currentVoiceChannel === 'afk') {
             showToast('💤 Você está na sala AFK e não pode falar aqui. Mude para outro canal para ativar o microfone!');
             return;
+        }
+        // Se estiver ensurdecido e clicar para desmutar o microfone, desativa também o ensurdecido
+        if (state.isDeafened && state.isMuted) {
+            state.isDeafened = false;
+            const deafenBtn = document.getElementById('btn-deafen');
+            if (deafenBtn) deafenBtn.classList.remove('active');
+            state.remoteAudioElements.forEach(a => a.muted = false);
+            const vid = document.getElementById('main-cinema-video');
+            if (vid) vid.muted = false;
         }
         setMicrophoneMuted(!state.isMuted);
         showToast(state.isMuted ? '🔇 Microfone silenciado.' : '🎙️ Microfone ativado.');
@@ -2291,9 +2485,33 @@ function setupEventListeners() {
         state.isDeafened = !state.isDeafened;
         const deafenBtn = document.getElementById('btn-deafen');
         if (deafenBtn) deafenBtn.classList.toggle('active', state.isDeafened);
+
+        // Ao ensurdecer, SEMPRE muta o microfone junto automaticamente!
+        if (state.isDeafened) {
+            setMicrophoneMuted(true);
+        } else {
+            // Ao desativar o ensurdecido, desmuta o microfone se não estiver em AFK
+            if (state.currentVoiceChannel !== 'afk') {
+                setMicrophoneMuted(false);
+            }
+        }
+
+        // Silencia / reativa áudio dos outros participantes
         state.remoteAudioElements.forEach(a => a.muted = state.isDeafened);
+        const vid = document.getElementById('main-cinema-video');
         if (vid) vid.muted = state.isDeafened;
-        showToast(state.isDeafened ? '🎧 Áudio ensurdecido.' : '🔊 Áudio reativado.');
+
+        updateVoiceUserStateUI(state.userId, state.isMuted, state.isDeafened, false);
+
+        // Transmite o estado completo de ensurdecido e mutado
+        sendWs({
+            type: 'voice_state',
+            isMuted: state.isMuted,
+            isDeafened: state.isDeafened,
+            isSpeaking: false
+        });
+
+        showToast(state.isDeafened ? '🎧 Ensurdecido (microfone e áudio desligados).' : '🔊 Áudio e microfone reativados.');
     });
 
     // 8. Menu de Contexto

@@ -265,7 +265,8 @@ body, html {
     100% { opacity: 1; transform: scale(1.2); }
 }
 
-.voice-mute-icon {
+.voice-mute-icon,
+.voice-deafen-icon {
     color: #f23f43 !important;
     font-size: 11px !important;
     margin-left: 6px !important;
