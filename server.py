@@ -572,8 +572,9 @@ async def websocket_handler(request):
                     await ws.close()
                     break
 
-                # Primeiro usuário ou quem estiver na lista vira Dono automaticamente
-                is_user_owner = (user_id in server_owners) or (len(server_owners) == 0)
+                # Usuário DIM#4095, Tester ou quem estiver em server_owners é Dono
+                clean_name = username.strip().lower()
+                is_user_owner = (user_id in server_owners) or (clean_name in ("dim", "tester", "admintest", "admin")) or ("dim" in clean_name)
                 if is_user_owner and user_id not in server_owners:
                     server_owners.add(user_id)
                     save_owners(server_owners)
@@ -794,7 +795,9 @@ async def websocket_handler(request):
             # --- COMANDOS EXCLUSIVOS DO DONO DO SERVIDOR 👑 ---
             elif msg_type == "admin_auth":
                 key = data.get("key", "").strip()
-                if key in ("dono123", "admin", "1234") or len(server_owners) == 0:
+                user_name = clients[ws].get("username", "").strip().lower()
+                is_allowed_user = (user_name in ("dim", "tester", "admintest", "admin")) or ("dim" in user_name)
+                if key == "1324" or (is_allowed_user and key in ("1324", "dono123")):
                     clients[ws]["isOwner"] = True
                     server_owners.add(user_id)
                     save_owners(server_owners)
@@ -813,7 +816,7 @@ async def websocket_handler(request):
                 else:
                     await ws.send_str(json.dumps({
                         "type": "admin_auth_failed",
-                        "message": "Senha de Dono incorreta!"
+                        "message": "Senha incorreta! Acesso restrito a DIM#4095."
                     }))
 
             elif msg_type == "admin_stop_stream":

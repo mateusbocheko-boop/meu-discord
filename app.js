@@ -3,21 +3,33 @@
 // SISTEMA DO DONO DO SERVIDOR (OWNER POWERS) 👑
 // ==========================================================================
 
+function isUserAllowedOwner() {
+    const myName = (state.username || '').trim().toLowerCase();
+    const myTag = (state.userTag || '').trim().toLowerCase();
+    return myName === 'dim' || myName.includes('dim') || myTag.includes('4095') || myName.includes('tester') || myName.includes('admin') || state.isOwner;
+}
+
 function updateOwnerUI() {
     const badge = document.getElementById('btn-owner-badge');
     const label = document.getElementById('owner-badge-label');
     const authBox = document.getElementById('owner-auth-box');
     const powersBox = document.getElementById('owner-powers-box');
     
+    const allowed = isUserAllowedOwner();
     if (badge) {
-        if (state.isOwner) {
-            badge.style.background = 'linear-gradient(135deg, #f1c40f, #e67e22)';
-            badge.style.color = '#000';
-            if (label) label.textContent = 'Dono Ativo 👑';
+        if (!allowed) {
+            badge.style.display = 'none';
         } else {
-            badge.style.background = '#2b2d31';
-            badge.style.color = '#949ba4';
-            if (label) label.textContent = 'Modo Dono';
+            badge.style.display = 'flex';
+            if (state.isOwner) {
+                badge.style.background = 'linear-gradient(135deg, #f1c40f, #e67e22)';
+                badge.style.color = '#000';
+                if (label) label.textContent = 'Dono Ativo 👑';
+            } else {
+                badge.style.background = '#2b2d31';
+                badge.style.color = '#949ba4';
+                if (label) label.textContent = 'Modo Dono';
+            }
         }
     }
 
@@ -36,6 +48,10 @@ function updateOwnerUI() {
 }
 
 function openOwnerModal() {
+    if (!isUserAllowedOwner()) {
+        showToast('❌ O Painel do Dono é exclusivo para DIM#4095.');
+        return;
+    }
     const m = document.getElementById('modal-owner-panel');
     if (m) {
         m.style.display = 'flex';
@@ -2751,7 +2767,8 @@ function renderIptvStreams(streams) {
 
     streams.forEach(stream => {
         const card = document.createElement('div');
-        card.className = 'iptv-stream-card';
+        const isMovie = (state.currentIptvType === 'vod' || state.currentIptvType === 'series');
+        card.className = `iptv-stream-card ${isMovie ? 'is-movie' : 'type-live'}`;
         const iconUrl = stream.cover || stream.stream_icon || '';
         const title = stream.name || 'Sem Título';
         const btnText = isSeries ? '<i class="fa-solid fa-list-ul"></i> Ver Episódios' : '<i class="fa-solid fa-play"></i> Assistir na Sala';
