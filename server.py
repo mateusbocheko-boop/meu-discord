@@ -120,6 +120,25 @@ async def broadcast(message, exclude_ws=None):
     for ws in dead:
         clients.pop(ws, None)
 
+async def check_empty_cinema_rooms():
+    for room, cinema in list(cinema_rooms.items()):
+        if cinema is not None:
+            users_in_room = [u for u in clients.values() if u.get("voiceChannel") == room]
+            if len(users_in_room) == 0:
+                print(f"🎬 [Auto-Stop] Sala {room} ficou vazia (0 pessoas). Encerrando transmissão IPTV.")
+                cinema_rooms[room] = None
+                stream_id = str(cinema.get("streamId"))
+                other_using = any(c and str(c.get("streamId")) == stream_id for r, c in cinema_rooms.items() if r != room)
+                if not other_using and stream_id in active_channel_broadcasters:
+                    bc = active_channel_broadcasters.pop(stream_id, None)
+                    if bc:
+                        bc.stop()
+                await broadcast({
+                    "type": "cinema_update",
+                    "room": room,
+                    "cinema": None
+                })
+
 async def send_to_user(target_user_id, message):
     payload = json.dumps(message)
     for ws, user in list(clients.items()):
@@ -213,6 +232,12 @@ class ChannelBroadcaster:
         self.subscribers = set()
         self.task = None
         self.is_running = False
+
+    def stop(self):
+        self.is_running = False
+        if self.task and not self.task.done():
+            self.task.cancel()
+        self.subscribers.clear()
 
     async def run(self):
         self.is_running = True
@@ -499,20 +524,34 @@ async def websocket_handler(request):
             # 2. Mudança de canal de voz
             elif msg_type == "voice_change":
                 if ws in clients:
-                    clients[ws]["voiceChannel"] = data.get("channelId")
-                    ch = clients[ws]["voiceChannel"]
+                    old_ch = clients[ws].get("voiceChannel")
+                    new_ch = data.get("channelId")
+                    clients[ws]["voiceChannel"] = new_ch
+
+                    # Se estava transmitindo tela do PC e mudou para sala de cinema ou desconectou de voz:
+                    if clients[ws].get("isStreaming") and (new_ch is None or new_ch.startswith("cinema-")):
+                        clients[ws]["isStreaming"] = False
+                        clients[ws]["streamInfo"] = None
+                        await broadcast({
+                            "type": "stream_stopped",
+                            "userId": user_id
+                        })
+
                     await broadcast({
                         "type": "user_voice_change",
                         "userId": user_id,
-                        "channelId": ch
+                        "channelId": new_ch
                     })
                     # Se entrou em sala de cinema com transmissão ativa, envia o estado na hora
-                    if ch and ch.startswith("cinema-") and ch in cinema_rooms and cinema_rooms[ch]:
+                    if new_ch and new_ch.startswith("cinema-") and new_ch in cinema_rooms and cinema_rooms[new_ch]:
                         await ws.send_str(json.dumps({
                             "type": "cinema_update",
-                            "room": ch,
-                            "cinema": get_cinema_state(ch)
+                            "room": new_ch,
+                            "cinema": get_cinema_state(new_ch)
                         }))
+
+                    # Se a sala de cinema anterior ficou vazia, encerra a transmissão automaticamente
+                    await check_empty_cinema_rooms()
 
             # 2.2 Mover outro usuário de canal de voz
             elif msg_type == "move_user":
@@ -523,6 +562,13 @@ async def websocket_handler(request):
                     if u.get("id") == target_id:
                         u["voiceChannel"] = new_channel
                         moved_username = u.get("username")
+                        if u.get("isStreaming") and (new_channel is None or new_channel.startswith("cinema-")):
+                            u["isStreaming"] = False
+                            u["streamInfo"] = None
+                            await broadcast({
+                                "type": "stream_stopped",
+                                "userId": target_id
+                            })
                         break
                 if target_id and new_channel:
                     mover_name = clients[ws]["username"] if ws in clients else "Alguém"
@@ -533,6 +579,7 @@ async def websocket_handler(request):
                         "movedBy": mover_name,
                         "movedUser": moved_username
                     })
+                    await check_empty_cinema_rooms()
 
             # 2.1 Atualização de Perfil (Mudar Nome / Avatar)
             elif msg_type == "update_profile":
@@ -552,6 +599,13 @@ async def websocket_handler(request):
             # 3. Transmissão de tela 60 FPS iniciada
             elif msg_type == "screen_start":
                 if ws in clients:
+                    ch = clients[ws].get("voiceChannel")
+                    if ch and ch.startswith("cinema-"):
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Transmissão de tela não é permitida em salas de cinema! As salas de cinema são exclusivas para IPTV."
+                        }))
+                        continue
                     clients[ws]["isStreaming"] = True
                     clients[ws]["streamInfo"] = data.get("streamInfo", {})
                     await broadcast({
@@ -649,6 +703,12 @@ async def websocket_handler(request):
                 # Pode parar se for o dono ou se o dono já saiu do servidor
                 if cinema and (cinema.get("startedById") == user_id or cinema.get("startedById") not in active_user_ids):
                     cinema_rooms[room] = None
+                    stream_id = str(cinema.get("streamId"))
+                    other_using = any(c and str(c.get("streamId")) == stream_id for r, c in cinema_rooms.items() if r != room)
+                    if not other_using and stream_id in active_channel_broadcasters:
+                        bc = active_channel_broadcasters.pop(stream_id, None)
+                        if bc:
+                            bc.stop()
                     await broadcast({
                         "type": "cinema_update",
                         "room": room,
@@ -658,11 +718,20 @@ async def websocket_handler(request):
     finally:
         if ws in clients:
             leaving_user = clients.pop(ws)
+            # 1. Se estava transmitindo tela do PC, encerra imediatamente e avisa a todos
+            if leaving_user.get("isStreaming"):
+                await broadcast({
+                    "type": "stream_stopped",
+                    "userId": user_id
+                })
+            # 2. Notifica saída do usuário
             await broadcast({
                 "type": "user_left",
                 "userId": user_id,
                 "username": leaving_user["username"]
             })
+            # 3. Se alguma sala de cinema ficou vazia, encerra a transmissão automaticamente
+            await check_empty_cinema_rooms()
     return ws
 
 # --- Túnel Cloudflare para Amigos em Outras Cidades ---
