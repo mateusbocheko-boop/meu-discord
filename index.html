@@ -25,8 +25,12 @@
     <div class="app-layout">
         <!-- 1. BARRA LATERAL KORD (COMMAND STRIP) -->
         <nav class="servers-nav kord-nav">
-            <div class="kord-logo-badge active" title="Kord Oficial" id="btn-server-default">
-                <img src="/icon-192.png" alt="Kord" class="kord-fire-logo" style="width:38px;height:38px;border-radius:10px;">
+            <div class="kord-logo-badge active" title="VOX Oficial" id="btn-server-default" style="background:#090a0d;border:1px solid rgba(255,255,255,0.2);">
+                <svg style="width:26px;height:26px;" viewBox="0 0 40 40" fill="none">
+                    <path d="M6 8L18 32L22 32L12 8H6Z" fill="#ffffff"/>
+                    <path d="M34 8L22 32L18 32L28 8H34Z" fill="#22c55e"/>
+                    <circle cx="20" cy="18" r="3.5" fill="#22c55e"/>
+                </svg>
             </div>
             <div class="kord-sep"></div>
             <!-- Lista dinâmica de servidores do usuário -->
@@ -43,10 +47,10 @@
                 <i class="fa-solid fa-bolt"></i>
                 <span class="fps-tag">60</span>
             </div>
-            <div class="server-pill" id="btn-open-settings-rail" title="Configurações Kord">
+            <div class="server-pill" id="btn-open-settings-rail" title="Configurações VOX">
                 <i class="fa-solid fa-sliders"></i>
             </div>
-            <div class="server-pill" id="btn-install-rail" title="Baixar / Instalar App Kord" style="color:#00f2fe;">
+            <div class="server-pill" id="btn-install-rail" title="Baixar / Instalar App VOX" style="color:#00f2fe;">
                 <i class="fa-solid fa-circle-down"></i>
             </div>
         </nav>
@@ -54,9 +58,15 @@
         <!-- 2. CANAIS E USUÁRIOS -->
         <aside class="channels-sidebar">
             <div class="sidebar-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                <div class="kord-brand-header">
-                    <img src="/icon-192.png" alt="Kord" style="width:26px;height:26px;border-radius:6px;">
-                    <span class="kord-brand-title">KORD</span>
+                <div class="kord-brand-header" style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:28px;height:28px;border-radius:8px;background:#090a0d;border:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;">
+                        <svg style="width:18px;height:18px;" viewBox="0 0 40 40" fill="none">
+                            <path d="M6 8L18 32L22 32L12 8H6Z" fill="#ffffff"/>
+                            <path d="M34 8L22 32L18 32L28 8H34Z" fill="#22c55e"/>
+                            <circle cx="20" cy="18" r="3" fill="#22c55e"/>
+                        </svg>
+                    </div>
+                    <span class="kord-brand-title" style="font-weight:900;letter-spacing:1.5px;color:#ffffff;font-size:16px;">VOX</span>
                 </div>
                 <button id="btn-owner-badge" class="btn-owner-badge" title="Painel do Dono do Servidor 👑">
                     <i class="fa-solid fa-crown"></i> <span id="owner-badge-label">Dono</span>
@@ -65,7 +75,7 @@
 
             <!-- Banner Comprar VIP na Barra Lateral -->
             <div style="padding: 10px 10px 4px;">
-                <button id="btn-sidebar-buy-vip" class="btn-buy-vip-banner" title="Assinar Kord VIP">
+                <button id="btn-sidebar-buy-vip" class="btn-buy-vip-banner" title="Assinar VOX VIP">
                     <span style="display:flex;align-items:center;gap:6px;">
                         <i class="fa-solid fa-crown" style="color:#ffd700;"></i>
                         <span>Comprar VIP</span>
@@ -323,7 +333,7 @@
     <div class="modal-backdrop register-backdrop" id="register-modal" style="display: none;">
         <div class="modal-box register-modal-box">
             <div class="register-header">
-                <div class="register-logo"><img src="/icon-192.png" alt="Kord" style="width:68px;height:68px;border-radius:18px;box-shadow:0 0 24px rgba(0,242,254,0.6);"></div>
+                <div class="register-logo"><img src="/icon-192.png" alt="VOX" style="width:68px;height:68px;border-radius:18px;box-shadow:0 0 24px rgba(0,242,254,0.6);"></div>
                 <h2>Bem-vindo ao Kord!</h2>
                 <p>Para entrar e conversar com seus amigos, digite seu nome ou apelido:</p>
             </div>
@@ -1005,5 +1015,205 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script src="app.js"></script>
+
+    <!-- MENU RÁPIDO DE STATUS & ATIVIDADE VOX -->
+    <div id="user-status-menu" class="vox-status-popover" style="display: none;">
+        <div class="vox-status-popover-header">
+            <span>Definir seu Status</span>
+        </div>
+        <div class="vox-status-option" data-status="online">
+            <span class="vox-status-badge online"></span>
+            <div class="vox-status-info">
+                <span class="vox-status-title">Disponível</span>
+                <span class="vox-status-desc">Pronto para bater papo e jogar</span>
+            </div>
+        </div>
+        <div class="vox-status-option" data-status="dnd">
+            <span class="vox-status-badge dnd"></span>
+            <div class="vox-status-info">
+                <span class="vox-status-title">Não Perturbe</span>
+                <span class="vox-status-desc">Silencia sons e alertas</span>
+            </div>
+        </div>
+        <div class="vox-status-option" data-status="idle">
+            <span class="vox-status-badge idle"></span>
+            <div class="vox-status-info">
+                <span class="vox-status-title">Ausente</span>
+                <span class="vox-status-desc">Longe do teclado</span>
+            </div>
+        </div>
+        <div class="vox-status-option" data-status="invisible">
+            <span class="vox-status-badge invisible"></span>
+            <div class="vox-status-info">
+                <span class="vox-status-title">Invisível</span>
+                <span class="vox-status-desc">Aparece offline para todos</span>
+            </div>
+        </div>
+        <div class="vox-status-divider"></div>
+        <div class="vox-status-option" id="btn-open-activity-modal">
+            <i class="fa-solid fa-gamepad" style="color:#22c55e;font-size:14px;width:18px;text-align:center;"></i>
+            <div class="vox-status-info">
+                <span class="vox-status-title">Definir Atividade Gamer</span>
+                <span class="vox-status-desc" id="current-activity-label">Nenhuma atividade</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE ATIVIDADE GAMER / RICH PRESENCE -->
+    <div class="modal-backdrop" id="user-activity-modal" style="display: none;">
+        <div class="modal-box" style="max-width: 440px; border: 1px solid rgba(34, 197, 94, 0.4); box-shadow: 0 0 35px rgba(34, 197, 94, 0.15);">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-gamepad" style="color:#22c55e;"></i> Atividade & Jogo Atual</h3>
+                <button class="modal-close" id="btn-close-activity-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 16px;">
+                <p style="font-size: 13px; color: #a1a1aa; margin-bottom: 14px;">
+                    Mostre aos seus amigos o que você está jogando ou assistindo no momento:
+                </p>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 11px; font-weight: 700; color: #d4d4d8; text-transform: uppercase; margin-bottom: 6px;">TIPO DE ATIVIDADE</label>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="activity-type-pill active" data-type="playing"><i class="fa-solid fa-gamepad"></i> Jogando</button>
+                        <button type="button" class="activity-type-pill" data-type="watching"><i class="fa-solid fa-film"></i> Assistindo</button>
+                        <button type="button" class="activity-type-pill" data-type="listening"><i class="fa-solid fa-headphones"></i> Ouvindo</button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 11px; font-weight: 700; color: #d4d4d8; text-transform: uppercase; margin-bottom: 6px;">NOME DO JOGO / FILME</label>
+                    <input type="text" id="activity-name-input" placeholder="Ex: Valorant, CS2, CineVOX..." style="width: 100%; padding: 10px 12px; background: #000000; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #ffffff; font-size: 14px;">
+                </div>
+
+                <div style="margin-bottom: 18px;">
+                    <span style="font-size: 11px; color: #71717a; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 8px;">ESCOLHA RÁPIDA:</span>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                        <button type="button" class="activity-quick-chip" data-name="Valorant" data-type="playing">🎮 Valorant</button>
+                        <button type="button" class="activity-quick-chip" data-name="Counter-Strike 2" data-type="playing">🎮 CS 2</button>
+                        <button type="button" class="activity-quick-chip" data-name="League of Legends" data-type="playing">🎮 LoL</button>
+                        <button type="button" class="activity-quick-chip" data-name="Grand Theft Auto V" data-type="playing">🎮 GTA V</button>
+                        <button type="button" class="activity-quick-chip" data-name="Minecraft" data-type="playing">🎮 Minecraft</button>
+                        <button type="button" class="activity-quick-chip" data-name="Roblox" data-type="playing">🎮 Roblox</button>
+                        <button type="button" class="activity-quick-chip" data-name="CineVOX • Sessão VIP" data-type="watching">🍿 CineVOX</button>
+                        <button type="button" class="activity-quick-chip" data-name="Filme / Série" data-type="watching">🎬 Assistindo Filme</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button id="btn-clear-activity" class="btn-cancel" style="flex: 1; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 13px;">Limpar</button>
+                    <button id="btn-save-activity" class="btn-save-vip" style="flex: 2; padding: 10px; border-radius: 8px; font-weight: 800; font-size: 13px; background: #22c55e; color: #000000;"><i class="fa-solid fa-check"></i> Salvar no Perfil</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE AUDITORIA & DOSSIÊ DE USUÁRIO (ADM / DONO) -->
+    <div class="modal-backdrop" id="user-audit-modal" style="display: none;">
+        <div class="modal-box" style="max-width: 680px; width: 95%; max-height: 88vh; display: flex; flex-direction: column; border: 1px solid rgba(96, 165, 250, 0.4); box-shadow: 0 0 45px rgba(37, 99, 235, 0.25);">
+            <div class="modal-header" style="flex-shrink: 0;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:34px;height:34px;border-radius:10px;background:rgba(37,99,235,0.2);display:flex;align-items:center;justify-content:center;color:#60a5fa;">
+                        <i class="fa-solid fa-shield-halved" style="font-size:18px;"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0;font-size:16px;color:#ffffff;font-weight:800;">Dossiê & Auditoria de Moderação</h3>
+                        <span style="font-size:11px;color:#93c5fd;">Painel Exclusivo de Segurança VOX</span>
+                    </div>
+                </div>
+                <button class="modal-close" id="btn-close-audit-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <!-- Header do Usuário Auditado -->
+            <div style="padding: 14px 18px; background: #07080b; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div id="audit-user-avatar" style="width: 44px; height: 44px; border-radius: 50%; background: #5865F2; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; color: #fff; flex-shrink: 0;">U</div>
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="audit-user-name" style="font-size: 16px; font-weight: 800; color: #ffffff;">Usuário</span>
+                            <span id="audit-user-tag" style="font-size: 12px; color: #71717a;">#0000</span>
+                            <span id="audit-user-roles"></span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 3px; font-size: 11px; color: #a1a1aa;">
+                            <span id="audit-user-status-badge">⚫ Offline</span>
+                            <span>•</span>
+                            <span id="audit-user-activity-text">Sem atividade</span>
+                        </div>
+                    </div>
+                </div>
+                <div id="audit-warning-counter" style="padding: 6px 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); font-size: 11px; font-weight: 700; color: #f87171;">
+                    0 Advertências
+                </div>
+            </div>
+
+            <!-- Abas de Navegação -->
+            <div style="display: flex; background: #000000; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 0 16px; flex-shrink: 0;">
+                <button type="button" id="tab-btn-audit-msgs" class="audit-tab-btn active">
+                    <i class="fa-solid fa-comments"></i> Mensagens Recentes (<span id="audit-msgs-count">0</span>)
+                </button>
+                <button type="button" id="tab-btn-audit-warns" class="audit-tab-btn">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Advertências (<span id="audit-warns-count">0</span>)
+                </button>
+                <button type="button" id="tab-btn-audit-logs" class="audit-tab-btn">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Histórico de Ações
+                </button>
+            </div>
+
+            <!-- Corpo Rolável com as Mensagens e Dados -->
+            <div class="modal-body" style="padding: 16px; overflow-y: auto; flex: 1;">
+                <!-- Aba 1: Mensagens Recentes -->
+                <div id="audit-tab-msgs-content">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                        <span style="font-size: 12px; color: #a1a1aa;">Últimas mensagens enviadas em todos os canais:</span>
+                        <button id="btn-audit-purge-all" style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: 6px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; cursor: pointer;">
+                            <i class="fa-solid fa-trash-can"></i> Purgar Todas as Mensagens
+                        </button>
+                    </div>
+                    <div id="audit-messages-container" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Injetado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- Aba 2: Advertências -->
+                <div id="audit-tab-warns-content" style="display: none;">
+                    <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+                        <label style="display: block; font-size: 11px; font-weight: 700; color: #facc15; text-transform: uppercase; margin-bottom: 6px;">APLICAR NOVA ADVERTÊNCIA (WARN)</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="audit-warn-reason-input" placeholder="Motivo: ex: Linguagem ofensiva, desrespeito, spam..." style="flex: 1; padding: 8px 12px; background: #000; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                            <button id="btn-apply-warn" style="padding: 8px 14px; background: #eab308; color: #000; font-weight: 800; font-size: 12px; border: none; border-radius: 6px; cursor: pointer;">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Advertir
+                            </button>
+                        </div>
+                    </div>
+                    <div id="audit-warnings-container" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Injetado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- Aba 3: Histórico de Ações -->
+                <div id="audit-tab-logs-content" style="display: none;">
+                    <div id="audit-logs-container" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Injetado dinamicamente -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rodapé com Ações de Moderação Rápida -->
+            <div style="padding: 12px 18px; background: #050608; border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button id="btn-audit-toggle-mute" style="padding: 7px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer;">
+                        <i class="fa-solid fa-microphone-slash"></i> <span id="audit-mute-label">Mutar no Servidor</span>
+                    </button>
+                    <button id="btn-audit-kick" style="padding: 7px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; background: rgba(249, 115, 22, 0.2); border: 1px solid rgba(249, 115, 22, 0.4); color: #fdba74; cursor: pointer;">
+                        <i class="fa-solid fa-user-xmark"></i> Expulsar
+                    </button>
+                    <button id="btn-audit-ban" style="padding: 7px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; background: rgba(239, 68, 68, 0.25); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; cursor: pointer;">
+                        <i class="fa-solid fa-ban"></i> Banir
+                    </button>
+                </div>
+                <button class="modal-close-secondary" id="btn-close-audit-secondary" style="padding: 7px 16px; font-size: 12px; font-weight: 700; border-radius: 6px; background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #a1a1aa; cursor: pointer;">Fechar</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

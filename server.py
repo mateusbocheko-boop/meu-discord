@@ -149,6 +149,62 @@ def save_channels(data):
 
 server_channels = load_channels()
 
+# --- PERSISTÊNCIA DE MENSAGENS, AUDITORIA, ADVERTÊNCIAS E MUTADOS (VOX) ---
+DATA_DIR = str(APP_DIR)
+MESSAGES_FILE = os.path.join(DATA_DIR, "messages.json")
+AUDIT_LOGS_FILE = os.path.join(DATA_DIR, "audit_logs.json")
+WARNINGS_FILE = os.path.join(DATA_DIR, "warnings.json")
+MUTED_USERS_FILE = os.path.join(DATA_DIR, "muted_users.json")
+
+def load_json_data(file_path, default):
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[VOX] Erro ao carregar {file_path}: {e}")
+    return default
+
+def save_json_data(file_path, data):
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[VOX] Erro ao salvar {file_path}: {e}")
+
+server_messages = load_json_data(MESSAGES_FILE, [])
+server_audit_logs = load_json_data(AUDIT_LOGS_FILE, [])
+server_warnings = load_json_data(WARNINGS_FILE, {})
+server_muted_users = set(load_json_data(MUTED_USERS_FILE, []))
+
+def save_messages():
+    save_json_data(MESSAGES_FILE, server_messages[-1000:])
+
+def save_audit_logs():
+    save_json_data(AUDIT_LOGS_FILE, server_audit_logs[-1000:])
+
+def save_warnings():
+    save_json_data(WARNINGS_FILE, server_warnings)
+
+def save_muted_users():
+    save_json_data(MUTED_USERS_FILE, list(server_muted_users))
+
+def log_audit(action, target_user_id, target_username, performed_by_id, performed_by_name, details=""):
+    entry = {
+        "id": f"log_{int(time.time()*1000)}",
+        "action": action,
+        "targetUserId": target_user_id,
+        "targetUsername": target_username,
+        "performedById": performed_by_id,
+        "performedByName": performed_by_name,
+        "details": details,
+        "timestamp": time.time(),
+        "timeStr": time.strftime("%d/%m/%Y %H:%M:%S")
+    }
+    server_audit_logs.append(entry)
+    save_audit_logs()
+    return entry
+
 # --- VIP & MULTI-SERVIDORES PERSISTENTES ---
 VIPS_FILE = APP_DIR / "vips.json"
 SERVERS_FILE = APP_DIR / "servers.json"
@@ -697,11 +753,13 @@ async def websocket_handler(request):
                     "id": user_id,
                     "username": username,
                     "avatar": avatar,
-                    "voiceChannel": None,  # Inicialmente fora de qualquer sala de voz
+                    "voiceChannel": None,
                     "isMuted": False,
                     "isDeafened": False,
                     "isStreaming": False,
-                    "streamInfo": None
+                    "streamInfo": None,
+                    "status": data.get("status", "online"),
+                    "activity": data.get("activity", None)
                 }
 
                 if user_id in server_banned:
@@ -745,7 +803,9 @@ async def websocket_handler(request):
                     "avatar": avatar,
                     "joinedAt": server_members.get(user_id, {}).get("joinedAt", int(time.time())),
                     "isOwner": is_user_owner,
-                    "isAdmin": is_user_admin
+                    "isAdmin": is_user_admin,
+                    "status": clients[ws]["status"],
+                    "activity": clients[ws]["activity"]
                 }
                 save_members(server_members)
 
@@ -762,6 +822,8 @@ async def websocket_handler(request):
                     "cinemaRooms": { r: get_cinema_state(r) for r in cinema_rooms },
                     "channels": server_channels,
                     "servers": get_user_servers(user_id),
+                    "recentMessages": server_messages[-100:],
+                    "serverMuted": (user_id in server_muted_users),
                     "currentServerId": "default",
                     "isOwner": is_user_owner,
                     "isAdmin": is_user_admin,
@@ -969,18 +1031,52 @@ async def websocket_handler(request):
             # 7. Mensagem de texto no chat
             elif msg_type == "chat_message":
                 if ws in clients:
-                    await broadcast({
-                        "type": "chat_message",
+                    if user_id in server_muted_users:
+                        await ws.send_str(json.dumps({
+                            "type": "error",
+                            "message": "Você está silenciado neste servidor por um administrador."
+                        }))
+                        continue
+
+                    msg_text = data.get("text", "").strip()
+                    if not msg_text:
+                        continue
+
+                    msg_id = f"msg_{int(time.time()*1000)}_{user_id[:4]}"
+                    msg_channel = data.get("channelId", "geral")
+                    msg_ts = data.get("timestamp") or time.strftime("%H:%M")
+                    is_vip_user = is_user_vip(user_id, clients[ws]["username"])
+
+                    msg_entry = {
+                        "id": msg_id,
                         "senderId": user_id,
                         "username": clients[ws]["username"],
                         "avatar": clients[ws]["avatar"],
-                        "text": data.get("text", ""),
-                        "timestamp": data.get("timestamp"),
+                        "text": msg_text,
+                        "timestamp": msg_ts,
+                        "createdAt": time.time(),
+                        "channelId": msg_channel,
                         "isOwner": clients[ws].get("isOwner", False),
-                        "isAdmin": clients[ws].get("isAdmin", False)
+                        "isAdmin": clients[ws].get("isAdmin", False),
+                        "isVip": is_vip_user
+                    }
+                    server_messages.append(msg_entry)
+                    save_messages()
+
+                    await broadcast({
+                        "type": "chat_message",
+                        "id": msg_id,
+                        "senderId": user_id,
+                        "username": clients[ws]["username"],
+                        "avatar": clients[ws]["avatar"],
+                        "text": msg_text,
+                        "timestamp": msg_ts,
+                        "channelId": msg_channel,
+                        "isOwner": clients[ws].get("isOwner", False),
+                        "isAdmin": clients[ws].get("isAdmin", False),
+                        "isVip": is_vip_user
                     })
 
-            # 8. Transmissão IPTV Cinema Sincronizada
             elif msg_type == "cinema_play":
                 room = data.get("room")
                 if room in cinema_rooms:
@@ -1534,6 +1630,154 @@ async def websocket_handler(request):
                         })
 
             # 8.2 Encerrar Transmissão Cinema
+            
+            # --- NOVOS RECURSOS VOX: STATUS, ATIVIDADE GAMER E AUDITORIA ADM ---
+            elif msg_type == "set_status":
+                new_status = data.get("status", "online")
+                if new_status not in ("online", "dnd", "idle", "invisible"):
+                    new_status = "online"
+                if ws in clients:
+                    clients[ws]["status"] = new_status
+                    if user_id in server_members:
+                        server_members[user_id]["status"] = new_status
+                        save_members(server_members)
+                    await broadcast({
+                        "type": "user_status_changed",
+                        "userId": user_id,
+                        "status": new_status,
+                        "username": clients[ws]["username"]
+                    })
+
+            elif msg_type == "set_activity":
+                activity = data.get("activity")
+                if ws in clients:
+                    clients[ws]["activity"] = activity
+                    if user_id in server_members:
+                        server_members[user_id]["activity"] = activity
+                        save_members(server_members)
+                    await broadcast({
+                        "type": "user_activity_changed",
+                        "userId": user_id,
+                        "activity": activity,
+                        "username": clients[ws]["username"]
+                    })
+
+            elif msg_type == "admin_get_user_audit":
+                if not (is_user_owner or is_user_admin):
+                    await ws.send_str(json.dumps({"type": "error", "message": "Acesso negado: apenas administradores ou Dono podem auditar usuários."}))
+                    continue
+                target_id = data.get("targetUserId")
+                target_member = server_members.get(target_id)
+                target_client = next((c for c in clients.values() if c["id"] == target_id), None)
+                target_username = target_member.get("username") if target_member else (target_client.get("username") if target_client else target_id)
+
+                # Busca últimas 50 mensagens do usuário
+                user_msgs = [m for m in server_messages if m.get("senderId") == target_id]
+                toxic_keywords = ["racis", "preto imundo", "macaco", "fdp", "otario", "lixo", "nazis", "viado", "arrombado", "filho da", "merda", "krl", "vagabund", "retardad"]
+                for m in user_msgs:
+                    txt_lower = m.get("text", "").lower()
+                    m["flagged"] = any(w in txt_lower for w in toxic_keywords)
+
+                # Busca logs de auditoria do usuário
+                user_logs = [l for l in server_audit_logs if l.get("targetUserId") == target_id or l.get("performedById") == target_id]
+
+                await ws.send_str(json.dumps({
+                    "type": "admin_user_audit_data",
+                    "targetUserId": target_id,
+                    "targetUsername": target_username,
+                    "member": target_member or target_client or {"id": target_id, "username": target_username},
+                    "isOnline": any(c["id"] == target_id for c in clients.values()),
+                    "status": target_client.get("status", "offline") if target_client else "offline",
+                    "activity": target_client.get("activity") if target_client else (target_member.get("activity") if target_member else None),
+                    "isServerMuted": target_id in server_muted_users,
+                    "isBanned": target_id in server_banned,
+                    "isVip": is_user_vip(target_id, target_username),
+                    "warnings": server_warnings.get(target_id, []),
+                    "recentMessages": user_msgs[-50:],
+                    "auditLogs": user_logs[-50:]
+                }))
+
+            elif msg_type == "admin_purge_user_messages":
+                if not (is_user_owner or is_user_admin):
+                    continue
+                target_id = data.get("targetUserId")
+                target_user = data.get("targetUsername", target_id)
+                server_messages = [m for m in server_messages if m.get("senderId") != target_id]
+                save_messages()
+                log_audit("purge_messages", target_id, target_user, user_id, clients[ws]["username"], "Todas as mensagens do usuário foram purgadas pelo ADM.")
+                await broadcast({
+                    "type": "bulk_messages_deleted",
+                    "senderId": target_id
+                })
+
+            elif msg_type == "admin_delete_single_message":
+                if not (is_user_owner or is_user_admin):
+                    continue
+                msg_id = data.get("messageId")
+                server_messages = [m for m in server_messages if m.get("id") != msg_id]
+                save_messages()
+                await broadcast({
+                    "type": "message_deleted",
+                    "messageId": msg_id
+                })
+
+            elif msg_type == "admin_warn_user":
+                if not (is_user_owner or is_user_admin):
+                    continue
+                target_id = data.get("targetUserId")
+                target_name = data.get("targetUsername", target_id)
+                reason = data.get("reason", "Conduta inadequada").strip() or "Conduta inadequada"
+                warn_entry = {
+                    "id": f"warn_{int(time.time()*1000)}",
+                    "reason": reason,
+                    "warnedBy": clients[ws]["username"],
+                    "warnedById": user_id,
+                    "timestamp": time.time(),
+                    "timeStr": time.strftime("%d/%m/%Y %H:%M")
+                }
+                if target_id not in server_warnings:
+                    server_warnings[target_id] = []
+                server_warnings[target_id].append(warn_entry)
+                save_warnings()
+                log_audit("warn_user", target_id, target_name, user_id, clients[ws]["username"], reason)
+
+                # Notifica o usuário advertido em tempo real
+                for c_ws, c in list(clients.items()):
+                    if c.get("id") == target_id:
+                        try:
+                            await c_ws.send_str(json.dumps({
+                                "type": "moderation_warning",
+                                "reason": reason,
+                                "warnedBy": clients[ws]["username"]
+                            }))
+                        except Exception:
+                            pass
+
+                await ws.send_str(json.dumps({
+                    "type": "admin_warn_success",
+                    "targetUserId": target_id,
+                    "warning": warn_entry
+                }))
+
+            elif msg_type == "admin_toggle_server_mute":
+                if not (is_user_owner or is_user_admin):
+                    continue
+                target_id = data.get("targetUserId")
+                target_name = data.get("targetUsername", target_id)
+                if target_id in server_muted_users:
+                    server_muted_users.remove(target_id)
+                    is_muted = False
+                else:
+                    server_muted_users.add(target_id)
+                    is_muted = True
+                save_muted_users()
+                log_audit("server_mute", target_id, target_name, user_id, clients[ws]["username"], f"Silenciado no servidor: {is_muted}")
+                await broadcast({
+                    "type": "user_server_muted",
+                    "userId": target_id,
+                    "isServerMuted": is_muted
+                })
+
             elif msg_type == "cinema_stop":
                 room = data.get("room")
                 cinema = cinema_rooms.get(room)

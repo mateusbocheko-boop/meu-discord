@@ -985,6 +985,75 @@ async function handleServerMessage(data) {
             renderBannedList();
             break;
 
+        
+        case 'user_status_changed': {
+            const u = state.users.get(data.userId) || state.serverMembers.get(data.userId);
+            if (u) u.status = data.status;
+            if (state.serverMembers.has(data.userId)) {
+                state.serverMembers.get(data.userId).status = data.status;
+            }
+            renderMembersSidebar();
+            break;
+        }
+
+        case 'user_activity_changed': {
+            const u = state.users.get(data.userId) || state.serverMembers.get(data.userId);
+            if (u) u.activity = data.activity;
+            if (state.serverMembers.has(data.userId)) {
+                state.serverMembers.get(data.userId).activity = data.activity;
+            }
+            renderMembersSidebar();
+            break;
+        }
+
+        case 'admin_user_audit_data':
+            renderUserAuditModal(data);
+            break;
+
+        case 'admin_warn_success':
+            if (typeof showToast === 'function') showToast('Advertência aplicada com sucesso!', 'warning');
+            if (state.activeAuditUserId === data.targetUserId) {
+                sendWs({ type: 'admin_get_user_audit', targetUserId: data.targetUserId });
+            }
+            break;
+
+        case 'moderation_warning':
+            alert(`⚠️ ADVERTÊNCIA DA ADMINISTRAÇÃO VOX:\n\nMotivo: ${data.reason}\nAplicada por: ${data.warnedBy}\n\nPor favor, mantenha uma postura respeitosa para evitar suspensão da conta.`);
+            break;
+
+        case 'bulk_messages_deleted': {
+            const list = document.getElementById('messages-list');
+            if (list) {
+                const rows = list.querySelectorAll(`.chat-message-row[data-sender-id="${data.senderId}"]`);
+                rows.forEach(r => r.remove());
+            }
+            if (typeof showToast === 'function') showToast('Mensagens purgadas pelo administrador.', 'info');
+            if (state.activeAuditUserId === data.senderId) {
+                sendWs({ type: 'admin_get_user_audit', targetUserId: data.senderId });
+            }
+            break;
+        }
+
+        case 'message_deleted': {
+            const msgEl = document.querySelector(`.chat-message-row[data-message-id="${data.messageId}"]`);
+            if (msgEl) msgEl.remove();
+            break;
+        }
+
+        case 'user_server_muted':
+            if (data.userId === state.userId) {
+                state.isServerMuted = data.isServerMuted;
+                if (data.isServerMuted) {
+                    alert('Você foi silenciado no servidor por um administrador para manter a ordem.');
+                } else {
+                    if (typeof showToast === 'function') showToast('Você foi desmutado no servidor.', 'success');
+                }
+            }
+            if (state.activeAuditUserId === data.userId) {
+                sendWs({ type: 'admin_get_user_audit', targetUserId: data.userId });
+            }
+            break;
+
         case 'chat_message':
             renderChatMessage(data);
             break;
@@ -1969,6 +2038,17 @@ function openUserContextMenu(e, userId) {
     const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin));
 
     // Opção exclusiva do Dono: Dar ou Remover VIP (30 Dias)
+    
+    // Opção exclusiva de Moderação: Dossiê & Auditoria do Usuário (ADM / Dono)
+    const auditBtn = document.getElementById('ctx-btn-user-audit');
+    if (auditBtn) {
+        if ((state.isOwner || state.isAdmin) && !isSelf) {
+            auditBtn.style.display = 'flex';
+        } else {
+            auditBtn.style.display = 'none';
+        }
+    }
+
     const toggleVipBtn = document.getElementById('ctx-btn-toggle-vip');
     if (toggleVipBtn) {
         if (state.isOwner && !isSelf) {
@@ -2861,7 +2941,9 @@ function renderMembersSidebar() {
             allMembers.push({
                 id: u.id,
                 username: u.username,
-                avatar: u.avatar || '#5865F2'
+                avatar: u.avatar || '#5865F2',
+                status: u.status || 'online',
+                activity: u.activity || null
             });
         }
     });
@@ -2876,13 +2958,22 @@ function renderMembersSidebar() {
     let countOffline = 0;
 
     uniqueMap.forEach(member => {
-        const isOnline = state.onlineUserIds.has(member.id) || state.users.has(member.id);
+        const isMe = (member.id === state.userId);
+        const liveUser = state.users.get(member.id);
+        const userStatus = isMe ? (state.userStatus || 'online') : (liveUser?.status || member.status || 'online');
+        const userActivity = isMe ? (state.userActivity || null) : (liveUser?.activity || member.activity || null);
+
+        // Se o usuário estiver invisível e não for eu mesmo, ele é tratado como offline
+        let isOnline = (state.onlineUserIds.has(member.id) || state.users.has(member.id));
+        if (!isMe && (userStatus === 'invisible' || userStatus === 'offline')) {
+            isOnline = false;
+        }
+
         const row = document.createElement('div');
         row.className = 'member-row';
         row.setAttribute('data-user-id', member.id);
         row.style.cursor = 'pointer';
         row.oncontextmenu = (e) => openUserContextMenu(e, member.id);
-        const isMe = (member.id === state.userId);
         const nameDisplay = isMe ? `${escapeHtml(member.username)} (Você)` : escapeHtml(member.username);
         const avatarLetter = (member.username || 'U')[0].toUpperCase();
         const color = member.avatar || '#5865F2';
@@ -2911,21 +3002,48 @@ function renderMembersSidebar() {
         const hasVipPass = isMemberMestre || (state.vips ? state.vips.has(member.id) : false);
         let vipBadge = '';
         if (hasVipPass) {
-            vipBadge = '<span class="badge-vip" title="Membro VIP Kord"><i class="fa-solid fa-crown"></i> VIP</span>';
+            vipBadge = '<span class="badge-vip" title="Membro VIP VOX"><i class="fa-solid fa-crown"></i> VIP</span>';
+        }
+
+        // Classe do ponto de status (online, dnd, idle, offline)
+        let dotClass = 'offline';
+        if (isOnline) {
+            if (userStatus === 'dnd') dotClass = 'dnd';
+            else if (userStatus === 'idle') dotClass = 'idle';
+            else dotClass = 'online';
+        }
+
+        // Subtítulo de Atividade Gamer / Filmes
+        let activityHtml = '';
+        if (isOnline && userActivity && userActivity.name) {
+            const icon = userActivity.type === 'watching' ? 'fa-solid fa-film' :
+                         userActivity.type === 'listening' ? 'fa-solid fa-headphones' :
+                         'fa-solid fa-gamepad';
+            const prefix = userActivity.type === 'watching' ? 'Assistindo' :
+                           userActivity.type === 'listening' ? 'Ouvindo' :
+                           'Jogando';
+            const iconColor = userActivity.type === 'watching' ? '#a855f7' : '#22c55e';
+            activityHtml = `<div class="member-activity-sub" title="${escapeHtml(userActivity.name)}">
+                <i class="${icon}" style="color:${iconColor};font-size:10px;"></i>
+                <span>${prefix} <strong style="color:#ffffff;">${escapeHtml(userActivity.name)}</strong></span>
+            </div>`;
         }
 
         row.innerHTML = `
             <div class="member-avatar-wrap">
                 <div class="member-avatar" style="background-color: ${color};">${avatarLetter}</div>
-                <div class="member-status-dot ${isOnline ? 'online' : 'offline'}"></div>
+                <div class="member-status-dot ${dotClass}"></div>
             </div>
-            <div class="member-name-wrap" style="display:flex;align-items:center;flex-wrap:wrap;">
-                <span class="member-name ${isOnline ? 'online' : 'offline'}">${nameDisplay}</span>
-                ${roleBadge}
-                ${vipBadge}
-                <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}" style="margin-left:5px;"></span>
-                ${isDeafened ? '<i class="fa-solid fa-ear-deaf voice-deafen-icon" title="Ensurdecido (Áudio Desativado)" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
-                ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
+            <div class="member-info-col" style="display:flex;flex-direction:column;min-width:0;flex:1;">
+                <div class="member-name-wrap" style="display:flex;align-items:center;flex-wrap:wrap;">
+                    <span class="member-name ${isOnline ? 'online' : 'offline'}">${nameDisplay}</span>
+                    ${roleBadge}
+                    ${vipBadge}
+                    <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}" style="margin-left:5px;"></span>
+                    ${isDeafened ? '<i class="fa-solid fa-ear-deaf voice-deafen-icon" title="Ensurdecido (Áudio Desativado)" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
+                    ${isMuted ? '<i class="fa-solid fa-microphone-slash voice-mute-icon" title="Mutado" style="font-size:10px;margin-left:5px;color:#f23f43;"></i>' : ''}
+                </div>
+                ${activityHtml}
             </div>
         `;
 
@@ -2973,8 +3091,6 @@ function renderMembersSidebar() {
     if (cntOffEl) cntOffEl.textContent = countOffline;
 }
 
-
-// --- CADASTRO OBRIGATÓRIO DE NOVO INTEGRANTE AO ENTRAR PELO LINK ---
 function checkRegistration() {
     const saved = localStorage.getItem('kord_user_profile') || localStorage.getItem('discord_user_profile');
     let isRegistered = false;
@@ -4641,4 +4757,435 @@ function openVipModal() {
 function closeVipModal() {
     const modal = document.getElementById('vip-modal');
     if (modal) modal.style.display = 'none';
+}
+
+
+// =========================================================================
+// VOX: SISTEMA DE STATUS, ATIVIDADE GAMER E DOSSIÊ DE AUDITORIA ADM
+// =========================================================================
+
+state.userStatus = 'online';
+state.userActivity = null;
+state.activeAuditUserId = null;
+state.currentAuditData = null;
+
+function initVoxStatusAndActivity() {
+    // 1. Alternar Menu Rápido de Status ao Clicar no Avatar do Rodapé
+    const avatarWrap = document.getElementById('user-footer-avatar-wrap');
+    const statusMenu = document.getElementById('user-status-menu');
+
+    if (avatarWrap && statusMenu) {
+        avatarWrap.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isVisible = (statusMenu.style.display === 'block');
+            statusMenu.style.display = isVisible ? 'none' : 'block';
+        });
+
+        // Opções de Status (online, dnd, idle, invisible)
+        document.querySelectorAll('.vox-status-option[data-status]').forEach(opt => {
+            opt.addEventListener('click', () => {
+                const newStatus = opt.getAttribute('data-status');
+                setUserStatus(newStatus);
+                statusMenu.style.display = 'none';
+            });
+        });
+
+        // Fechar menu ao clicar fora
+        document.addEventListener('click', (e) => {
+            if (!statusMenu.contains(e.target) && !avatarWrap.contains(e.target)) {
+                statusMenu.style.display = 'none';
+            }
+        });
+    }
+
+    // 2. Modal de Atividade Gamer
+    const openActBtn = document.getElementById('btn-open-activity-modal');
+    const actModal = document.getElementById('user-activity-modal');
+    const closeActBtn = document.getElementById('btn-close-activity-modal');
+    const saveActBtn = document.getElementById('btn-save-activity');
+    const clearActBtn = document.getElementById('btn-clear-activity');
+    const actInput = document.getElementById('activity-name-input');
+
+    if (openActBtn && actModal) {
+        openActBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (statusMenu) statusMenu.style.display = 'none';
+            actModal.style.display = 'flex';
+            if (actInput) {
+                actInput.value = state.userActivity ? state.userActivity.name : '';
+                actInput.focus();
+            }
+        });
+    }
+
+    if (closeActBtn && actModal) {
+        closeActBtn.addEventListener('click', () => actModal.style.display = 'none');
+    }
+
+    // Chips de Seleção Rápida de Jogos
+    document.querySelectorAll('.activity-quick-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const name = chip.getAttribute('data-name');
+            const type = chip.getAttribute('data-type') || 'playing';
+            if (actInput) actInput.value = name;
+            // Marca o pill correspondente
+            document.querySelectorAll('.activity-type-pill').forEach(p => {
+                p.classList.toggle('active', p.getAttribute('data-type') === type);
+            });
+        });
+    });
+
+    // Pills de Tipo (Jogando, Assistindo, Ouvindo)
+    document.querySelectorAll('.activity-type-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.activity-type-pill').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+        });
+    });
+
+    // Salvar Atividade Gamer
+    if (saveActBtn && actModal && actInput) {
+        saveActBtn.addEventListener('click', () => {
+            const name = actInput.value.trim();
+            if (!name) {
+                clearUserActivity();
+                actModal.style.display = 'none';
+                return;
+            }
+            const activePill = document.querySelector('.activity-type-pill.active');
+            const type = activePill ? activePill.getAttribute('data-type') : 'playing';
+
+            state.userActivity = { type: type, name: name };
+            sendWs({ type: 'set_activity', activity: state.userActivity });
+
+            const actLabel = document.getElementById('current-activity-label');
+            if (actLabel) actLabel.textContent = `${name}`;
+
+            actModal.style.display = 'none';
+            renderMembersSidebar();
+            if (typeof showToast === 'function') showToast(`Atividade definida: ${name}`, 'success');
+        });
+    }
+
+    // Limpar Atividade
+    if (clearActBtn && actModal) {
+        clearActBtn.addEventListener('click', () => {
+            clearUserActivity();
+            actModal.style.display = 'none';
+        });
+    }
+
+    // 3. Listener do Botão de Auditoria no Context Menu
+    const ctxAuditBtn = document.getElementById('ctx-btn-user-audit');
+    if (ctxAuditBtn) {
+        ctxAuditBtn.addEventListener('click', () => {
+            closeContextMenu();
+            if (state.activeContextUserId) {
+                openUserAuditModal(state.activeContextUserId);
+            }
+        });
+    }
+
+    // 4. Listeners das Abas do Modal de Auditoria
+    setupAuditModalTabs();
+}
+
+function setUserStatus(status) {
+    state.userStatus = status;
+    const dot = document.querySelector('#user-footer-avatar-wrap .status-dot');
+    if (dot) {
+        dot.className = `status-dot ${status}`;
+    }
+    sendWs({ type: 'set_status', status: status });
+    renderMembersSidebar();
+    if (typeof showToast === 'function') {
+        const labels = { online: 'Disponível 🟢', dnd: 'Não Perturbe ⛔', idle: 'Ausente 🟡', invisible: 'Invisível ⚫' };
+        showToast(`Status: ${labels[status] || status}`, 'info');
+    }
+}
+
+function clearUserActivity() {
+    state.userActivity = null;
+    sendWs({ type: 'set_activity', activity: null });
+    const actLabel = document.getElementById('current-activity-label');
+    if (actLabel) actLabel.textContent = 'Nenhuma atividade';
+    renderMembersSidebar();
+    if (typeof showToast === 'function') showToast('Atividade limpa.', 'info');
+}
+
+// --- PAINEL DE AUDITORIA & DOSSIÊ DE SEGURANÇA VOX ---
+
+function openUserAuditModal(targetUserId) {
+    const modal = document.getElementById('user-audit-modal');
+    if (!modal) return;
+
+    state.activeAuditUserId = targetUserId;
+    modal.style.display = 'flex';
+
+    // Placeholder de Carregando
+    const nameEl = document.getElementById('audit-user-name');
+    if (nameEl) nameEl.textContent = 'Carregando dados...';
+    const msgsContainer = document.getElementById('audit-messages-container');
+    if (msgsContainer) msgsContainer.innerHTML = '<div style="color:#71717a;font-size:12px;padding:12px;text-align:center;">Carregando dossiê de auditoria...</div>';
+
+    // Solicita dados ao servidor
+    sendWs({
+        type: 'admin_get_user_audit',
+        targetUserId: targetUserId
+    });
+}
+
+function renderUserAuditModal(data) {
+    state.currentAuditData = data;
+    const modal = document.getElementById('user-audit-modal');
+    if (!modal || modal.style.display === 'none') return;
+
+    // Header do Usuário
+    const avatarEl = document.getElementById('audit-user-avatar');
+    const nameEl = document.getElementById('audit-user-name');
+    const tagEl = document.getElementById('audit-user-tag');
+    const rolesEl = document.getElementById('audit-user-roles');
+    const statusEl = document.getElementById('audit-user-status-badge');
+    const actEl = document.getElementById('audit-user-activity-text');
+    const warnCountEl = document.getElementById('audit-warning-counter');
+    const muteLabel = document.getElementById('audit-mute-label');
+
+    const username = data.targetUsername || data.member?.username || 'Usuário';
+    if (nameEl) nameEl.textContent = username;
+    if (avatarEl) {
+        avatarEl.textContent = (username[0] || 'U').toUpperCase();
+        avatarEl.style.backgroundColor = data.member?.avatar || '#5865F2';
+    }
+    if (tagEl) tagEl.textContent = `ID: ${data.targetUserId.substring(0, 10)}`;
+
+    if (rolesEl) {
+        let rHtml = '';
+        if (username.toUpperCase().startsWith('DIM')) {
+            rHtml = '<span class="badge-role-mestre" style="font-size:9px;padding:2px 6px;"><i class="fa-solid fa-crown"></i> DONO</span>';
+        } else if (data.member?.isAdmin) {
+            rHtml = '<span class="badge-role-adm" style="font-size:9px;padding:2px 6px;"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
+        }
+        if (data.isVip) {
+            rHtml += ' <span class="badge-vip" style="font-size:9px;padding:2px 6px;"><i class="fa-solid fa-crown"></i> VIP</span>';
+        }
+        rolesEl.innerHTML = rHtml;
+    }
+
+    if (statusEl) {
+        const isOnline = data.isOnline;
+        const st = data.status || 'offline';
+        const stLabel = !isOnline ? '⚫ Offline' :
+                        st === 'dnd' ? '⛔ Não Perturbe' :
+                        st === 'idle' ? '🟡 Ausente' : '🟢 Online';
+        statusEl.textContent = stLabel;
+    }
+
+    if (actEl) {
+        if (data.activity && data.activity.name) {
+            actEl.innerHTML = `🎮 ${escapeHtml(data.activity.name)}`;
+        } else {
+            actEl.textContent = 'Sem atividade informada';
+        }
+    }
+
+    const warnTotal = data.warnings ? data.warnings.length : 0;
+    if (warnCountEl) {
+        warnCountEl.textContent = `${warnTotal} Advertência${warnTotal === 1 ? '' : 's'}`;
+        warnCountEl.style.color = warnTotal > 0 ? '#f87171' : '#4ade80';
+        warnCountEl.style.borderColor = warnTotal > 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(74, 222, 128, 0.3)';
+    }
+
+    if (muteLabel) {
+        muteLabel.textContent = data.isServerMuted ? 'Desmutar no Servidor' : 'Mutar no Servidor';
+    }
+
+    // 1. Aba Mensagens Recentes
+    const msgsCountEl = document.getElementById('audit-msgs-count');
+    if (msgsCountEl) msgsCountEl.textContent = (data.recentMessages || []).length;
+    const msgsContainer = document.getElementById('audit-messages-container');
+    if (msgsContainer) {
+        msgsContainer.innerHTML = '';
+        if (!data.recentMessages || data.recentMessages.length === 0) {
+            msgsContainer.innerHTML = '<div style="color:#71717a;font-size:12px;padding:16px;text-align:center;">Nenhuma mensagem registrada no servidor por este usuário.</div>';
+        } else {
+            data.recentMessages.slice().reverse().forEach(msg => {
+                const item = document.createElement('div');
+                item.className = `audit-msg-item ${msg.flagged ? 'flagged' : ''}`;
+                item.innerHTML = `
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap;">
+                            <span style="font-size:10px;font-weight:700;color:#60a5fa;background:rgba(96,165,250,0.15);padding:1px 6px;border-radius:4px;">#${escapeHtml(msg.channelId || 'geral')}</span>
+                            <span style="font-size:10px;color:#71717a;">${escapeHtml(msg.timestamp || '')}</span>
+                            ${msg.flagged ? '<span class="audit-msg-badge-flagged"><i class="fa-solid fa-triangle-exclamation"></i> TERMO SUSPEITO DETECTADO</span>' : ''}
+                        </div>
+                        <div style="font-size:13px;color:#f4f4f5;word-break:break-word;">${escapeHtml(msg.text)}</div>
+                    </div>
+                    <button class="btn-delete-audit-msg" data-msg-id="${msg.id}" title="Apagar esta mensagem" style="padding:4px 8px;border-radius:4px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer;font-size:11px;flex-shrink:0;">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                `;
+                msgsContainer.appendChild(item);
+            });
+
+            // Bind delete message
+            msgsContainer.querySelectorAll('.btn-delete-audit-msg').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const msgId = btn.getAttribute('data-msg-id');
+                    sendWs({ type: 'admin_delete_single_message', messageId: msgId });
+                    btn.closest('.audit-msg-item').remove();
+                });
+            });
+        }
+    }
+
+    // 2. Aba Advertências
+    const warnsCountEl = document.getElementById('audit-warns-count');
+    if (warnsCountEl) warnsCountEl.textContent = (data.warnings || []).length;
+    const warnsContainer = document.getElementById('audit-warnings-container');
+    if (warnsContainer) {
+        warnsContainer.innerHTML = '';
+        if (!data.warnings || data.warnings.length === 0) {
+            warnsContainer.innerHTML = '<div style="color:#71717a;font-size:12px;padding:16px;text-align:center;">Nenhuma advertência aplicada a este usuário. Ficha limpa!</div>';
+        } else {
+            data.warnings.slice().reverse().forEach(w => {
+                const item = document.createElement('div');
+                item.className = 'audit-warn-item';
+                item.innerHTML = `
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+                        <span style="font-size:11px;font-weight:800;color:#facc15;"><i class="fa-solid fa-triangle-exclamation"></i> ADVERTÊNCIA REGISTRADA</span>
+                        <span style="font-size:10px;color:#a1a1aa;">${escapeHtml(w.timeStr || '')}</span>
+                    </div>
+                    <div style="font-size:13px;color:#ffffff;margin-bottom:4px;">${escapeHtml(w.reason)}</div>
+                    <div style="font-size:10px;color:#71717a;">Aplicada por: <strong style="color:#e4e4e7;">${escapeHtml(w.warnedBy || 'ADM')}</strong></div>
+                `;
+                warnsContainer.appendChild(item);
+            });
+        }
+    }
+
+    // 3. Aba Histórico de Ações
+    const logsContainer = document.getElementById('audit-logs-container');
+    if (logsContainer) {
+        logsContainer.innerHTML = '';
+        if (!data.auditLogs || data.auditLogs.length === 0) {
+            logsContainer.innerHTML = '<div style="color:#71717a;font-size:12px;padding:16px;text-align:center;">Nenhum evento registrado no histórico recente.</div>';
+        } else {
+            data.auditLogs.slice().reverse().forEach(l => {
+                const item = document.createElement('div');
+                item.className = 'audit-log-item';
+                item.innerHTML = `
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+                        <span style="font-weight:700;color:#60a5fa;text-transform:uppercase;font-size:10px;">${escapeHtml(l.action)}</span>
+                        <span style="font-size:10px;color:#71717a;">${escapeHtml(l.timeStr || '')}</span>
+                    </div>
+                    <div>${escapeHtml(l.details || '')}</div>
+                `;
+                logsContainer.appendChild(item);
+            });
+        }
+    }
+}
+
+function setupAuditModalTabs() {
+    const modal = document.getElementById('user-audit-modal');
+    if (!modal) return;
+
+    const tabMsgs = document.getElementById('tab-btn-audit-msgs');
+    const tabWarns = document.getElementById('tab-btn-audit-warns');
+    const tabLogs = document.getElementById('tab-btn-audit-logs');
+
+    const contentMsgs = document.getElementById('audit-tab-msgs-content');
+    const contentWarns = document.getElementById('audit-tab-warns-content');
+    const contentLogs = document.getElementById('audit-tab-logs-content');
+
+    const setTab = (activeTab, activeContent) => {
+        [tabMsgs, tabWarns, tabLogs].forEach(t => t?.classList.remove('active'));
+        [contentMsgs, contentWarns, contentLogs].forEach(c => { if (c) c.style.display = 'none'; });
+        activeTab?.classList.add('active');
+        if (activeContent) activeContent.style.display = 'block';
+    };
+
+    tabMsgs?.addEventListener('click', () => setTab(tabMsgs, contentMsgs));
+    tabWarns?.addEventListener('click', () => setTab(tabWarns, contentWarns));
+    tabLogs?.addEventListener('click', () => setTab(tabLogs, contentLogs));
+
+    // Fechar Modal
+    document.getElementById('btn-close-audit-modal')?.addEventListener('click', () => modal.style.display = 'none');
+    document.getElementById('btn-close-audit-secondary')?.addEventListener('click', () => modal.style.display = 'none');
+
+    // Botão Aplicar Advertência (Warn)
+    document.getElementById('btn-apply-warn')?.addEventListener('click', () => {
+        if (!state.activeAuditUserId) return;
+        const input = document.getElementById('audit-warn-reason-input');
+        const reason = input ? input.value.trim() : '';
+        if (!reason) {
+            alert('Por favor, informe o motivo da advertência.');
+            return;
+        }
+        sendWs({
+            type: 'admin_warn_user',
+            targetUserId: state.activeAuditUserId,
+            targetUsername: state.currentAuditData?.targetUsername || '',
+            reason: reason
+        });
+        if (input) input.value = '';
+    });
+
+    // Botão Purgar Todas as Mensagens
+    document.getElementById('btn-audit-purge-all')?.addEventListener('click', () => {
+        if (!state.activeAuditUserId) return;
+        const name = state.currentAuditData?.targetUsername || 'este usuário';
+        if (confirm(`Tem certeza que deseja apagar TODAS as mensagens de ${name} em todos os canais do servidor?`)) {
+            sendWs({
+                type: 'admin_purge_user_messages',
+                targetUserId: state.activeAuditUserId,
+                targetUsername: name
+            });
+        }
+    });
+
+    // Botão Mutar no Servidor
+    document.getElementById('btn-audit-toggle-mute')?.addEventListener('click', () => {
+        if (!state.activeAuditUserId) return;
+        sendWs({
+            type: 'admin_toggle_server_mute',
+            targetUserId: state.activeAuditUserId,
+            targetUsername: state.currentAuditData?.targetUsername || ''
+        });
+    });
+
+    // Botão Expulsar (Kick)
+    document.getElementById('btn-audit-kick')?.addEventListener('click', () => {
+        if (!state.activeAuditUserId) return;
+        const name = state.currentAuditData?.targetUsername || 'este usuário';
+        if (confirm(`Deseja expulsar ${name} do servidor?`)) {
+            sendWs({
+                type: 'admin_kick_user',
+                targetUserId: state.activeAuditUserId,
+                targetUsername: name
+            });
+            modal.style.display = 'none';
+        }
+    });
+
+    // Botão Banir (Ban)
+    document.getElementById('btn-audit-ban')?.addEventListener('click', () => {
+        if (!state.activeAuditUserId) return;
+        const name = state.currentAuditData?.targetUsername || 'este usuário';
+        if (confirm(`ATENÇÃO: Deseja banir PERMANENTEMENTE ${name} do servidor? Ele não conseguirá mais entrar.`)) {
+            sendWs({
+                type: 'admin_ban_user',
+                targetUserId: state.activeAuditUserId,
+                targetUsername: name
+            });
+            modal.style.display = 'none';
+        }
+    });
+}
+
+// Inicializa controles do VOX após o carregamento da página
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVoxStatusAndActivity);
+} else {
+    initVoxStatusAndActivity();
 }
