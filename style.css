@@ -2417,3 +2417,54 @@ body, html {
     border: 2px solid #fff !important;
     transform: scale(1.15) !important;
 }
+
+
+/* BOTÕES DE PARAR / VOLTAR A ASSISTIR TRANSMISSÃO & FILME */
+.btn-stop-watching {
+    background-color: rgba(242, 63, 67, 0.2) !important;
+    border: 1px solid rgba(242, 63, 67, 0.4) !important;
+    color: #f23f43 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    padding: 4px 10px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    transition: background 0.15s, color 0.15s, border-color 0.15s !important;
+    white-space: nowrap !important;
+}
+
+.btn-stop-watching:hover {
+    background-color: #f23f43 !important;
+    color: #ffffff !important;
+}
+
+.btn-resume-watching {
+    background-color: rgba(35, 165, 90, 0.2) !important;
+    border: 1px solid #23a55a !important;
+    color: #23a55a !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    padding: 6px 12px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    transition: background 0.15s, color 0.15s !important;
+    animation: dc-pulse-green-btn 2s infinite !important;
+    white-space: nowrap !important;
+}
+
+.btn-resume-watching:hover {
+    background-color: #23a55a !important;
+    color: #ffffff !important;
+}
+
+@keyframes dc-pulse-green-btn {
+    0% { box-shadow: 0 0 0 0 rgba(35, 165, 90, 0.4); }
+    70% { box-shadow: 0 0 0 6px rgba(35, 165, 90, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(35, 165, 90, 0); }
+}

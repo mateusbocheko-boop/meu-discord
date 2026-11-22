@@ -81,6 +81,10 @@
                         <i class="fa-solid fa-display"></i>
                         <span id="btn-stream-text">Transmitir Tela</span>
                     </button>
+                    <button class="btn-stream-action" id="btn-voice-watch-toggle" style="display: none;">
+                        <i class="fa-solid fa-tv"></i>
+                        <span id="btn-voice-watch-text">Assistir Live</span>
+                    </button>
                 </div>
             </div>
 
@@ -119,6 +123,10 @@
                     <button class="btn-iptv-action" id="btn-open-iptv" title="Abrir Catálogo de Canais e Filmes IPTV">
                         <i class="fa-solid fa-tv text-green"></i>
                         <span>IPTV</span>
+                    </button>
+                    <button class="btn-resume-watching" id="btn-resume-watching" style="display: none;" title="Assistir Transmissão ou Filme da Sala">
+                        <i class="fa-solid fa-tv"></i>
+                        <span>Assistir Live</span>
                     </button>
                     <button class="btn-stop-cinema" id="btn-stop-cinema" style="display: none;" title="Parar Transmissão IPTV">
                         <i class="fa-solid fa-stop text-red"></i>
@@ -164,8 +172,12 @@
                             <span class="hud-pill res" id="hud-res">1440p (2K)</span>
                             <span class="hud-pill bitrate" id="hud-bitrate">12.0 Mbps</span>
                         </div>
-                        <div class="hud-right">
+                        <div class="hud-right" style="display: flex; align-items: center; gap: 8px;">
                             <span class="streamer-name" id="hud-streamer-name">Transmitido por: Alguém</span>
+                            <button class="btn-stop-watching" id="btn-hud-stop-watching" title="Parar de assistir (permanecendo na chamada de voz)">
+                                <i class="fa-solid fa-eye-slash"></i>
+                                <span>Parar de Assistir</span>
+                            </button>
                         </div>
                     </div>
 
@@ -182,7 +194,11 @@
                             <button class="vc-btn" id="btn-vid-vol"><i class="fa-solid fa-volume-high"></i></button>
                             <input type="range" id="vid-volume-slider" min="0" max="1" step="0.05" value="1">
                         </div>
-                        <div class="vc-right">
+                        <div class="vc-right" style="display: flex; align-items: center; gap: 8px;">
+                            <button class="btn-stop-watching" id="btn-vc-stop-watching" title="Parar de assistir (permanecendo na chamada de voz)">
+                                <i class="fa-solid fa-eye-slash"></i>
+                                <span>Parar de Assistir</span>
+                            </button>
                             <button class="vc-btn" id="btn-vid-fullscreen" title="Tela Cheia"><i class="fa-solid fa-expand"></i></button>
                         </div>
                     </div>

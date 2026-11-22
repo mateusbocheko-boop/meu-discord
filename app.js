@@ -376,6 +376,7 @@ const state = {
     remoteAudioElements: new Map(), // userId -> HTMLAudioElement
     activeStreams: new Map(), // userId -> { stream, username, info }
     currentlyWatchingUserId: null,
+    isWatchingStream: true,
 
     // Controle individual de volume e mudo local para cada amigo
     userVolumes: new Map(), // userId -> volume (0 a 200)
@@ -1452,13 +1453,146 @@ function stopScreenShare() {
     sendWs({ type: 'screen_stop' });
 }
 
+
+// --- CONTROLE DE ASSISTIR / PARAR DE ASSISTIR TRANSMISSÃO & FILME (PERMANECENDO NA CALL) ---
+function stopWatchingLocal(notifyToast = true) {
+    state.isWatchingStream = false;
+    state.currentlyWatchingUserId = null;
+
+    // Pausa e desanexa o vídeo de cinema/IPTV localmente (sem parar para os outros na sala)
+    if (state.mpegtsInstance) {
+        try {
+            state.mpegtsInstance.pause();
+            state.mpegtsInstance.unload();
+            state.mpegtsInstance.detachMediaElement();
+            state.mpegtsInstance.destroy();
+        } catch (e) {}
+        state.mpegtsInstance = null;
+    }
+    if (state.hlsInstance) {
+        try {
+            state.hlsInstance.destroy();
+        } catch (e) {}
+        state.hlsInstance = null;
+    }
+    if (cinemaSyncInterval) {
+        clearInterval(cinemaSyncInterval);
+        cinemaSyncInterval = null;
+    }
+
+    // Pausa o elemento de vídeo no palco
+    const video = document.getElementById('stage-video');
+    if (video) {
+        try { video.pause(); } catch (e) {}
+        video.srcObject = null;
+        video.src = '';
+    }
+
+    // Oculta o palco de vídeo para dar espaço total ao chat
+    const stage = document.getElementById('video-stage');
+    if (stage) stage.style.display = 'none';
+
+    stopFpsCounter();
+    renderStreamTabs();
+    updateWatchButtonsVisibility();
+
+    if (notifyToast) {
+        const isCinema = state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-');
+        showToast(`👁️ Você parou de assistir ao ${isCinema ? 'filme' : 'streaming'}. Você continua na chamada de voz!`, 4000);
+    }
+}
+
+function resumeWatchingLocal() {
+    state.isWatchingStream = true;
+
+    // Se estiver em sala de cinema com transmissão IPTV ativa:
+    if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
+        const cinema = state.cinemaRooms ? state.cinemaRooms[state.currentVoiceChannel] : null;
+        if (cinema) {
+            playCinemaStream(cinema);
+            updateWatchButtonsVisibility();
+            showToast('🎬 Conectando à transmissão do filme...', 3000);
+            return;
+        }
+    }
+
+    // Se houver transmissões de tela ativas de outros usuários:
+    if (state.activeStreams && state.activeStreams.size > 0) {
+        const firstUid = Array.from(state.activeStreams.keys())[0];
+        selectLiveStream(firstUid);
+        updateWatchButtonsVisibility();
+        showToast('📺 Conectando à transmissão ao vivo...', 3000);
+        return;
+    }
+
+    showToast('ℹ️ Não há transmissão ativa nesta sala no momento.');
+}
+
+function updateWatchButtonsVisibility() {
+    const isCinema = state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-');
+    const hasCinemaStream = isCinema && !!(state.cinemaRooms && state.cinemaRooms[state.currentVoiceChannel]);
+    const hasUserStream = state.activeStreams && state.activeStreams.size > 0;
+    const hasAnyStream = hasCinemaStream || hasUserStream;
+
+    const btnResume = document.getElementById('btn-resume-watching');
+    const btnVoiceWatch = document.getElementById('btn-voice-watch-toggle');
+    const btnHudStop = document.getElementById('btn-hud-stop-watching');
+    const btnVcStop = document.getElementById('btn-vc-stop-watching');
+
+    if (!state.currentVoiceChannel || !hasAnyStream) {
+        if (btnResume) btnResume.style.display = 'none';
+        if (btnVoiceWatch) btnVoiceWatch.style.display = 'none';
+        if (btnHudStop) btnHudStop.style.display = 'none';
+        if (btnVcStop) btnVcStop.style.display = 'none';
+        return;
+    }
+
+    const isCurrentlyWatching = (state.isWatchingStream !== false) && (
+        (isCinema && hasCinemaStream && (state.mpegtsInstance || state.hlsInstance || (document.getElementById('stage-video') && document.getElementById('stage-video').src))) ||
+        (!isCinema && !!state.currentlyWatchingUserId)
+    );
+
+    const streamLabel = hasCinemaStream ? 'Filme' : 'Live';
+
+    if (btnResume) {
+        btnResume.style.display = isCurrentlyWatching ? 'none' : 'inline-flex';
+        const span = btnResume.querySelector('span');
+        if (span) span.textContent = `Assistir ${streamLabel}`;
+    }
+
+    if (btnVoiceWatch) {
+        btnVoiceWatch.style.display = 'inline-flex';
+        if (isCurrentlyWatching) {
+            btnVoiceWatch.style.backgroundColor = 'rgba(242, 63, 67, 0.15)';
+            btnVoiceWatch.style.borderColor = '#f23f43';
+            btnVoiceWatch.style.color = '#f23f43';
+            btnVoiceWatch.innerHTML = `<i class="fa-solid fa-eye-slash"></i> <span>Parar de Assistir</span>`;
+        } else {
+            btnVoiceWatch.style.backgroundColor = 'rgba(35, 165, 90, 0.15)';
+            btnVoiceWatch.style.borderColor = '#23a55a';
+            btnVoiceWatch.style.color = '#23a55a';
+            btnVoiceWatch.innerHTML = `<i class="fa-solid fa-tv"></i> <span>Assistir ${streamLabel}</span>`;
+        }
+    }
+
+    if (btnHudStop) {
+        btnHudStop.style.display = isCurrentlyWatching ? 'inline-flex' : 'none';
+    }
+    if (btnVcStop) {
+        btnVcStop.style.display = isCurrentlyWatching ? 'inline-flex' : 'none';
+    }
+}
+
 // --- SELETOR DE MÚLTIPLAS LIVES (ESCOLHER QUAL ASSISTIR) ---
 function addStream(userId, stream, username, info) {
     state.activeStreams.set(userId, { stream, username, info });
     renderStreamTabs();
-    if (!state.currentlyWatchingUserId || state.currentlyWatchingUserId === userId) {
-        selectLiveStream(userId);
+    if (state.isWatchingStream !== false) {
+        if (!state.currentlyWatchingUserId || state.currentlyWatchingUserId === userId) {
+            selectLiveStream(userId);
+        }
     }
+    updateWatchButtonsVisibility();
 }
 
 function removeStream(userId) {
@@ -1511,7 +1645,9 @@ function selectLiveStream(userId) {
     document.getElementById('hud-fps').textContent = item.info ? `${item.info.fps}.0 FPS` : '60.0 FPS';
 
     startFpsCounter(video);
+    state.isWatchingStream = true;
     renderStreamTabs();
+    updateWatchButtonsVisibility();
 }
 
 function renderStreamTabs() {
@@ -1528,7 +1664,7 @@ function renderStreamTabs() {
     container.innerHTML = '';
 
     state.activeStreams.forEach((item, uid) => {
-        const isActive = (uid === state.currentlyWatchingUserId);
+        const isActive = (uid === state.currentlyWatchingUserId && state.isWatchingStream !== false);
         const btn = document.createElement('button');
         btn.className = `stream-tab-btn ${isActive ? 'active' : ''}`;
         btn.innerHTML = `
@@ -1539,6 +1675,15 @@ function renderStreamTabs() {
         btn.onclick = () => selectLiveStream(uid);
         container.appendChild(btn);
     });
+
+    if (state.activeStreams.size > 0 && state.isWatchingStream !== false) {
+        const stopTab = document.createElement('button');
+        stopTab.className = 'stream-tab-btn';
+        stopTab.style.cssText = 'background: rgba(242, 63, 67, 0.15); border-color: rgba(242, 63, 67, 0.4); color: #f23f43;';
+        stopTab.innerHTML = `<i class="fa-solid fa-eye-slash" style="font-size:11px;"></i> <span>Parar de Assistir</span>`;
+        stopTab.onclick = () => stopWatchingLocal();
+        container.appendChild(stopTab);
+    }
 }
 
 function startFpsCounter(videoElement) {
@@ -1912,6 +2057,8 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
 
     const oldChannel = state.currentVoiceChannel;
     state.currentVoiceChannel = newChannel;
+    state.isWatchingStream = true;
+    updateWatchButtonsVisibility();
     document.querySelectorAll('.voice-channel').forEach(el => {
         el.classList.toggle('active', el.dataset.channel === newChannel);
     });
@@ -2682,6 +2829,26 @@ function setupEventListeners() {
     on('btn-close-iptv-modal', 'click', closeIptvModal);
     on('btn-stop-cinema', 'click', stopCinemaStream);
 
+    // Controles de Parar / Voltar a Assistir Transmissão e Filme
+    on('btn-hud-stop-watching', 'click', () => stopWatchingLocal());
+    on('btn-vc-stop-watching', 'click', () => stopWatchingLocal());
+    on('btn-resume-watching', 'click', () => resumeWatchingLocal());
+    on('btn-voice-watch-toggle', 'click', () => {
+        if (state.isWatchingStream !== false) {
+            stopWatchingLocal();
+        } else {
+            resumeWatchingLocal();
+        }
+    });
+    on('btn-toggle-stage', 'click', () => {
+        const stage = document.getElementById('video-stage');
+        if (stage && stage.style.display !== 'none') {
+            stopWatchingLocal();
+        } else {
+            resumeWatchingLocal();
+        }
+    });
+
     document.querySelectorAll('.iptv-type-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.iptv-type-btn').forEach(b => b.classList.remove('active'));
@@ -2983,6 +3150,7 @@ function stopCinemaPlayback() {
     if (stage && !state.currentlyWatchingUserId) {
         stage.style.display = 'none';
     }
+    updateWatchButtonsVisibility();
 }
 
 function checkRoomCinemaStream(room) {
@@ -3055,6 +3223,12 @@ function playCinemaStream(cinema) {
     const stage = document.getElementById('video-stage');
     const video = document.getElementById('stage-video');
     if (!stage || !video || !cinema) return;
+
+    if (state.isWatchingStream === false && state.currentCinemaStreamId === cinema.streamId) {
+        updateWatchButtonsVisibility();
+        return;
+    }
+    state.isWatchingStream = true;
 
     stage.style.display = 'flex';
 
