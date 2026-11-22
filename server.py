@@ -204,30 +204,86 @@ async def iptv_series_info_handler(request):
         print(f"[IPTV] Erro ao buscar info da série {series_id}: {e}")
     return web.json_response({})
 
+# --- GERENCIADOR DE FAN-OUT PARA CANAIS AO VIVO (1 CONEXÃO IPTV PARA MÚLTIPLOS USUÁRIOS) ---
+active_channel_broadcasters = {}
+
+class ChannelBroadcaster:
+    def __init__(self, stream_id):
+        self.stream_id = stream_id
+        self.subscribers = set()
+        self.task = None
+        self.is_running = False
+
+    async def run(self):
+        self.is_running = True
+        url = f"{IPTV_DNS}/live/{IPTV_USER}/{IPTV_PASS}/{self.stream_id}.ts"
+        headers = {"User-Agent": "IPTVSmartersPro"}
+        try:
+            session = await get_http_session()
+            async with session.get(url, headers=headers, allow_redirects=True) as resp:
+                if resp.status == 200:
+                    async for chunk in resp.content.iter_chunked(65536):
+                        if not self.is_running or not self.subscribers:
+                            break
+                        dead = []
+                        for q in list(self.subscribers):
+                            try:
+                                if q.qsize() > 60:
+                                    q.get_nowait()
+                                q.put_nowait(chunk)
+                            except Exception:
+                                dead.append(q)
+                        for d in dead:
+                            self.subscribers.discard(d)
+        except Exception as e:
+            print(f"[IPTV Fanout] Erro no stream {self.stream_id}: {e}")
+        finally:
+            self.is_running = False
+            active_channel_broadcasters.pop(self.stream_id, None)
+
 async def iptv_direct_stream_handler(request):
     stream_id = request.match_info.get("stream_id")
-    target_url = f"{IPTV_DNS}/live/{IPTV_USER}/{IPTV_PASS}/{stream_id}.ts"
+    
+    broadcaster = active_channel_broadcasters.get(stream_id)
+    if not broadcaster or not broadcaster.is_running:
+        broadcaster = ChannelBroadcaster(stream_id)
+        active_channel_broadcasters[stream_id] = broadcaster
+        broadcaster.task = asyncio.create_task(broadcaster.run())
+        await asyncio.sleep(0.35)
+
+    user_queue = asyncio.Queue()
+    broadcaster.subscribers.add(user_queue)
+
+    response = web.StreamResponse(
+        status=200,
+        headers={
+            "Content-Type": "video/mp2t",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache, no-store",
+            "Connection": "keep-alive"
+        }
+    )
+    await response.prepare(request)
+
     try:
-        session = await get_http_session()
-        headers = {"User-Agent": "IPTVSmartersPro"}
-        async with session.get(target_url, headers=headers, allow_redirects=True) as resp:
-            response = web.StreamResponse(
-                status=resp.status,
-                headers={
-                    "Content-Type": "video/mp2t",
-                    "Access-Control-Allow-Origin": "*",
-                    "Cache-Control": "no-cache, no-store",
-                    "Connection": "keep-alive"
-                }
-            )
-            await response.prepare(request)
-            async for chunk in resp.content.iter_chunked(65536):
+        while broadcaster.is_running:
+            try:
+                chunk = await asyncio.wait_for(user_queue.get(), timeout=12.0)
                 await response.write(chunk)
-            await response.write_eof()
-            return response
-    except Exception as e:
-        print(f"[IPTV] Erro no stream direto TS: {e}")
-    return web.Response(status=502)
+            except asyncio.TimeoutError:
+                if not broadcaster.is_running:
+                    break
+        await response.write_eof()
+    except Exception:
+        pass
+    finally:
+        broadcaster.subscribers.discard(user_queue)
+        if not broadcaster.subscribers:
+            broadcaster.is_running = False
+            active_channel_broadcasters.pop(stream_id, None)
+
+    return response
+
 
 async def iptv_live_m3u8_handler(request):
     stream_id = request.match_info.get("stream_id")
@@ -444,11 +500,19 @@ async def websocket_handler(request):
             elif msg_type == "voice_change":
                 if ws in clients:
                     clients[ws]["voiceChannel"] = data.get("channelId")
+                    ch = clients[ws]["voiceChannel"]
                     await broadcast({
                         "type": "user_voice_change",
                         "userId": user_id,
-                        "channelId": clients[ws]["voiceChannel"]
+                        "channelId": ch
                     })
+                    # Se entrou em sala de cinema com transmissão ativa, envia o estado na hora
+                    if ch and ch.startswith("cinema-") and ch in cinema_rooms and cinema_rooms[ch]:
+                        await ws.send_str(json.dumps({
+                            "type": "cinema_update",
+                            "room": ch,
+                            "cinema": get_cinema_state(ch)
+                        }))
 
             # 2.2 Mover outro usuário de canal de voz
             elif msg_type == "move_user":
