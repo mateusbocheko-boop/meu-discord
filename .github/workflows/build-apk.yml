@@ -1,0 +1,345 @@
+name: Build Kord Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install Python Pillow
+        run: pip install pillow
+
+      - name: Scaffold Android App Project
+        run: |
+          mkdir -p android/app/src/main/java/com/kord/app
+          mkdir -p android/app/src/main/res/values
+
+          # Settings.gradle
+          cat << 'EOF' > android/settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "Kord"
+          include ':app'
+          EOF
+
+          # Root build.gradle
+          cat << 'EOF' > android/build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.2.2'
+              }
+          }
+          task clean(type: Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+          # gradle.properties
+          cat << 'EOF' > android/gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
+
+          # app/build.gradle
+          cat << 'EOF' > android/app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.kord.app'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.kord.app"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0.0"
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      signingConfig signingConfigs.debug
+                  }
+                  debug {
+                      signingConfig signingConfigs.debug
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.11.0'
+              implementation 'androidx.webkit:webkit:1.10.0'
+          }
+          EOF
+
+          # Strings & Themes
+          cat << 'EOF' > android/app/src/main/res/values/strings.xml
+          <resources>
+              <string name="app_name">Kord</string>
+          </resources>
+          EOF
+
+          cat << 'EOF' > android/app/src/main/res/values/themes.xml
+          <resources>
+              <style name="Theme.Kord" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+                  <item name="colorPrimary">#00f2fe</item>
+                  <item name="colorPrimaryVariant">#00c0cb</item>
+                  <item name="colorOnPrimary">#080b11</item>
+                  <item name="android:statusBarColor">#080b11</item>
+                  <item name="android:navigationBarColor">#080b11</item>
+                  <item name="android:windowBackground">#080b11</item>
+              </style>
+          </resources>
+          EOF
+
+          # AndroidManifest.xml
+          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.kord.app">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="Kord"
+                  android:roundIcon="@mipmap/ic_launcher"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.Kord"
+                  android:hardwareAccelerated="true"
+                  android:usesCleartextTraffic="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden"
+                      android:windowSoftInputMode="adjustResize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # MainActivity.java
+          cat << 'EOF' > android/app/src/main/java/com/kord/app/MainActivity.java
+          package com.kord.app;
+
+          import android.Manifest;
+          import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.view.WindowManager;
+          import android.webkit.PermissionRequest;
+          import android.webkit.ValueCallback;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import androidx.annotation.NonNull;
+          import androidx.appcompat.app.AppCompatActivity;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
+
+          public class MainActivity extends AppCompatActivity {
+              private WebView webView;
+              private ValueCallback<Uri[]> filePathCallback;
+              private static final int PERMISSION_REQ_CODE = 101;
+              private static final int FILE_CHOOSER_REQ_CODE = 1001;
+              private static final String APP_URL = "https://meu-discord-1.onrender.com";
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                  getWindow().setStatusBarColor(0xFF080B11);
+                  getWindow().setNavigationBarColor(0xFF080B11);
+
+                  webView = new WebView(this);
+                  setContentView(webView);
+
+                  WebSettings settings = webView.getSettings();
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setDatabaseEnabled(true);
+                  settings.setMediaPlaybackRequiresUserGesture(false);
+                  settings.setAllowFileAccess(true);
+                  settings.setAllowContentAccess(true);
+                  settings.setLoadWithOverviewMode(true);
+                  settings.setUseWideViewPort(true);
+                  settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                  settings.setUserAgentString(settings.getUserAgentString() + " KordAndroid/1.0");
+
+                  webView.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                          view.loadUrl(url);
+                          return true;
+                      }
+                  });
+
+                  webView.setWebChromeClient(new WebChromeClient() {
+                      @Override
+                      public void onPermissionRequest(final PermissionRequest request) {
+                          runOnUiThread(() -> request.grant(request.getResources()));
+                      }
+
+                      @Override
+                      public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                          MainActivity.this.filePathCallback = filePathCallback;
+                          try {
+                              Intent intent = fileChooserParams.createIntent();
+                              startActivityForResult(intent, FILE_CHOOSER_REQ_CODE);
+                              return true;
+                          } catch (Exception e) {
+                              MainActivity.this.filePathCallback = null;
+                              return false;
+                          }
+                      }
+                  });
+
+                  requestAppPermissions();
+                  webView.loadUrl(APP_URL);
+              }
+
+              private void requestAppPermissions() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                      String[] perms = {Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA};
+                      if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
+                          ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, perms, PERMISSION_REQ_CODE);
+                      }
+                  }
+              }
+
+              @Override
+              protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+                  if (requestCode == FILE_CHOOSER_REQ_CODE) {
+                      if (filePathCallback != null) {
+                          Uri[] results = null;
+                          if (resultCode == RESULT_OK && data != null) {
+                              if (data.getData() != null) {
+                                  results = new Uri[]{data.getData()};
+                              } else if (data.getClipData() != null) {
+                                  int count = data.getClipData().getItemCount();
+                                  results = new Uri[count];
+                                  for (int i = 0; i < count; i++) {
+                                      results[i] = data.getClipData().getItemAt(i).getUri();
+                                  }
+                              }
+                          }
+                          filePathCallback.onReceiveValue(results);
+                          filePathCallback = null;
+                      }
+                      return;
+                  }
+                  super.onActivityResult(requestCode, resultCode, data);
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (webView != null && webView.canGoBack()) {
+                      webView.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+          }
+          EOF
+
+      - name: Generate Mipmap Icons from Blue Fireball Mascot
+        run: |
+          python3 -c "
+          from PIL import Image
+          import os
+
+          im = Image.open('icon-512.png')
+          densities = {
+              'mipmap-mdpi': 48,
+              'mipmap-hdpi': 72,
+              'mipmap-xhdpi': 96,
+              'mipmap-xxhdpi': 144,
+              'mipmap-xxxhdpi': 192
+          }
+          for folder, size in densities.items():
+              target_dir = os.path.join('android/app/src/main/res', folder)
+              os.makedirs(target_dir, exist_ok=True)
+              im.resize((size, size), Image.Resampling.LANCZOS).save(os.path.join(target_dir, 'ic_launcher.png'))
+          print('Mascot icons generated for all densities.')
+          "
+
+      - name: Build APK with Gradle
+        working-directory: ./android
+        run: gradle assembleRelease --stacktrace
+
+      - name: Stage APK Output
+        run: |
+          mkdir -p output
+          find android/app/build/outputs/apk -name "*.apk" -exec cp {} output/kord.apk ;
+          ls -lh output/kord.apk
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kord-apk
+          path: output/kord.apk
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "Kord Android APK v1.0.0"
+          body: "Aplicativo nativo Kord para Android (.apk). Suporta chamadas de voz, vídeo, streaming 60FPS e cinema."
+          files: output/kord.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
