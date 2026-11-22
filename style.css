@@ -1,3 +1,209 @@
+/* ========================================================
+   KORD ULTRA 60FPS - IDENTITY & CYBER THEME
+   ======================================================== */
+:root {
+    --kord-cyan: #00f2fe;
+    --kord-blue: #4facfe;
+    --kord-violet: #7928ca;
+    --kord-emerald: #00f59b;
+    --kord-coral: #ff3366;
+    --kord-bg: #080b11;
+    --kord-surface: #0e131f;
+    --kord-card: #141b2a;
+    --kord-border: rgba(0, 242, 254, 0.16);
+    --kord-glow: 0 0 16px rgba(0, 242, 254, 0.25);
+}
+
+body, html {
+    background: radial-gradient(circle at 12% 15%, #101828 0%, #080b11 100%) !important;
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif !important;
+}
+
+/* KORD LOGO & COMMAND STRIP */
+.kord-nav {
+    background: rgba(10, 14, 22, 0.95) !important;
+    border-right: 1px solid var(--kord-border) !important;
+    backdrop-filter: blur(20px) !important;
+}
+
+.kord-logo-badge {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7928ca 100%);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 0 18px rgba(0, 242, 254, 0.45);
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.kord-logo-badge:hover {
+    transform: scale(1.08) rotate(-2deg);
+    box-shadow: 0 0 28px rgba(0, 242, 254, 0.7);
+}
+
+.kord-logo-k {
+    color: #07090e;
+    font-size: 26px;
+    font-weight: 900;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -1px;
+}
+
+.kord-sep {
+    width: 32px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0, 242, 254, 0.4), transparent);
+    margin: 4px 0;
+}
+
+.server-pill {
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    transition: all 0.2s ease !important;
+}
+
+.server-pill:hover, .server-pill.active {
+    background: linear-gradient(135deg, #00f2fe, #4facfe) !important;
+    border-color: #00f2fe !important;
+    color: #07090e !important;
+    box-shadow: 0 0 16px rgba(0, 242, 254, 0.5) !important;
+}
+
+/* KORD SIDEBAR */
+.channels-sidebar {
+    background: rgba(14, 19, 31, 0.92) !important;
+    backdrop-filter: blur(24px) !important;
+    border-right: 1px solid var(--kord-border) !important;
+}
+
+.sidebar-header {
+    background: rgba(16, 22, 36, 0.8) !important;
+    border-bottom: 1px solid var(--kord-border) !important;
+}
+
+.kord-brand-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.kord-brand-title {
+    font-size: 17px;
+    font-weight: 900;
+    letter-spacing: 1.2px;
+    background: linear-gradient(135deg, #00f2fe, #4facfe);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.kord-brand-sub {
+    font-size: 10px;
+    font-weight: 800;
+    background: rgba(0, 242, 254, 0.14);
+    color: #00f2fe;
+    border: 1px solid rgba(0, 242, 254, 0.3);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+/* SALAS DE VOZ (KORD AUDIO CHAMBERS) */
+.voice-channel {
+    border-left: 3px solid transparent !important;
+    border-radius: 8px !important;
+    margin: 2px 4px !important;
+    transition: all 0.15s ease !important;
+}
+
+.voice-channel:hover {
+    background: rgba(0, 242, 254, 0.08) !important;
+    border-left-color: rgba(0, 242, 254, 0.6) !important;
+}
+
+.voice-channel.active {
+    background: rgba(0, 242, 254, 0.14) !important;
+    border-left-color: #00f2fe !important;
+    box-shadow: inset 0 0 14px rgba(0, 242, 254, 0.08) !important;
+}
+
+.voice-user-avatar.speaking {
+    outline: 2px solid #00f59b !important;
+    box-shadow: 0 0 12px #00f59b, 0 0 20px rgba(0, 242, 254, 0.5) !important;
+}
+
+/* KORD COCKPIT USER FOOTER */
+.user-footer {
+    background: rgba(18, 25, 40, 0.85) !important;
+    backdrop-filter: blur(20px) !important;
+    border: 1px solid var(--kord-border) !important;
+    border-radius: 12px !important;
+    margin: 8px 10px !important;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* MAIN STAGE & HEADER */
+.main-header {
+    background: rgba(14, 19, 31, 0.85) !important;
+    backdrop-filter: blur(20px) !important;
+    border-bottom: 1px solid var(--kord-border) !important;
+}
+
+.video-stage {
+    background: #04060a !important;
+    border-bottom: 1px solid rgba(0, 242, 254, 0.2) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 242, 254, 0.1) !important;
+}
+
+/* CHAT AREA & INPUT CAPSULE */
+.chat-container {
+    background: rgba(8, 11, 17, 0.95) !important;
+}
+
+.chat-input-wrapper {
+    background: rgba(18, 25, 40, 0.9) !important;
+    border: 1px solid rgba(0, 242, 254, 0.22) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0, 242, 254, 0.08) !important;
+}
+
+.chat-input-wrapper:focus-within {
+    border-color: #00f2fe !important;
+    box-shadow: 0 0 20px rgba(0, 242, 254, 0.25) !important;
+}
+
+.send-btn {
+    background: linear-gradient(135deg, #00f2fe, #4facfe) !important;
+    color: #07090e !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+}
+
+/* MEMBERS RADAR */
+.members-sidebar {
+    background: rgba(14, 19, 31, 0.9) !important;
+    backdrop-filter: blur(20px) !important;
+    border-left: 1px solid var(--kord-border) !important;
+}
+
+/* MODALS */
+.modal-box, .settings-modal-box, .iptv-modal-box {
+    background: rgba(14, 19, 31, 0.96) !important;
+    border: 1px solid var(--kord-border) !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 242, 254, 0.15) !important;
+    border-radius: 14px !important;
+}
+
+/* CONTEXT MENU */
+.kord-context-menu, .discord-context-menu {
+    background: rgba(14, 19, 31, 0.96) !important;
+    border: 1px solid var(--kord-border) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 242, 254, 0.2) !important;
+    border-radius: 10px !important;
+}
+
 /* RESET & BASE */
 * {
     box-sizing: border-box;
@@ -11,8 +217,8 @@ body, html {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background-color: #1e1f22;
-    color: #dbdee1;
+    background-color: #080b11;
+    color: #e2e8f5;
 }
 
 /* LAYOUT PRINCIPAL */
@@ -25,7 +231,7 @@ body, html {
 /* 1. SERVERS RAIL */
 .servers-nav {
     width: 72px;
-    background-color: #1e1f22;
+    background-color: #080b11;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -37,12 +243,12 @@ body, html {
 .server-pill {
     width: 48px;
     height: 48px;
-    background-color: #313338;
+    background-color: #141b2a;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #dbdee1;
+    color: #e2e8f5;
     font-size: 22px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -50,7 +256,7 @@ body, html {
 }
 
 .server-pill:hover, .server-pill.active {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     border-radius: 16px;
     color: #ffffff;
 }
@@ -63,7 +269,7 @@ body, html {
 }
 
 .stream-quick-btn {
-    background: linear-gradient(135deg, #4752c4, #5865f2);
+    background: linear-gradient(135deg, #7928ca, #00f2fe);
 }
 
 .fps-tag {
@@ -76,13 +282,13 @@ body, html {
     font-weight: 700;
     padding: 2px 4px;
     border-radius: 6px;
-    border: 2px solid #1e1f22;
+    border: 2px solid #080b11;
 }
 
 /* 2. CANAIS & SIDEBAR */
 .channels-sidebar {
     width: 240px;
-    background-color: #2b2d31;
+    background-color: #0e131f;
     display: flex;
     flex-direction: column;
     border-right: 1px solid rgba(0,0,0,0.15);
@@ -125,7 +331,7 @@ body, html {
 .group-title {
     font-size: 12px;
     font-weight: 700;
-    color: #949ba4;
+    color: #7f8ea3;
     padding: 4px 8px;
     display: flex;
     align-items: center;
@@ -139,7 +345,7 @@ body, html {
     gap: 8px;
     padding: 8px 10px;
     border-radius: 4px;
-    color: #949ba4;
+    color: #7f8ea3;
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
@@ -147,12 +353,12 @@ body, html {
 }
 
 .channel-item:hover {
-    background-color: #35373c;
-    color: #dbdee1;
+    background-color: #192236;
+    color: #e2e8f5;
 }
 
 .channel-item.active {
-    background-color: #404249;
+    background-color: #24324f;
     color: #ffffff;
 }
 
@@ -164,11 +370,11 @@ body, html {
 }
 
 .voice-channel:hover {
-    background-color: #35373c;
+    background-color: #192236;
 }
 
 .voice-channel.active {
-    background-color: #383a40;
+    background-color: #1c263c;
 }
 
 .voice-header {
@@ -177,7 +383,7 @@ body, html {
     gap: 8px;
     font-size: 14px;
     font-weight: 500;
-    color: #dbdee1;
+    color: #e2e8f5;
 }
 
 .live-pill {
@@ -209,7 +415,7 @@ body, html {
     align-items: center;
     gap: 6px;
     font-size: 13px;
-    color: #949ba4;
+    color: #7f8ea3;
     padding: 2px 4px;
     border-radius: 4px;
 }
@@ -218,7 +424,7 @@ body, html {
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background-color: #5865f2;
+    background-color: #00f2fe;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -274,7 +480,7 @@ body, html {
 
 /* PAINEL DE VOZ CONECTADA */
 .voice-status-panel {
-    background-color: #232428;
+    background-color: #101726;
     border-bottom: 1px solid rgba(0,0,0,0.2);
     padding: 10px 14px;
     display: flex;
@@ -292,7 +498,7 @@ body, html {
 .btn-disconnect-voice {
     background: transparent;
     border: none;
-    color: #949ba4;
+    color: #7f8ea3;
     cursor: pointer;
     font-size: 15px;
     padding: 6px 8px;
@@ -324,12 +530,12 @@ body, html {
 
 .status-sub {
     font-size: 11px;
-    color: #949ba4;
+    color: #7f8ea3;
 }
 
 .btn-stream-action {
     width: 100%;
-    background-color: #5865f2;
+    background-color: #00f2fe;
     border: none;
     color: white;
     font-size: 13px;
@@ -345,7 +551,7 @@ body, html {
 }
 
 .btn-stream-action:hover {
-    background-color: #4752c4;
+    background-color: #7928ca;
 }
 
 .btn-stream-action.streaming {
@@ -359,7 +565,7 @@ body, html {
 /* RODAPÉ DO USUÁRIO */
 .user-footer {
     height: 52px;
-    background-color: #232428;
+    background-color: #101726;
     padding: 0 8px;
     display: flex;
     align-items: center;
@@ -375,7 +581,7 @@ body, html {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: white;
     font-weight: 700;
     font-size: 14px;
@@ -392,7 +598,7 @@ body, html {
     position: absolute;
     bottom: -1px;
     right: -1px;
-    border: 2px solid #232428;
+    border: 2px solid #101726;
 }
 
 .user-info {
@@ -412,7 +618,7 @@ body, html {
 
 .user-tag {
     font-size: 11px;
-    color: #949ba4;
+    color: #7f8ea3;
 }
 
 .user-controls {
@@ -437,8 +643,8 @@ body, html {
 }
 
 .icon-btn:hover {
-    background-color: #35373c;
-    color: #dbdee1;
+    background-color: #192236;
+    color: #e2e8f5;
 }
 
 .icon-btn.active {
@@ -448,7 +654,7 @@ body, html {
 /* 3. MAIN STAGE AREA */
 .main-stage-area {
     flex: 1;
-    background-color: #313338;
+    background-color: #141b2a;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -483,7 +689,7 @@ body, html {
 
 .header-desc {
     font-size: 13px;
-    color: #949ba4;
+    color: #7f8ea3;
     margin-left: 8px;
     border-left: 1px solid #4e5058;
     padding-left: 12px;
@@ -525,12 +731,12 @@ body, html {
 
 /* BARRA DE ESCOLHER TRANSMISSÃO */
 .stream-switcher-bar {
-    background-color: #1e1f22;
+    background-color: #080b11;
     padding: 8px 16px;
     display: flex;
     align-items: center;
     gap: 12px;
-    border-bottom: 2px solid #5865f2;
+    border-bottom: 2px solid #00f2fe;
 }
 
 .switcher-label {
@@ -539,7 +745,7 @@ body, html {
     gap: 6px;
     font-size: 13px;
     font-weight: 700;
-    color: #dbdee1;
+    color: #e2e8f5;
 }
 
 .stream-tabs {
@@ -550,9 +756,9 @@ body, html {
 }
 
 .stream-tab-btn {
-    background-color: #2b2d31;
+    background-color: #0e131f;
     border: 1px solid #3f4147;
-    color: #dbdee1;
+    color: #e2e8f5;
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 13px;
@@ -565,13 +771,13 @@ body, html {
 }
 
 .stream-tab-btn:hover {
-    background-color: #35373c;
-    border-color: #5865f2;
+    background-color: #192236;
+    border-color: #00f2fe;
 }
 
 .stream-tab-btn.active {
-    background-color: #5865f2;
-    border-color: #5865f2;
+    background-color: #00f2fe;
+    border-color: #00f2fe;
     color: white;
     box-shadow: 0 0 8px rgba(88, 101, 242, 0.4);
 }
@@ -592,7 +798,7 @@ body, html {
     align-items: center;
     justify-content: center;
     position: relative;
-    border-bottom: 2px solid #1e1f22;
+    border-bottom: 2px solid #080b11;
 }
 
 .video-player-wrapper {
@@ -659,7 +865,7 @@ body, html {
 }
 
 .hud-pill.res {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: white;
 }
 
@@ -741,14 +947,14 @@ body, html {
 
 .system-message {
     background-color: rgba(88, 101, 242, 0.1);
-    border-left: 4px solid #5865f2;
+    border-left: 4px solid #00f2fe;
     padding: 10px 14px;
     border-radius: 4px;
     font-size: 13px;
     display: flex;
     align-items: center;
     gap: 10px;
-    color: #dbdee1;
+    color: #e2e8f5;
 }
 
 .chat-message-row {
@@ -762,7 +968,7 @@ body, html {
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: white;
     font-weight: 700;
     display: flex;
@@ -787,13 +993,13 @@ body, html {
 .chat-time {
     font-size: 11px;
     font-weight: 400;
-    color: #949ba4;
+    color: #7f8ea3;
     margin-left: 8px;
 }
 
 .chat-text {
     font-size: 14px;
-    color: #dbdee1;
+    color: #e2e8f5;
     user-select: text;
     line-height: 1.4;
     word-break: break-word;
@@ -807,22 +1013,22 @@ body, html {
 
 #chat-input {
     flex: 1;
-    background-color: #383a40;
+    background-color: #1c263c;
     border: none;
     border-radius: 8px;
     padding: 12px 16px;
-    color: #dbdee1;
+    color: #e2e8f5;
     font-size: 14px;
     outline: none;
     user-select: text;
 }
 
 #chat-input:focus {
-    background-color: #404249;
+    background-color: #24324f;
 }
 
 .send-btn {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     border: none;
     color: white;
     padding: 0 18px;
@@ -833,7 +1039,7 @@ body, html {
 }
 
 .send-btn:hover {
-    background-color: #4752c4;
+    background-color: #7928ca;
 }
 
 /* MODAL DE STREAM 60 FPS */
@@ -852,7 +1058,7 @@ body, html {
 
 .modal-box {
     width: 480px;
-    background-color: #313338;
+    background-color: #141b2a;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
@@ -865,7 +1071,7 @@ body, html {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: #2b2d31;
+    background-color: #0e131f;
     color: #f2f3f5;
 }
 
@@ -880,7 +1086,7 @@ body, html {
 .modal-close {
     background: transparent;
     border: none;
-    color: #949ba4;
+    color: #7f8ea3;
     font-size: 18px;
     cursor: pointer;
 }
@@ -894,7 +1100,7 @@ body, html {
 
 .modal-desc {
     font-size: 13px;
-    color: #949ba4;
+    color: #7f8ea3;
 }
 
 .setting-group label {
@@ -913,7 +1119,7 @@ body, html {
 }
 
 .opt-card {
-    background-color: #2b2d31;
+    background-color: #0e131f;
     border: 2px solid transparent;
     padding: 10px;
     text-align: center;
@@ -922,16 +1128,16 @@ body, html {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
-    color: #dbdee1;
+    color: #e2e8f5;
 }
 
 .opt-card:hover {
-    background-color: #35373c;
+    background-color: #192236;
 }
 
 .opt-card.active {
-    border-color: #5865f2;
-    background-color: #383a40;
+    border-color: #00f2fe;
+    background-color: #1c263c;
     color: #ffffff;
 }
 
@@ -941,7 +1147,7 @@ body, html {
 }
 
 .setting-checkbox {
-    background-color: #2b2d31;
+    background-color: #0e131f;
     padding: 12px;
     border-radius: 6px;
     display: flex;
@@ -967,13 +1173,13 @@ body, html {
 
 .hint {
     font-size: 11px;
-    color: #949ba4;
+    color: #7f8ea3;
     padding-left: 26px;
 }
 
 .modal-footer {
     padding: 16px 20px;
-    background-color: #2b2d31;
+    background-color: #0e131f;
     display: flex;
     justify-content: flex-end;
     gap: 12px;
@@ -990,7 +1196,7 @@ body, html {
 }
 
 .btn-start-stream {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     border: none;
     color: white;
     font-size: 13px;
@@ -1005,7 +1211,7 @@ body, html {
 }
 
 .btn-start-stream:hover {
-    background-color: #4752c4;
+    background-color: #7928ca;
 }
 
 /* TOAST NOTIFICAÇÕES */
@@ -1021,7 +1227,7 @@ body, html {
 
 .toast {
     background-color: #111214;
-    border-left: 4px solid #5865f2;
+    border-left: 4px solid #00f2fe;
     color: white;
     padding: 12px 18px;
     border-radius: 6px;
@@ -1070,7 +1276,7 @@ body, html {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: white;
     font-size: 12px;
     font-weight: 700;
@@ -1092,7 +1298,7 @@ body, html {
 
 .ctx-tag {
     font-size: 11px;
-    color: #949ba4;
+    color: #7f8ea3;
 }
 
 .ctx-divider {
@@ -1115,7 +1321,7 @@ body, html {
 }
 
 .ctx-item:hover {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: #ffffff;
 }
 
@@ -1146,7 +1352,7 @@ body, html {
 
 .ctx-slider {
     width: 100%;
-    accent-color: #5865f2;
+    accent-color: #00f2fe;
     cursor: pointer;
 }
 
@@ -1156,7 +1362,7 @@ body, html {
 .settings-modal-box {
     width: 900px;
     height: 620px;
-    background-color: #313338;
+    background-color: #141b2a;
     border-radius: 8px;
     display: flex;
     overflow: hidden;
@@ -1166,7 +1372,7 @@ body, html {
 
 .settings-sidebar {
     width: 240px;
-    background-color: #2b2d31;
+    background-color: #0e131f;
     padding: 40px 16px 20px 24px;
     display: flex;
     flex-direction: column;
@@ -1177,7 +1383,7 @@ body, html {
 .settings-category {
     font-size: 11px;
     font-weight: 800;
-    color: #949ba4;
+    color: #7f8ea3;
     padding: 8px 10px 4px 10px;
     letter-spacing: 0.3px;
 }
@@ -1196,12 +1402,12 @@ body, html {
 }
 
 .settings-tab:hover {
-    background-color: #35373c;
-    color: #dbdee1;
+    background-color: #192236;
+    color: #e2e8f5;
 }
 
 .settings-tab.active {
-    background-color: #404249;
+    background-color: #24324f;
     color: #ffffff;
 }
 
@@ -1270,7 +1476,7 @@ body, html {
 
 /* PREVIEW DO PERFIL */
 .profile-card-preview {
-    background-color: #1e1f22;
+    background-color: #080b11;
     border-radius: 8px;
     overflow: hidden;
     margin-bottom: 8px;
@@ -1278,7 +1484,7 @@ body, html {
 
 .preview-banner {
     height: 70px;
-    background: linear-gradient(135deg, #5865f2, #23a55a);
+    background: linear-gradient(135deg, #00f2fe, #23a55a);
 }
 
 .preview-body {
@@ -1293,8 +1499,8 @@ body, html {
     width: 64px;
     height: 64px;
     border-radius: 50%;
-    background-color: #5865f2;
-    border: 5px solid #1e1f22;
+    background-color: #00f2fe;
+    border: 5px solid #080b11;
     color: white;
     font-size: 26px;
     font-weight: 700;
@@ -1312,7 +1518,7 @@ body, html {
 
 .preview-names span {
     font-size: 13px;
-    color: #949ba4;
+    color: #7f8ea3;
 }
 
 /* FORMULÁRIOS DAS CONFIGURAÇÕES */
@@ -1330,7 +1536,7 @@ body, html {
 }
 
 .settings-input, .settings-select {
-    background-color: #1e1f22;
+    background-color: #080b11;
     border: 1px solid #3f4147;
     border-radius: 4px;
     padding: 10px 14px;
@@ -1341,7 +1547,7 @@ body, html {
 }
 
 .settings-input:focus, .settings-select:focus {
-    border-color: #5865f2;
+    border-color: #00f2fe;
 }
 
 .avatar-color-picker {
@@ -1400,7 +1606,7 @@ body, html {
 
 /* TESTE DE MICROFONE DO DISCORD */
 .mic-test-box {
-    background-color: #2b2d31;
+    background-color: #0e131f;
     border-radius: 8px;
     padding: 16px;
     display: flex;
@@ -1416,7 +1622,7 @@ body, html {
 }
 
 .btn-mic-test {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     border: none;
     color: white;
     font-size: 13px;
@@ -1435,7 +1641,7 @@ body, html {
 .mic-meter-bar {
     flex: 1;
     height: 12px;
-    background-color: #1e1f22;
+    background-color: #080b11;
     border-radius: 6px;
     overflow: hidden;
     position: relative;
@@ -1494,13 +1700,13 @@ body, html {
     border-radius: 4px;
     font-size: 13px;
     font-weight: 500;
-    color: #dbdee1;
+    color: #e2e8f5;
     cursor: pointer;
     transition: background 0.1s, color 0.1s;
 }
 
 .ctx-submenu-item:hover {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: #ffffff;
 }
 
@@ -1516,7 +1722,7 @@ body, html {
 /* Feedback visual de Drag and Drop para salas de voz */
 .voice-channel.drag-over {
     background-color: rgba(88, 101, 242, 0.25) !important;
-    outline: 2px dashed #5865f2;
+    outline: 2px dashed #00f2fe;
 }
 
 .voice-user-row {
@@ -1593,7 +1799,7 @@ body, html {
     display: flex;
     align-items: center;
     gap: 12px;
-    background-color: #2b2d31;
+    background-color: #0e131f;
     padding: 8px 12px;
     border-radius: 6px;
     font-size: 13px;
@@ -1601,7 +1807,7 @@ body, html {
 }
 
 .iptv-room-target-bar select {
-    background-color: #1e1f22;
+    background-color: #080b11;
     color: #ffffff;
     border: 1px solid #3f4147;
     border-radius: 4px;
@@ -1625,8 +1831,8 @@ body, html {
 }
 
 .iptv-type-btn {
-    background-color: #2b2d31;
-    color: #949ba4;
+    background-color: #0e131f;
+    color: #7f8ea3;
     border: none;
     padding: 8px 14px;
     border-radius: 4px;
@@ -1640,12 +1846,12 @@ body, html {
 }
 
 .iptv-type-btn:hover {
-    background-color: #35373c;
-    color: #dbdee1;
+    background-color: #192236;
+    color: #e2e8f5;
 }
 
 .iptv-type-btn.active {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: #ffffff;
 }
 
@@ -1654,7 +1860,7 @@ body, html {
     display: flex;
     align-items: center;
     gap: 8px;
-    background-color: #1e1f22;
+    background-color: #080b11;
     border: 1px solid #3f4147;
     border-radius: 4px;
     padding: 6px 12px;
@@ -1662,7 +1868,7 @@ body, html {
 }
 
 .iptv-search-box i {
-    color: #949ba4;
+    color: #7f8ea3;
     font-size: 14px;
 }
 
@@ -1680,7 +1886,7 @@ body, html {
     flex: 1;
     overflow: hidden;
     gap: 12px;
-    background-color: #2b2d31;
+    background-color: #0e131f;
     border-radius: 8px;
     padding: 8px;
 }
@@ -1689,7 +1895,7 @@ body, html {
     width: 240px;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid #1e1f22;
+    border-right: 1px solid #080b11;
     padding-right: 8px;
     overflow: hidden;
 }
@@ -1697,7 +1903,7 @@ body, html {
 .iptv-cat-title {
     font-size: 11px;
     font-weight: 700;
-    color: #949ba4;
+    color: #7f8ea3;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 6px 8px;
@@ -1725,22 +1931,22 @@ body, html {
 }
 
 .iptv-cat-item:hover {
-    background-color: #35373c;
+    background-color: #192236;
     color: #ffffff;
 }
 
 .iptv-cat-item.active {
     background-color: rgba(88, 101, 242, 0.2);
-    color: #5865f2;
+    color: #00f2fe;
     font-weight: 600;
 }
 
 .iptv-cat-count {
     font-size: 10px;
-    background-color: #1e1f22;
+    background-color: #080b11;
     padding: 2px 6px;
     border-radius: 10px;
-    color: #949ba4;
+    color: #7f8ea3;
 }
 
 .iptv-streams-main {
@@ -1759,13 +1965,13 @@ body, html {
     font-size: 13px;
     font-weight: 600;
     color: #ffffff;
-    border-bottom: 1px solid #1e1f22;
+    border-bottom: 1px solid #080b11;
     margin-bottom: 8px;
 }
 
 .iptv-streams-count {
     font-size: 11px;
-    color: #949ba4;
+    color: #7f8ea3;
 }
 
 .iptv-streams-grid {
@@ -1779,8 +1985,8 @@ body, html {
 }
 
 .iptv-stream-card {
-    background-color: #1e1f22;
-    border: 1px solid #313338;
+    background-color: #080b11;
+    border: 1px solid #141b2a;
     border-radius: 8px;
     padding: 10px;
     display: flex;
@@ -1795,8 +2001,8 @@ body, html {
 
 .iptv-stream-card:hover {
     transform: translateY(-4px) scale(1.02);
-    border-color: #5865f2;
-    background-color: #2b2d31;
+    border-color: #00f2fe;
+    background-color: #0e131f;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -1810,7 +2016,7 @@ body, html {
     align-items: center;
     justify-content: center;
     font-size: 32px;
-    color: #5865f2;
+    color: #00f2fe;
 }
 
 /* Quando for cartaz de filme (VOD) ou série, exibe poster vertical de alta definição */
@@ -1828,7 +2034,7 @@ body, html {
 .iptv-stream-title {
     font-size: 12px;
     font-weight: 600;
-    color: #dbdee1;
+    color: #e2e8f5;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1841,7 +2047,7 @@ body, html {
 .iptv-stream-btn {
     margin-top: auto;
     width: 100%;
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: #ffffff;
     border: none;
     padding: 6px;
@@ -1857,7 +2063,7 @@ body, html {
 }
 
 .iptv-stream-btn:hover {
-    background-color: #4752c4;
+    background-color: #7928ca;
 }
 
 .iptv-placeholder, .iptv-loading {
@@ -1866,7 +2072,7 @@ body, html {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: #949ba4;
+    color: #7f8ea3;
     font-size: 13px;
     padding: 40px;
     gap: 10px;
@@ -1886,7 +2092,7 @@ body, html {
 .members-sidebar {
     width: 240px;
     min-width: 200px;
-    background-color: #2b2d31;
+    background-color: #0e131f;
     border-left: 1px solid #1f2023;
     display: flex;
     flex-direction: column;
@@ -1897,7 +2103,7 @@ body, html {
 .members-section-header {
     font-size: 11px;
     font-weight: 700;
-    color: #949ba4;
+    color: #7f8ea3;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 4px 8px 6px;
@@ -1922,7 +2128,7 @@ body, html {
 }
 
 .member-row:hover {
-    background-color: #35373c;
+    background-color: #192236;
 }
 
 .member-row.offline {
@@ -1959,7 +2165,7 @@ body, html {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    border: 2px solid #2b2d31;
+    border: 2px solid #0e131f;
 }
 
 .member-status-dot.online {
@@ -1979,7 +2185,7 @@ body, html {
 .member-name {
     font-size: 13px;
     font-weight: 600;
-    color: #dbdee1;
+    color: #e2e8f5;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1987,7 +2193,7 @@ body, html {
 
 .member-sub {
     font-size: 10px;
-    color: #949ba4;
+    color: #7f8ea3;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2005,7 +2211,7 @@ body, html {
 .register-modal-box {
     max-width: 440px;
     width: 90vw;
-    background-color: #313338;
+    background-color: #141b2a;
     border-radius: 8px;
     padding: 32px 28px;
     display: flex;
@@ -2022,7 +2228,7 @@ body, html {
 
 .register-logo {
     font-size: 46px;
-    color: #5865f2;
+    color: #00f2fe;
     margin-bottom: 12px;
 }
 
@@ -2035,7 +2241,7 @@ body, html {
 
 .register-header p {
     font-size: 13px;
-    color: #949ba4;
+    color: #7f8ea3;
     line-height: 1.5;
     margin-bottom: 24px;
 }
@@ -2057,7 +2263,7 @@ body, html {
 }
 
 .register-input-group input {
-    background-color: #1e1f22;
+    background-color: #080b11;
     border: 1px solid #3f4147;
     border-radius: 4px;
     padding: 12px 14px;
@@ -2068,7 +2274,7 @@ body, html {
 }
 
 .register-input-group input:focus {
-    border-color: #5865f2;
+    border-color: #00f2fe;
 }
 
 .register-avatar-choice {
@@ -2088,7 +2294,7 @@ body, html {
 }
 
 .btn-register-submit {
-    background-color: #5865f2;
+    background-color: #00f2fe;
     color: #ffffff;
     border: none;
     padding: 13px;
@@ -2104,7 +2310,7 @@ body, html {
 }
 
 .btn-register-submit:hover {
-    background-color: #4752c4;
+    background-color: #7928ca;
 }
 
 /* ==========================================================================
@@ -2117,7 +2323,7 @@ body, html {
     justify-content: center;
     background: transparent;
     border: none;
-    color: #dbdee1;
+    color: #e2e8f5;
     font-size: 17px;
     padding: 6px 8px;
     border-radius: 4px;
@@ -2126,7 +2332,7 @@ body, html {
 }
 
 .btn-mobile-toggle:hover {
-    background-color: #35373c;
+    background-color: #192236;
     color: #ffffff;
 }
 
@@ -2250,7 +2456,7 @@ body, html {
         width: 100%;
         max-height: 120px;
         border-right: none;
-        border-bottom: 1px solid #1e1f22;
+        border-bottom: 1px solid #080b11;
         padding-bottom: 6px;
     }
 
@@ -2297,7 +2503,7 @@ body, html {
 }
 
 .btn-big-play {
-    background: #5865F2;
+    background: #00f2fe;
     color: #fff;
     border: none;
     border-radius: 50px;
@@ -2313,7 +2519,7 @@ body, html {
 }
 
 .btn-big-play:hover {
-    background: #4752c4;
+    background: #7928ca;
     transform: scale(1.05);
 }
 
@@ -2339,7 +2545,7 @@ body, html {
 }
 .btn-create-channel {
     background: transparent;
-    color: #949ba4;
+    color: #7f8ea3;
     border: none;
     cursor: pointer;
     font-size: 13px;
@@ -2354,7 +2560,7 @@ body, html {
 .btn-del-channel {
     margin-left: auto;
     background: transparent;
-    color: #949ba4;
+    color: #7f8ea3;
     border: none;
     cursor: pointer;
     font-size: 11px;

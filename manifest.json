@@ -1,13 +1,13 @@
 {
-  "name": "Discord 60FPS",
-  "short_name": "Discord",
-  "description": "Discord com Streaming 60 FPS, IPTV e Salas de Cinema 24/7",
+  "name": "Kord 60FPS",
+  "short_name": "Kord",
+  "description": "Kord - Plataforma Ultra 60FPS, Streaming, Voz e Cinema 24/7",
   "start_url": "/",
   "id": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#313338",
-  "theme_color": "#5865F2",
+  "background_color": "#090c12",
+  "theme_color": "#00f2fe",
   "icons": [
     {
       "src": "/icon-192.png",

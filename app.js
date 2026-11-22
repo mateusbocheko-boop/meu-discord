@@ -320,7 +320,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
-    showToast('🎉 Discord 60FPS instalado com sucesso no seu dispositivo!');
+    showToast('🎉 Kord instalado com sucesso no seu dispositivo!');
 });
 
 if ('serviceWorker' in navigator) {
@@ -344,13 +344,13 @@ function triggerPwaInstall() {
         deferredPrompt.prompt();
         deferredPrompt.userChoice.then((choiceResult) => {
             if (choiceResult && choiceResult.outcome === 'accepted') {
-                showToast('🚀 Instalando aplicativo Discord...');
+                showToast('🚀 Instalando aplicativo Kord...');
             }
             deferredPrompt = null;
             closeInstallModal();
         });
     } else {
-        showToast('ℹ️ Siga o passo a passo na tela para instalar no seu navegador ou celular.', 6000);
+        showToast('ℹ️ Siga o passo a passo na tela para instalar o Kord no seu navegador ou celular.', 6000);
     }
 }
 
@@ -2309,6 +2309,13 @@ function saveUserProfile() {
     }
 
     localStorage.setItem('dc_avatar', state.avatarColor);
+    const profileObj = {
+        userId: state.userId,
+        username: state.username,
+        avatarColor: state.avatarColor
+    };
+    localStorage.setItem('kord_user_profile', JSON.stringify(profileObj));
+    localStorage.setItem('discord_user_profile', JSON.stringify(profileObj));
 
     // Atualiza UI própria
     document.getElementById('my-username').textContent = state.username;
@@ -2707,7 +2714,7 @@ function renderMembersSidebar() {
 
 // --- CADASTRO OBRIGATÓRIO DE NOVO INTEGRANTE AO ENTRAR PELO LINK ---
 function checkRegistration() {
-    const saved = localStorage.getItem('discord_user_profile');
+    const saved = localStorage.getItem('kord_user_profile') || localStorage.getItem('discord_user_profile');
     let isRegistered = false;
     if (saved) {
         try {
@@ -3370,11 +3377,13 @@ function setupEventListeners() {
             return;
         }
         state.username = name;
-        localStorage.setItem('discord_user_profile', JSON.stringify({
+        const profileObj = {
             userId: state.userId,
             username: state.username,
             avatarColor: state.avatarColor
-        }));
+        };
+        localStorage.setItem('kord_user_profile', JSON.stringify(profileObj));
+        localStorage.setItem('discord_user_profile', JSON.stringify(profileObj));
         updateMyProfileUI();
         const regModal = document.getElementById('register-modal');
         if (regModal) regModal.style.display = 'none';

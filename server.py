@@ -1324,7 +1324,7 @@ async def start_cloudflare_tunnel(port=8080):
                     print("\n" + "=" * 65)
                     print(" 🚀 LINK PÚBLICO PARA SEUS AMIGOS EM OUTRAS CIDADES:")
                     print(f" 👉 {public_tunnel_url}")
-                    print(" (Envie este link no WhatsApp/Discord para seus amigos!)")
+                    print(" (Envie este link no WhatsApp para seus amigos!)")
                     print("=" * 65 + "\n")
                     await broadcast({
                         "type": "tunnel_ready",
@@ -1422,7 +1422,7 @@ if __name__ == "__main__":
     local_ip = get_local_ip()
     port = int(os.environ.get("PORT", 8080))
     print("=" * 65)
-    print("   🎮 DISCORD 60 FPS + 2K STREAM & VOICE")
+    print("   ⚡ KORD • 60 FPS ULTRA HD STREAM, VOZ & CINEMA")
     print("=" * 65)
     print(f" ✅ Servidor rodando com sucesso!")
     print(f" 💻 Porta em escuta:         {port}")
