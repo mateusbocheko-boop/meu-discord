@@ -135,13 +135,31 @@ function adminUnbanUser(targetUserId) {
     showToast('✅ Usuário desbanido.');
 }
 
-function adminCreateChannel(name, type = 'voice', icon = '') {
+function adminCreateChannel(arg1, arg2, icon = '') {
+    let name = '';
+    let type = 'voice';
+    if (arg1 === 'voice' || arg1 === 'text' || arg1 === 'cinema') {
+        type = arg1;
+        name = arg2 || '';
+    } else if (arg2 === 'voice' || arg2 === 'text' || arg2 === 'cinema') {
+        name = arg1 || '';
+        type = arg2;
+    } else {
+        name = arg1 || '';
+        type = arg2 || 'voice';
+    }
+
+    if (!icon) {
+        icon = (type === 'voice') ? 'fa-volume-high' : 'fa-hashtag';
+    }
+
     sendWs({
         type: 'admin_create_channel',
         channelType: type,
         name: name,
         icon: icon
     });
+    showToast(`👑 Criando sala de ${type === 'voice' ? 'Voz' : 'Texto'} <b>${escapeHtml(name)}</b>...`);
 }
 
 function adminDeleteChannel(channelId, type) {
@@ -1240,7 +1258,9 @@ function applyUserVolume(userId) {
 
 // --- RENDERIZAÇÃO DOS USUÁRIOS NAS SALAS DE VOZ ---
 function renderVoiceUsers() {
-    const channels = ['geral', 'jogos-60fps', 'cinema-1', 'cinema-2', 'cinema-3', 'competitivo', 'bate-papo', 'afk'];
+    const dynamicChannels = (state.channels?.voice || []).map(c => c.id);
+    const defaultChannels = ['geral', 'jogos-60fps', 'cinema-1', 'cinema-2', 'cinema-3', 'competitivo', 'bate-papo', 'afk'];
+    const channels = Array.from(new Set([...defaultChannels, ...dynamicChannels]));
 
     channels.forEach(ch => {
         const container = document.getElementById(`voice-users-${ch}`);
@@ -2196,7 +2216,7 @@ function setupEventListeners() {
             return;
         }
         const chType = document.querySelector('input[name="create-channel-type"]:checked')?.value || 'voice';
-        adminCreateChannel(chType, name);
+        adminCreateChannel(name, chType);
         if (inputName) inputName.value = '';
         const m = document.getElementById('modal-create-channel');
         if (m) m.style.display = 'none';
