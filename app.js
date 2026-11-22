@@ -51,7 +51,11 @@ const state = {
     hlsInstance: null,
     currentIptvType: 'live',
     currentIptvCategory: null,
-    iptvCategories: []
+    iptvCategories: [],
+
+    // Integrantes do Servidor (Online e Offline)
+    serverMembers: new Map(), // userId -> memberData
+    onlineUserIds: new Set()  // Set de userIds online
 };
 
 // Carrega volumes salvos
@@ -151,7 +155,15 @@ async function handleServerMessage(data) {
             if (data.cinemaRooms) {
                 state.cinemaRooms = data.cinemaRooms;
             }
+            if (data.members) {
+                state.serverMembers.clear();
+                data.members.forEach(m => state.serverMembers.set(m.id, m));
+            }
+            if (data.onlineIds) {
+                state.onlineUserIds = new Set(data.onlineIds);
+            }
             renderVoiceUsers();
+            renderMembersSidebar();
             break;
 
         case 'cinema_update':
@@ -162,7 +174,17 @@ async function handleServerMessage(data) {
                 checkRoomCinemaStream(data.room);
             }
             if (data.cinema) {
-                showToast(`🎬 Transmissão iniciada em <b>${data.room}</b>: <b>${escapeHtml(data.cinema.streamName)}</b>`);
+                showToast(`🎬 Transmissão iniciada em <b>${data.room}</b>: <b>${escapeHtml(data.cinema.streamName)}</b> (Controlado por ${escapeHtml(data.cinema.startedBy)})`);
+            }
+            break;
+
+        case 'cinema_sync':
+            if (state.cinemaRooms && state.cinemaRooms[data.room]) {
+                state.cinemaRooms[data.room].currentTime = data.currentTime;
+                state.cinemaRooms[data.room].isPlaying = data.isPlaying;
+            }
+            if (state.currentVoiceChannel === data.room) {
+                applyCinemaSync(data);
             }
             break;
 
@@ -173,8 +195,23 @@ async function handleServerMessage(data) {
 
         case 'user_joined':
             state.users.set(data.user.id, data.user);
+            state.onlineUserIds.add(data.user.id);
+            if (data.member) {
+                state.serverMembers.set(data.user.id, data.member);
+            }
             renderVoiceUsers();
-            addSystemChatMessage(`${data.user.username} entrou no servidor.`);
+            renderMembersSidebar();
+
+            if (data.isNewMember) {
+                showToast(`🎉 <b>Novo Integrante Cadastrado!</b><br><b>${escapeHtml(data.user.username)}</b> entrou pelo link!`, 7000);
+                addSystemChatMessage(`🎉 <b>${escapeHtml(data.user.username)}</b> acabou de se cadastrar e entrou no servidor! Dêem as boas-vindas!`);
+                playNotificationSound();
+            } else {
+                showToast(`🔔 <b>${escapeHtml(data.user.username)}</b> conectou no servidor.`);
+                addSystemChatMessage(`${data.user.username} entrou no servidor.`);
+                playNotificationSound();
+            }
+
             if (state.currentVoiceChannel && data.user.voiceChannel === state.currentVoiceChannel) {
                 initiatePeerConnection(data.user.id);
             }
@@ -192,16 +229,22 @@ async function handleServerMessage(data) {
             } else {
                 state.users.set(data.user.id, data.user);
             }
+            if (data.member) {
+                state.serverMembers.set(data.user.id, data.member);
+            }
             renderVoiceUsers();
+            renderMembersSidebar();
             renderStreamTabs();
             break;
 
         case 'user_left':
             state.users.delete(data.userId);
+            state.onlineUserIds.delete(data.userId);
             removeStream(data.userId);
             closePeerConnection(data.userId);
             renderVoiceUsers();
-            addSystemChatMessage(`${data.username} saiu.`);
+            renderMembersSidebar();
+            addSystemChatMessage(`${data.username} saiu e está offline.`);
             break;
 
         case 'user_voice_change':
@@ -447,9 +490,11 @@ function enhanceSDP(sdp) {
 async function startMicrophone(deviceId = null) {
     try {
         const audioConstraints = {
-            echoCancellation: document.getElementById('chk-echo-cancellation')?.checked ?? true,
-            noiseSuppression: document.getElementById('chk-noise-suppression')?.checked ?? true,
-            autoGainControl: true
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1, // Mono no microfone elimina ruído de estática e chiado
+            sampleRate: 48000
         };
         if (deviceId) {
             audioConstraints.deviceId = { exact: deviceId };
@@ -470,7 +515,7 @@ async function startMicrophone(deviceId = null) {
     }
 }
 
-// --- Transmissão 60 FPS com ISOLAMENTO DE ÁUDIO ---
+// --- Transmissão 60 FPS com Áudio do Jogo ---
 async function startScreenShare() {
     const res = state.streamConfig.resolution;
     const fps = state.streamConfig.fps;
@@ -492,7 +537,6 @@ async function startScreenShare() {
             channelCount: 2,
             sampleRate: 48000
         } : false,
-        // Evita captura em loop do próprio navegador/aba onde os amigos estão falando
         selfBrowserSurface: 'exclude',
         systemAudio: 'include',
         surfaceSwitching: 'include'
@@ -504,10 +548,10 @@ async function startScreenShare() {
         state.isStreaming = true;
 
         const hasAudio = stream.getAudioTracks().length > 0;
-        if (state.streamConfig.captureAudio && !hasAudio) {
-            showToast('💡 Dica: Para capturar som do jogo sem a voz dos amigos, selecione a <b>Janela do Jogo</b> e marque <b>"Compartilhar áudio"</b>.', 7000);
-        } else if (hasAudio) {
-            showToast('🎮 Transmissão 60 FPS iniciada com isolamento de áudio do sistema!', 4000);
+        if (!hasAudio) {
+            showToast('⚠️ <b>Atenção: Áudio do jogo não capturado!</b><br>No seletor do Windows, escolha a aba <b>"Tela inteira"</b> e marque a caixa <b>"Compartilhar áudio do sistema"</b> para o som do jogo sair.', 9000);
+        } else {
+            showToast('🎮 Transmissão iniciada com o áudio estéreo do jogo!', 4000);
         }
 
         addStream(state.userId, stream, state.username + ' (Você)', {
@@ -872,6 +916,7 @@ function leaveVoiceChannel(notifyServer = true) {
 
 // Trocar de Canal de Voz
 function switchVoiceChannel(newChannel, notifyServer = true) {
+    closeMobileDrawers();
     if (!newChannel) {
         leaveVoiceChannel(notifyServer);
         return;
@@ -1126,6 +1171,133 @@ function escapeHtml(str) {
 }
 
 // --- SETUP GERAL DOS EVENT LISTENERS ---
+
+// --- GAVETAS LATERAIS (RESPONSIVIDADE MOBILE) ---
+function closeMobileDrawers() {
+    const channelsSidebar = document.querySelector('.channels-sidebar');
+    const membersSidebar = document.getElementById('members-sidebar');
+    const backdrop = document.getElementById('mobile-sidebar-backdrop');
+    if (channelsSidebar) channelsSidebar.classList.remove('mobile-open');
+    if (membersSidebar) membersSidebar.classList.remove('mobile-open');
+    if (backdrop) backdrop.style.display = 'none';
+}
+
+// --- SOM DE NOTIFICAÇÃO AO ENTRAR NO SERVIDOR (SINTETIZADO WEB AUDIO API) ---
+function playNotificationSound() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.36);
+    } catch (e) {}
+}
+
+// --- BARRA LATERAL DIREITA: INTEGRANTES ONLINE E OFFLINE ---
+function renderMembersSidebar() {
+    const listOnline = document.getElementById('members-list-online');
+    const listOffline = document.getElementById('members-list-offline');
+    const onlineCount = document.getElementById('online-count');
+    const offlineCount = document.getElementById('offline-count');
+    if (!listOnline || !listOffline) return;
+
+    listOnline.innerHTML = '';
+    listOffline.innerHTML = '';
+
+    const allMembers = Array.from(state.serverMembers.values());
+    state.users.forEach(u => {
+        if (!state.serverMembers.has(u.id)) {
+            allMembers.push({
+                id: u.id,
+                username: u.username,
+                avatar: u.avatar || '#5865F2'
+            });
+        }
+    });
+
+    const uniqueMap = new Map();
+    allMembers.forEach(m => uniqueMap.set(m.id, m));
+
+    let onlineTotal = 0;
+    let offlineTotal = 0;
+
+    uniqueMap.forEach(member => {
+        const isOnline = state.onlineUserIds.has(member.id) || state.users.has(member.id);
+        const row = document.createElement('div');
+        row.className = 'member-row';
+        const isMe = (member.id === state.userId);
+        const nameDisplay = isMe ? `${escapeHtml(member.username)} (Você)` : escapeHtml(member.username);
+        const avatarLetter = (member.username || 'U')[0].toUpperCase();
+        const color = member.avatar || '#5865F2';
+
+        row.innerHTML = `
+            <div class="member-avatar-wrap">
+                <div class="member-avatar" style="background-color: ${color};">${avatarLetter}</div>
+                <div class="member-status-dot ${isOnline ? 'online' : 'offline'}"></div>
+            </div>
+            <div class="member-name-wrap">
+                <span class="member-name ${isOnline ? 'online' : 'offline'}">${nameDisplay}</span>
+            </div>
+        `;
+
+        if (isOnline) {
+            onlineTotal++;
+            listOnline.appendChild(row);
+        } else {
+            offlineTotal++;
+            listOffline.appendChild(row);
+        }
+    });
+
+    if (onlineCount) onlineCount.textContent = onlineTotal;
+    if (offlineCount) offlineCount.textContent = offlineTotal;
+}
+
+// --- CADASTRO OBRIGATÓRIO DE NOVO INTEGRANTE AO ENTRAR PELO LINK ---
+function checkRegistration() {
+    const saved = localStorage.getItem('discord_user_profile');
+    if (saved) {
+        try {
+            const p = JSON.parse(saved);
+            if (p.username) {
+                state.username = p.username;
+                state.avatarColor = p.avatarColor || '#5865F2';
+                state.userId = p.userId || state.userId;
+                updateMyProfileUI();
+                return;
+            }
+        } catch (e) {}
+    }
+    const regModal = document.getElementById('register-modal');
+    if (regModal) {
+        regModal.style.display = 'flex';
+        const nameInput = document.getElementById('register-name-input');
+        if (nameInput) {
+            nameInput.value = '';
+            setTimeout(() => nameInput.focus(), 250);
+        }
+    }
+}
+
+function updateMyProfileUI() {
+    const un = document.getElementById('my-username');
+    const av = document.getElementById('my-avatar');
+    if (un) un.textContent = state.username;
+    if (av) {
+        av.textContent = (state.username || 'U')[0].toUpperCase();
+        av.style.backgroundColor = state.avatarColor || '#5865F2';
+    }
+}
+
 function setupEventListeners() {
     // 1. Troca de Canais de Voz ao Clicar & Suporte a Drag and Drop para Mover Usuários
     document.querySelectorAll('.voice-channel').forEach(el => {
@@ -1428,6 +1600,86 @@ function setupEventListeners() {
         }
     });
 
+
+    // 10. GAVETAS DO MENU MOBILE
+    const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+    const btnToggleMembers = document.getElementById('btn-toggle-members');
+    const mobileBackdrop = document.getElementById('mobile-sidebar-backdrop');
+    const channelsSidebar = document.querySelector('.channels-sidebar');
+    const membersSidebar = document.getElementById('members-sidebar');
+
+    if (btnToggleSidebar) {
+        btnToggleSidebar.onclick = (e) => {
+            e.stopPropagation();
+            const isOpen = channelsSidebar && channelsSidebar.classList.contains('mobile-open');
+            closeMobileDrawers();
+            if (!isOpen && channelsSidebar) {
+                channelsSidebar.classList.add('mobile-open');
+                if (mobileBackdrop) mobileBackdrop.style.display = 'block';
+            }
+        };
+    }
+
+    if (btnToggleMembers) {
+        btnToggleMembers.onclick = (e) => {
+            e.stopPropagation();
+            const isOpen = membersSidebar && membersSidebar.classList.contains('mobile-open');
+            closeMobileDrawers();
+            if (!isOpen && membersSidebar) {
+                membersSidebar.classList.add('mobile-open');
+                if (mobileBackdrop) mobileBackdrop.style.display = 'block';
+            }
+        };
+    }
+
+    if (mobileBackdrop) {
+        mobileBackdrop.onclick = closeMobileDrawers;
+    }
+
+    // 11. CADASTRO DE NOVO INTEGRANTE
+    const registerColorDots = document.querySelectorAll('#register-color-options .color-dot');
+    registerColorDots.forEach(dot => {
+        dot.onclick = () => {
+            registerColorDots.forEach(d => d.classList.remove('active'));
+            dot.classList.add('active');
+            state.avatarColor = dot.dataset.color || '#5865F2';
+        };
+    });
+
+    const btnRegisterSubmit = document.getElementById('btn-register-submit');
+    const regInput = document.getElementById('register-name-input');
+    const submitRegistration = () => {
+        const name = regInput ? regInput.value.trim() : '';
+        if (!name) {
+            alert('Por favor, digite seu nome ou apelido para entrar na comunidade!');
+            if (regInput) regInput.focus();
+            return;
+        }
+        state.username = name;
+        localStorage.setItem('discord_user_profile', JSON.stringify({
+            userId: state.userId,
+            username: state.username,
+            avatarColor: state.avatarColor
+        }));
+        updateMyProfileUI();
+        const regModal = document.getElementById('register-modal');
+        if (regModal) regModal.style.display = 'none';
+
+        sendWs({
+            type: 'update_profile',
+            username: state.username,
+            avatar: state.avatarColor
+        });
+        showToast(`🎉 Bem-vindo(a), <b>${escapeHtml(state.username)}</b>!`);
+    };
+
+    if (btnRegisterSubmit) btnRegisterSubmit.onclick = submitRegistration;
+    if (regInput) {
+        regInput.onkeydown = (e) => {
+            if (e.key === 'Enter') submitRegistration();
+        };
+    }
+
     // Desconecta e sai imediatamente ao fechar a aba
     window.addEventListener('beforeunload', () => {
         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -1477,6 +1729,8 @@ function checkRoomCinemaStream(room) {
     }
 }
 
+let cinemaSyncInterval = null;
+
 function playCinemaStream(cinema) {
     const stage = document.getElementById('video-stage');
     const video = document.getElementById('stage-video');
@@ -1485,7 +1739,16 @@ function playCinemaStream(cinema) {
     stage.style.display = 'flex';
     video.srcObject = null;
 
-    document.getElementById('hud-streamer-name').textContent = `🎬 Cinema IPTV: ${cinema.streamName}`;
+    const isOwner = (cinema.startedById === state.userId);
+    const stopBtn = document.getElementById('btn-stop-cinema');
+
+    if (isOwner) {
+        document.getElementById('hud-streamer-name').innerHTML = `🎬 Cinema: <b>${escapeHtml(cinema.streamName)}</b> <span style="color:#23a55a;">(👑 Você é o Dono)</span>`;
+        if (stopBtn) stopBtn.style.display = 'flex';
+    } else {
+        document.getElementById('hud-streamer-name').innerHTML = `🎬 Cinema: <b>${escapeHtml(cinema.streamName)}</b> • 👑 Dono: <b>${escapeHtml(cinema.startedBy || 'Amigo')}</b>`;
+        if (stopBtn) stopBtn.style.display = 'none';
+    }
     document.getElementById('hud-res').textContent = '1080p FHD';
     document.getElementById('hud-fps').textContent = '60 FPS';
 
@@ -1493,32 +1756,106 @@ function playCinemaStream(cinema) {
         state.hlsInstance.destroy();
         state.hlsInstance = null;
     }
+    if (cinemaSyncInterval) {
+        clearInterval(cinemaSyncInterval);
+        cinemaSyncInterval = null;
+    }
+
+    const seekToPosition = () => {
+        if (cinema.currentTime && cinema.currentTime > 0) {
+            try { video.currentTime = cinema.currentTime; } catch (e) {}
+        }
+    };
 
     if (cinema.streamType === 'live') {
         const streamUrl = `/api/iptv/live/${cinema.streamId}.m3u8`;
         if (window.Hls && Hls.isSupported()) {
             const hls = new Hls({
                 enableWorker: true,
-                lowLatencyMode: true
+                lowLatencyMode: true,
+                backBufferLength: 60
             });
             hls.loadSource(streamUrl);
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                seekToPosition();
                 video.play().catch(() => {});
+            });
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        hls.startLoad();
+                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        hls.recoverMediaError();
+                    } else {
+                        hls.destroy();
+                    }
+                }
             });
             state.hlsInstance = hls;
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = streamUrl;
+            seekToPosition();
             video.play().catch(() => {});
         }
     } else {
-        const vodUrl = `/api/iptv/vod/${cinema.streamId}?ext=${cinema.ext || 'mp4'}`;
+        const vodType = cinema.streamType === 'series' ? 'series' : 'movie';
+        const vodUrl = `/api/iptv/vod/${cinema.streamId}?ext=${cinema.ext || 'mp4'}&type=${vodType}`;
         video.src = vodUrl;
-        video.play().catch(() => {});
+        video.onloadedmetadata = () => {
+            seekToPosition();
+            if (cinema.isPlaying !== false) video.play().catch(() => {});
+        };
+        video.onerror = (e) => {
+            console.warn('Erro ao carregar vídeo VOD/Série:', e);
+            showToast('⚠️ Erro ao reproduzir este vídeo. O arquivo pode estar indisponível.');
+        };
     }
 
-    const stopBtn = document.getElementById('btn-stop-cinema');
-    if (stopBtn) stopBtn.style.display = 'flex';
+    // Configuração de Controle: APENAS o dono pode pausar/mexer na barra do filme
+    if (isOwner) {
+        video.style.pointerEvents = 'auto';
+        const sendSync = () => {
+            if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
+                sendWs({
+                    type: 'cinema_sync',
+                    room: state.currentVoiceChannel,
+                    currentTime: video.currentTime,
+                    isPlaying: !video.paused
+                });
+            }
+        };
+
+        video.onpause = sendSync;
+        video.onplay = sendSync;
+        video.onseeked = sendSync;
+        cinemaSyncInterval = setInterval(sendSync, 4000);
+    } else {
+        // Convidado: controles bloqueados para não pausar para o dono
+        video.style.pointerEvents = 'none';
+        video.onpause = null;
+        video.onplay = null;
+        video.onseeked = null;
+    }
+}
+
+function applyCinemaSync(data) {
+    const video = document.getElementById('stage-video');
+    if (!video || !data) return;
+
+    const cinema = state.cinemaRooms ? state.cinemaRooms[data.room] : null;
+    if (cinema && cinema.startedById === state.userId) return; // Dono nunca é sobrescrito
+
+    const diff = Math.abs(video.currentTime - data.currentTime);
+    if (diff > 1.8) {
+        video.currentTime = data.currentTime;
+    }
+
+    if (data.isPlaying && video.paused) {
+        video.play().catch(() => {});
+    } else if (!data.isPlaying && !video.paused) {
+        video.pause();
+    }
 }
 
 function stopCinemaStream() {
@@ -1605,38 +1942,125 @@ function renderIptvStreams(streams) {
     const grid = document.getElementById('iptv-streams-grid');
     grid.innerHTML = '';
     if (!streams || streams.length === 0) {
-        grid.innerHTML = '<div class="iptv-placeholder">Nenhum canal encontrado nesta categoria.</div>';
+        grid.innerHTML = '<div class="iptv-placeholder">Nenhum item encontrado nesta categoria.</div>';
         return;
     }
+
+    const isSeries = (state.currentIptvType === 'series');
 
     streams.forEach(stream => {
         const card = document.createElement('div');
         card.className = 'iptv-stream-card';
-        const iconUrl = stream.stream_icon || '';
+        const iconUrl = stream.cover || stream.stream_icon || '';
+        const title = stream.name || 'Sem Título';
+        const btnText = isSeries ? '<i class="fa-solid fa-list-ul"></i> Ver Episódios' : '<i class="fa-solid fa-play"></i> Assistir na Sala';
+
         card.innerHTML = `
             ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" class="iptv-stream-logo" onerror="this.onerror=null;this.replaceWith(createFallbackIcon())">` : '<div class="iptv-stream-logo"><i class="fa-solid fa-tv"></i></div>'}
-            <div class="iptv-stream-title" title="${escapeHtml(stream.name)}">${escapeHtml(stream.name)}</div>
-            <button class="iptv-stream-btn"><i class="fa-solid fa-play"></i> Assistir na Sala</button>
+            <div class="iptv-stream-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+            <button class="iptv-stream-btn">${btnText}</button>
         `;
+
         card.onclick = () => {
-            const targetRoom = document.getElementById('iptv-select-target-room').value;
-            sendWs({
-                type: 'cinema_play',
-                room: targetRoom,
-                streamId: stream.stream_id,
-                streamName: stream.name,
-                streamType: state.currentIptvType,
-                ext: stream.container_extension || 'mp4',
-                poster: stream.stream_icon || ''
-            });
-            closeIptvModal();
-            if (state.currentVoiceChannel !== targetRoom) {
-                switchVoiceChannel(targetRoom);
+            if (isSeries) {
+                openSeriesEpisodes(stream);
+            } else {
+                const targetRoom = document.getElementById('iptv-select-target-room').value;
+                sendWs({
+                    type: 'cinema_play',
+                    room: targetRoom,
+                    streamId: stream.stream_id,
+                    streamName: title,
+                    streamType: state.currentIptvType,
+                    ext: stream.container_extension || 'mp4',
+                    poster: iconUrl
+                });
+                closeIptvModal();
+                if (state.currentVoiceChannel !== targetRoom) {
+                    switchVoiceChannel(targetRoom);
+                }
+                showToast(`🎬 Transmissão iniciada em <b>${targetRoom}</b>: <b>${escapeHtml(title)}</b>`);
             }
-            showToast(`Transmissão iniciada em <b>${targetRoom}</b>: <b>${escapeHtml(stream.name)}</b>`);
         };
         grid.appendChild(card);
     });
+}
+
+// Visualizador de Episódios de Séries
+async function openSeriesEpisodes(series) {
+    const grid = document.getElementById('iptv-streams-grid');
+    const seriesId = series.series_id || series.stream_id;
+    const seriesName = series.name || 'Série';
+    
+    grid.innerHTML = `<div class="iptv-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando temporadas de <b>${escapeHtml(seriesName)}</b>...</div>`;
+    document.getElementById('iptv-current-category-name').innerHTML = `
+        <button id="btn-back-to-series" style="background:#5865F2;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:8px;font-size:12px;">
+            <i class="fa-solid fa-arrow-left"></i> Voltar às Séries
+        </button>
+        ${escapeHtml(seriesName)}
+    `;
+
+    document.getElementById('btn-back-to-series').onclick = () => {
+        loadIptvStreams(state.currentIptvType, state.currentIptvCategory);
+    };
+
+    try {
+        const res = await fetch(`/api/iptv/series_info?series_id=${seriesId}`);
+        const data = await res.json();
+        const episodes = data.episodes || {};
+        const seasons = Object.keys(episodes);
+
+        if (seasons.length === 0) {
+            grid.innerHTML = '<div class="iptv-placeholder">Nenhum episódio encontrado para esta série.</div>';
+            return;
+        }
+
+        grid.innerHTML = '';
+        seasons.forEach(sNum => {
+            const seasonTitle = document.createElement('div');
+            seasonTitle.style.gridColumn = '1 / -1';
+            seasonTitle.style.color = '#5865F2';
+            seasonTitle.style.fontWeight = '700';
+            seasonTitle.style.fontSize = '14px';
+            seasonTitle.style.padding = '8px 0 4px 0';
+            seasonTitle.style.borderBottom = '1px solid #3f4147';
+            seasonTitle.innerHTML = `<i class="fa-solid fa-folder-open"></i> Temporada ${sNum}`;
+            grid.appendChild(seasonTitle);
+
+            const epList = episodes[sNum] || [];
+            epList.forEach(ep => {
+                const epCard = document.createElement('div');
+                epCard.className = 'iptv-stream-card';
+                const epTitle = ep.title || `Episódio ${ep.episode_num}`;
+                const icon = ep.info?.movie_image || series.cover || '';
+                epCard.innerHTML = `
+                    ${icon ? `<img src="${escapeHtml(icon)}" class="iptv-stream-logo" onerror="this.onerror=null;this.replaceWith(createFallbackIcon())">` : '<div class="iptv-stream-logo"><i class="fa-solid fa-film"></i></div>'}
+                    <div class="iptv-stream-title" title="${escapeHtml(epTitle)}">${escapeHtml(epTitle)}</div>
+                    <button class="iptv-stream-btn"><i class="fa-solid fa-play"></i> Assistir</button>
+                `;
+                epCard.onclick = () => {
+                    const targetRoom = document.getElementById('iptv-select-target-room').value;
+                    sendWs({
+                        type: 'cinema_play',
+                        room: targetRoom,
+                        streamId: ep.id,
+                        streamName: `${seriesName} • T${sNum} ${epTitle}`,
+                        streamType: 'series',
+                        ext: ep.container_extension || 'mp4',
+                        poster: icon
+                    });
+                    closeIptvModal();
+                    if (state.currentVoiceChannel !== targetRoom) {
+                        switchVoiceChannel(targetRoom);
+                    }
+                    showToast(`🍿 Iniciado em <b>${targetRoom}</b>: <b>${escapeHtml(seriesName)} - ${escapeHtml(epTitle)}</b>`);
+                };
+                grid.appendChild(epCard);
+            });
+        });
+    } catch (e) {
+        grid.innerHTML = '<div class="iptv-placeholder">Erro ao carregar episódios da série.</div>';
+    }
 }
 
 function createFallbackIcon() {
@@ -1655,6 +2079,7 @@ window.addEventListener('DOMContentLoaded', () => {
     av.style.backgroundColor = state.avatarColor;
 
     setupEventListeners();
+    checkRegistration();
     initWebSocket();
     // NÃO inicia microfone aqui: só inicia ao entrar em uma sala de voz!
 

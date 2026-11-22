@@ -177,31 +177,40 @@
 
         <!-- 3. ÁREA PRINCIPAL (HEADER + STAGE 60FPS + CHAT) -->
         <main class="main-stage-area">
-            <!-- Header do Canal com Link para Amigos -->
+            <!-- Header do Canal com Link para Amigos e Menu Mobile -->
             <header class="main-header">
                 <div class="header-left">
+                    <button class="btn-mobile-toggle" id="btn-toggle-sidebar" title="Abrir Salas e Canais">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
                     <i class="fa-solid fa-hashtag" id="channel-icon"></i>
                     <h3 id="current-channel-title">geral</h3>
-                    <span class="header-desc" id="current-channel-desc">Transmissão em tempo real a 60 FPS e até 2K com som do jogo</span>
+                    <span class="header-desc" id="current-channel-desc">Transmissão em tempo real a 60 FPS</span>
                 </div>
                 <div class="header-right">
                     <button class="btn-iptv-action" id="btn-open-iptv" title="Abrir Catálogo de Canais e Filmes IPTV">
                         <i class="fa-solid fa-tv text-green"></i>
-                        <span>Catálogo IPTV</span>
+                        <span>IPTV</span>
                     </button>
                     <button class="btn-stop-cinema" id="btn-stop-cinema" style="display: none;" title="Parar Transmissão IPTV">
                         <i class="fa-solid fa-stop text-red"></i>
-                        <span>Parar IPTV</span>
+                        <span>Parar</span>
                     </button>
                     <button class="btn-invite" id="btn-copy-invite">
                         <i class="fa-solid fa-earth-americas"></i>
-                        <span>Convidar Amigos (Link)</span>
+                        <span>Convidar</span>
+                    </button>
+                    <button class="btn-mobile-toggle" id="btn-toggle-members" title="Ver Integrantes Online/Offline">
+                        <i class="fa-solid fa-users"></i>
                     </button>
                     <button class="header-btn" id="btn-toggle-stage" title="Alternar Palco de Vídeo">
                         <i class="fa-solid fa-expand"></i>
                     </button>
                 </div>
             </header>
+
+            <!-- Backdrop para fechar o menu mobile ao tocar fora -->
+            <div class="mobile-sidebar-backdrop" id="mobile-sidebar-backdrop" style="display: none;"></div>
 
             <!-- BARRA DE SELEÇÃO DE TRANSMISSÕES (ESCOLHER QUAL LIVE ASSISTIR) -->
             <div class="stream-switcher-bar" id="stream-switcher-bar" style="display: none;">
@@ -245,20 +254,68 @@
                 </div>
             </div>
 
-            <!-- ÁREA DO CHAT DE TEXTO -->
-            <div class="chat-container">
-                <div class="messages-list" id="messages-list">
-                    <div class="system-message">
-                        <i class="fa-solid fa-circle-info"></i>
-                        <span>Bem-vindo à Comunidade Discord 60 FPS! Clique com o <b>botão direito</b> em cima de qualquer amigo para ajustar volume ou gerenciar. Mude seu nome nas <b>Configurações (⚙️)</b>.</span>
+            <!-- ÁREA DE CHAT + BARRA LATERAL DIREITA DE MEMBROS (INTEGRANTES ONLINE / OFFLINE) -->
+            <div class="chat-and-members-wrap">
+                <div class="chat-container">
+                    <div class="messages-list" id="messages-list">
+                        <div class="system-message">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <span>Bem-vindo à Comunidade Discord 60 FPS! Clique com o <b>botão direito</b> em cima de qualquer amigo para ajustar volume ou gerenciar.</span>
+                        </div>
+                    </div>
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chat-input" placeholder="Conversar em #geral..." autocomplete="off">
+                        <button class="send-btn" id="btn-send-message"><i class="fa-solid fa-paper-plane"></i></button>
                     </div>
                 </div>
-                <div class="chat-input-wrapper">
-                    <input type="text" id="chat-input" placeholder="Conversar em #geral..." autocomplete="off">
-                    <button class="send-btn" id="btn-send-message"><i class="fa-solid fa-paper-plane"></i></button>
-                </div>
+
+                <!-- BARRA LATERAL DIREITA DE MEMBROS (INTEGRANTES) -->
+                <aside class="members-sidebar" id="members-sidebar">
+                    <div class="members-section-header">
+                        <span>DISPONÍVEL — <b id="online-count">1</b></span>
+                    </div>
+                    <div class="members-list" id="members-list-online"></div>
+
+                    <div class="members-section-header" style="margin-top: 14px;">
+                        <span>OFFLINE — <b id="offline-count">0</b></span>
+                    </div>
+                    <div class="members-list" id="members-list-offline"></div>
+                </aside>
             </div>
         </main>
+    </div>
+
+    <!-- MODAL DE CADASTRO AO ENTRAR PELO LINK -->
+    <div class="modal-backdrop register-backdrop" id="register-modal" style="display: none;">
+        <div class="modal-box register-modal-box">
+            <div class="register-header">
+                <div class="register-logo"><i class="fa-brands fa-discord"></i></div>
+                <h2>Bem-vindo à Comunidade!</h2>
+                <p>Para entrar no servidor e conversar com seus amigos, cadastre seu nome de integrante:</p>
+            </div>
+            <div class="register-body">
+                <div class="register-input-group">
+                    <label>COMO VOCÊ QUER SER CHAMADO?</label>
+                    <input type="text" id="register-name-input" placeholder="Digite seu nome ou apelido..." maxlength="24" autocomplete="off">
+                </div>
+                <div class="register-avatar-choice">
+                    <label>ESCOLHA SUA COR DE AVATAR:</label>
+                    <div class="color-options" id="register-color-options">
+                        <div class="color-dot active" data-color="#5865F2" style="background:#5865F2;"></div>
+                        <div class="color-dot" data-color="#57F287" style="background:#57F287;"></div>
+                        <div class="color-dot" data-color="#FEE75C" style="background:#FEE75C;"></div>
+                        <div class="color-dot" data-color="#EB459E" style="background:#EB459E;"></div>
+                        <div class="color-dot" data-color="#ED4245" style="background:#ED4245;"></div>
+                        <div class="color-dot" data-color="#9B59B6" style="background:#9B59B6;"></div>
+                        <div class="color-dot" data-color="#1ABC9C" style="background:#1ABC9C;"></div>
+                        <div class="color-dot" data-color="#E67E22" style="background:#E67E22;"></div>
+                    </div>
+                </div>
+                <button class="btn-register-submit" id="btn-register-submit">
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar no Servidor
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- MODAL DE CONFIGURAÇÃO DE TRANSMISSÃO 60 FPS & 2K COM ISOLAMENTO DE ÁUDIO -->
@@ -295,15 +352,13 @@
                     </label>
                 </div>
 
-                <!-- NOVO: ISOLAMENTO DE ÁUDIO DAS SALAS DE VOZ -->
+                <!-- ORIENTAÇÃO PARA CAPTURA DE ÁUDIO DO JOGO -->
                 <div class="setting-checkbox highlight-box">
-                    <label class="switch-label">
-                        <input type="checkbox" id="chk-isolate-voice" checked>
-                        <span><i class="fa-solid fa-shield-halved text-green"></i> <b>Isolar Áudio: Não transmitir voz dos amigos</b></span>
-                    </label>
-                    <p class="hint">
-                        Evita eco na live! Ao selecionar a tela no popup do navegador, selecione a <b>Janela do Jogo</b> ou <b>Aba</b> em vez da tela inteira, garantindo que apenas o som do jogo seja capturado.
-                    </p>
+                    <div style="font-size: 12px; line-height: 1.5; color: #dbdee1;">
+                        <i class="fa-solid fa-circle-info text-green" style="margin-right: 4px;"></i>
+                        <b>Como capturar o som do jogo sem chiado:</b><br>
+                        No seletor que o navegador vai abrir agora, clique na aba <b>"Tela inteira"</b> e marque a caixinha <b>"Compartilhar áudio do sistema"</b> no cantinho inferior esquerdo.
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">

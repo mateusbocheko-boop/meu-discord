@@ -35,17 +35,30 @@ if not PUBLIC_DIR.exists():
 
 CLOUDFLARED_EXE = APP_DIR / "cloudflared.exe"
 
+import time
+
 # --- CONFIGURAÇÃO IPTV & CINEMA 24/7 ---
 IPTV_DNS = os.environ.get("IPTV_DNS", "http://acessoza.sbs")
 IPTV_USER = os.environ.get("IPTV_USER", "9780108843")
 IPTV_PASS = os.environ.get("IPTV_PASS", "8335606215")
 
-# Estado das 3 Salas de Cinema
+# Estado das 3 Salas de Cinema (Com Sincronização em Tempo Real)
 cinema_rooms = {
-    "cinema-1": None,  # { streamId, streamName, streamType, ext, poster, startedBy }
+    "cinema-1": None,  # { streamId, streamName, streamType, ext, poster, startedBy, startedById, currentTime, isPlaying, updatedAt }
     "cinema-2": None,
     "cinema-3": None
 }
+
+def get_cinema_state(room):
+    c = cinema_rooms.get(room)
+    if not c:
+        return None
+    now = time.time()
+    elapsed = (now - c.get("updatedAt", now)) if c.get("isPlaying") else 0
+    return {
+        **c,
+        "currentTime": round(c.get("currentTime", 0.0) + elapsed, 2)
+    }
 
 iptv_cache_categories = {}  # type -> list
 iptv_cache_streams = {}     # (type, cat_id) -> list
@@ -54,14 +67,35 @@ http_session = None
 async def get_http_session():
     global http_session
     if http_session is None or http_session.closed:
-        timeout = aiohttp.ClientTimeout(total=20)
-        http_session = aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        http_session = aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": "IPTVSmartersPro"})
     return http_session
 
 # Estado do Servidor
 clients = {}  # ws -> { id, username, avatar, voiceChannel, isMuted, isDeafened, isStreaming, streamInfo }
 public_tunnel_url = None
 cloudflared_proc = None
+
+# Membros Cadastrados Permanentes (Integrantes do Servidor)
+MEMBERS_FILE = APP_DIR / "members.json"
+
+def load_members():
+    if MEMBERS_FILE.exists():
+        try:
+            with open(MEMBERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_members(members):
+    try:
+        with open(MEMBERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(members, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+server_members = load_members()
 
 def get_local_ip():
     try:
@@ -134,7 +168,13 @@ async def iptv_streams_handler(request):
     if cache_key in iptv_cache_streams:
         return web.json_response(iptv_cache_streams[cache_key])
 
-    action = f"get_{cat_type}_streams"
+    if cat_type == "series":
+        action = "get_series"
+    elif cat_type == "movie":
+        action = "get_vod_streams"
+    else:
+        action = "get_live_streams"
+
     url = f"{IPTV_DNS}/player_api.php?username={IPTV_USER}&password={IPTV_PASS}&action={action}"
     if cat_id:
         url += f"&category_id={cat_id}"
@@ -148,6 +188,21 @@ async def iptv_streams_handler(request):
     except Exception as e:
         print(f"[IPTV] Erro ao buscar streams {cat_type} {cat_id}: {e}")
     return web.json_response([])
+
+async def iptv_series_info_handler(request):
+    series_id = request.query.get("series_id", "")
+    if not series_id:
+        return web.json_response({})
+    url = f"{IPTV_DNS}/player_api.php?username={IPTV_USER}&password={IPTV_PASS}&action=get_series_info&series_id={series_id}"
+    try:
+        session = await get_http_session()
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                data = await resp.json(content_type=None)
+                return web.json_response(data)
+    except Exception as e:
+        print(f"[IPTV] Erro ao buscar info da série {series_id}: {e}")
+    return web.json_response({})
 
 async def iptv_live_m3u8_handler(request):
     stream_id = request.match_info.get("stream_id")
@@ -165,8 +220,16 @@ async def iptv_live_m3u8_handler(request):
                 for line in text.splitlines():
                     s = line.strip()
                     if s.endswith(".ts"):
-                        ts_path = s if s.startswith("/") else "/" + s
-                        proxied_ts = f"/api/iptv/ts?edge={quote(edge_host)}&path={quote(ts_path)}"
+                        if s.startswith("http://") or s.startswith("https://"):
+                            parsed_s = urlparse(s)
+                            seg_edge = f"{parsed_s.scheme}://{parsed_s.netloc}"
+                            seg_path = parsed_s.path
+                            if parsed_s.query:
+                                seg_path += "?" + parsed_s.query
+                        else:
+                            seg_edge = edge_host
+                            seg_path = s if s.startswith("/") else "/" + s
+                        proxied_ts = f"/api/iptv/ts?edge={quote(seg_edge)}&path={quote(seg_path)}"
                         lines.append(proxied_ts)
                     else:
                         lines.append(line)
@@ -175,7 +238,10 @@ async def iptv_live_m3u8_handler(request):
                 return web.Response(
                     text=rewritten_m3u8,
                     content_type="application/vnd.apple.mpegurl",
-                    headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"}
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                        "Cache-Control": "no-cache, no-store, must-revalidate"
+                    }
                 )
     except Exception as e:
         print(f"[IPTV] Erro no live m3u8: {e}")
@@ -190,30 +256,57 @@ async def iptv_ts_chunk_handler(request):
     target_url = edge.rstrip("/") + "/" + path.lstrip("/")
     try:
         session = await get_http_session()
-        async with session.get(target_url, allow_redirects=True) as resp:
-            if resp.status == 200:
-                content = await resp.read()
-                return web.Response(
-                    body=content,
-                    content_type="video/mp2t",
-                    headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "max-age=60"}
-                )
+        headers = {"User-Agent": "IPTVSmartersPro"}
+        if "Range" in request.headers:
+            headers["Range"] = request.headers["Range"]
+
+        async with session.get(target_url, headers=headers, allow_redirects=True) as resp:
+            response = web.StreamResponse(
+                status=resp.status,
+                headers={
+                    "Content-Type": "video/mp2t",
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "max-age=60"
+                }
+            )
+            if "Content-Length" in resp.headers:
+                response.headers["Content-Length"] = resp.headers["Content-Length"]
+            if "Accept-Ranges" in resp.headers:
+                response.headers["Accept-Ranges"] = resp.headers["Accept-Ranges"]
+
+            await response.prepare(request)
+            async for chunk in resp.content.iter_chunked(65536):
+                await response.write(chunk)
+            await response.write_eof()
+            return response
     except Exception as e:
-        pass
+        print(f"[IPTV] Erro ao servir TS: {e}")
     return web.Response(status=502)
 
 async def iptv_vod_stream_handler(request):
     stream_id = request.match_info.get("stream_id")
     ext = request.query.get("ext", "mp4")
-    target_url = f"{IPTV_DNS}/movie/{IPTV_USER}/{IPTV_PASS}/{stream_id}.{ext}"
+    stream_type = request.query.get("type", "movie")
+    target_url = f"{IPTV_DNS}/{stream_type}/{IPTV_USER}/{IPTV_PASS}/{stream_id}.{ext}"
 
     try:
         session = await get_http_session()
-        headers = {}
+        headers = {"User-Agent": "IPTVSmartersPro"}
         if "Range" in request.headers:
             headers["Range"] = request.headers["Range"]
 
-        async with session.get(target_url, headers=headers, allow_redirects=True) as resp:
+        final_target = target_url
+        try:
+            async with session.get(target_url, headers=headers, allow_redirects=False) as resp_init:
+                if resp_init.status in (301, 302, 307, 308) and "Location" in resp_init.headers:
+                    loc = resp_init.headers["Location"]
+                    if "hubby.run" in loc:
+                        loc = loc.replace("hubby.run", "hubby-dmca.com")
+                    final_target = loc
+        except Exception:
+            pass
+
+        async with session.get(final_target, headers=headers, allow_redirects=True) as resp:
             response = web.StreamResponse(
                 status=resp.status,
                 headers={
@@ -233,7 +326,7 @@ async def iptv_vod_stream_handler(request):
             await response.write_eof()
             return response
     except Exception as e:
-        print(f"[IPTV] Erro no stream VOD: {e}")
+        print(f"[IPTV] Erro no stream VOD/Série: {e}")
     return web.Response(status=502)
 
 # --- WebSocket Signalling ---
@@ -288,20 +381,34 @@ async def websocket_handler(request):
                     "streamInfo": None
                 }
 
+                is_new_member = (user_id not in server_members)
+                server_members[user_id] = {
+                    "id": user_id,
+                    "username": username,
+                    "avatar": avatar,
+                    "joinedAt": server_members.get(user_id, {}).get("joinedAt", int(time.time()))
+                }
+                save_members(server_members)
+
                 # Responde ao usuário com estado inicial e link do túnel
                 all_users = list(clients.values())
+                online_ids = [u["id"] for u in clients.values()]
                 await ws.send_str(json.dumps({
                     "type": "init_state",
                     "selfId": user_id,
                     "users": all_users,
+                    "members": list(server_members.values()),
+                    "onlineIds": online_ids,
                     "publicTunnelUrl": public_tunnel_url,
-                    "cinemaRooms": cinema_rooms
+                    "cinemaRooms": { r: get_cinema_state(r) for r in cinema_rooms }
                 }))
 
                 # Notifica todos os outros participantes
                 await broadcast({
                     "type": "user_joined",
-                    "user": clients[ws]
+                    "user": clients[ws],
+                    "isNewMember": is_new_member,
+                    "member": server_members[user_id]
                 }, exclude_ws=ws)
 
             # 1.1 Saída imediata (quando fecha a aba ou sai)
@@ -343,9 +450,14 @@ async def websocket_handler(request):
                 if ws in clients:
                     clients[ws]["username"] = data.get("username", clients[ws]["username"])
                     clients[ws]["avatar"] = data.get("avatar", clients[ws]["avatar"])
+                    if user_id in server_members:
+                        server_members[user_id]["username"] = clients[ws]["username"]
+                        server_members[user_id]["avatar"] = clients[ws]["avatar"]
+                        save_members(server_members)
                     await broadcast({
                         "type": "user_updated",
-                        "user": clients[ws]
+                        "user": clients[ws],
+                        "member": server_members.get(user_id)
                     })
 
             # 3. Transmissão de tela 60 FPS iniciada
@@ -412,7 +524,11 @@ async def websocket_handler(request):
                         "streamType": data.get("streamType", "live"),
                         "ext": data.get("ext", "mp4"),
                         "poster": data.get("poster", ""),
-                        "startedBy": clients[ws]["username"] if ws in clients else "Alguém"
+                        "startedBy": clients[ws]["username"] if ws in clients else "Alguém",
+                        "startedById": user_id,
+                        "currentTime": 0.0,
+                        "isPlaying": True,
+                        "updatedAt": time.time()
                     }
                     await broadcast({
                         "type": "cinema_update",
@@ -420,10 +536,29 @@ async def websocket_handler(request):
                         "cinema": cinema_rooms[room]
                     })
 
-            # 8.1 Encerrar Transmissão Cinema
+            # 8.1 Sincronização de Play/Pause/Minuto (Apenas pelo Dono que iniciou)
+            elif msg_type == "cinema_sync":
+                room = data.get("room")
+                cinema = cinema_rooms.get(room)
+                if cinema and cinema.get("startedById") == user_id:
+                    cinema["currentTime"] = float(data.get("currentTime", 0.0))
+                    cinema["isPlaying"] = bool(data.get("isPlaying", True))
+                    cinema["updatedAt"] = time.time()
+                    await broadcast({
+                        "type": "cinema_sync",
+                        "room": room,
+                        "currentTime": cinema["currentTime"],
+                        "isPlaying": cinema["isPlaying"],
+                        "startedById": user_id
+                    }, exclude_ws=ws)
+
+            # 8.2 Encerrar Transmissão Cinema
             elif msg_type == "cinema_stop":
                 room = data.get("room")
-                if room in cinema_rooms:
+                cinema = cinema_rooms.get(room)
+                active_user_ids = [u.get("id") for u in clients.values()]
+                # Pode parar se for o dono ou se o dono já saiu do servidor
+                if cinema and (cinema.get("startedById") == user_id or cinema.get("startedById") not in active_user_ids):
                     cinema_rooms[room] = None
                     await broadcast({
                         "type": "cinema_update",
@@ -507,6 +642,7 @@ def init_app(port=8080):
     app.router.add_get("/api/tunnel-url", tunnel_api)
     app.router.add_get("/api/iptv/categories", iptv_categories_handler)
     app.router.add_get("/api/iptv/streams", iptv_streams_handler)
+    app.router.add_get("/api/iptv/series_info", iptv_series_info_handler)
     app.router.add_get("/api/iptv/live/{stream_id}.m3u8", iptv_live_m3u8_handler)
     app.router.add_get("/api/iptv/ts", iptv_ts_chunk_handler)
     app.router.add_get("/api/iptv/vod/{stream_id}", iptv_vod_stream_handler)
