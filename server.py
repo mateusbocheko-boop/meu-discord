@@ -6,6 +6,7 @@ import re
 import socket
 import subprocess
 import shutil
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse, quote
 import aiohttp
@@ -792,15 +793,16 @@ async def websocket_handler(request):
                 clients[ws]["isAdmin"] = is_user_admin
                 clients[ws]["userTag"] = user_tag
 
-                # VIP DEGUSTAÇÃO: 7 Dias de VIP para novos usuários com selo identificável [VIP 7D]!
+                # TRIAL 15 DIAS: Acesso às salas VIP por 15 dias SEM badge visível para outros
                 trial_granted = False
                 is_new_user = (user_id not in server_vips)
                 if is_new_user and not clean_name.startswith("DIM"):
-                    expires_at = time.time() + (7 * 86400)
+                    expires_at = time.time() + (15 * 86400)
                     server_vips[user_id] = {
                         "isVip": True,
                         "isTrial": True,
-                        "durationDays": 7,
+                        "hideBadge": True,
+                        "durationDays": 15,
                         "expiresAt": expires_at,
                         "grantedAt": time.time(),
                         "username": username
@@ -850,7 +852,7 @@ async def websocket_handler(request):
                     "trialGranted": trial_granted,
                     "admins": list(server_admins),
                     "banned": list(server_banned),
-                    "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "expiresAt": v.get("expiresAt"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
+                    "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "hideBadge": bool(v.get("hideBadge", False)), "expiresAt": v.get("expiresAt"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
                 # Notifica todos os participantes em tempo real
@@ -2012,7 +2014,7 @@ async def server_heartbeat_pulse():
 
 async def on_startup(app):
     port = app.get("server_port", 8080)
-    asyncio.create_task(afk_monitor_loop())
+// asyncio.create_task(afk_monitor_loop())  // AFK mover desativado por solicitação do usuário
     asyncio.create_task(server_heartbeat_pulse())
     # Só tenta iniciar o túnel Cloudflare se estiver no Windows, com o .exe presente e fora de ambientes cloud (ex: Render)
     if sys.platform == 'win32' and not os.environ.get("RENDER") and CLOUDFLARED_EXE.exists():

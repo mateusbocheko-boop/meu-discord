@@ -1027,8 +1027,16 @@ async function handleServerMessage(data) {
         case 'user_activity_changed': {
             const u = state.users.get(data.userId) || state.serverMembers.get(data.userId);
             if (u) u.activity = data.activity;
+            // Garante atualização em ambos os mapas
+            if (state.users.has(data.userId)) {
+                state.users.get(data.userId).activity = data.activity;
+            }
             if (state.serverMembers.has(data.userId)) {
                 state.serverMembers.get(data.userId).activity = data.activity;
+            }
+            // Se não existe em nenhum mapa ainda, criar entrada mínima em state.users
+            if (!state.users.has(data.userId) && !state.serverMembers.has(data.userId)) {
+                state.users.set(data.userId, { id: data.userId, username: data.username, activity: data.activity });
             }
             renderMembersSidebar();
             break;
@@ -2092,7 +2100,7 @@ function openUserContextMenu(e, userId) {
             const text = document.getElementById('ctx-vip-role-text');
             if (isTargetVip) {
                 if (icon) icon.className = 'fa-solid fa-ban text-red';
-                if (text) text.textContent = isTrial ? '❌ Revogar VIP 7D (Remover)' : '❌ Remover Acesso VIP';
+                if (text) text.textContent = isTrial ? '❌ Revogar Trial 15D (Remover)' : '❌ Remover Acesso VIP';
                 toggleVipBtn.style.color = '#ff3366';
             } else {
                 if (icon) icon.className = 'fa-solid fa-crown text-gold';
@@ -2800,7 +2808,8 @@ function renderChatMessage(data) {
     const isVip = data.isVip || (state.vips && state.vips.has(data.senderId));
     if (!isVip || isAuthorOwner) return '';
     if (data.isTrial || sVip?.isTrial) {
-        return '<span class="badge-vip-trial" title="VIP Degustação (7 Dias)"><i class="fa-solid fa-clock"></i> VIP 7D</span>';
+        if (sVip?.hideBadge) return ''; // Trial sem badge visível (15D)
+        return '<span class="badge-vip-trial" title="VIP Degustação (15 Dias)"><i class="fa-solid fa-clock"></i> VIP 15D</span>';
     }
     return '<span class="badge-vip" title="Membro VIP"><i class="fa-solid fa-crown"></i> VIP</span>';
 })()}
@@ -3153,14 +3162,15 @@ function renderMembersSidebar() {
         const vipEntry = state.vips ? state.vips.get(member.id) : null;
         const hasVipPass = isMemberMestre || (state.vips ? state.vips.has(member.id) : false) || member.isVip;
         const isTrialVip = !isMemberMestre && (vipEntry?.isTrial || member.isTrial);
+        const hideBadge = !isMemberMestre && (vipEntry?.hideBadge || false);
 
         let vipBadge = '';
         if (isMemberMestre) {
             // Mestre dos Magos tem badge própria
         } else if (hasVipPass) {
-            if (isTrialVip) {
-                vipBadge = '<span class="badge-vip-trial" title="VIP Degustação (7 Dias - Novo Integrante)"><i class="fa-solid fa-clock"></i> VIP 7D</span>';
-            } else {
+            if (isTrialVip && !hideBadge) {
+                vipBadge = '<span class="badge-vip-trial" title="VIP Degustação (15 Dias - Novo Integrante)"><i class="fa-solid fa-clock"></i> VIP 15D</span>';
+            } else if (!isTrialVip) {
                 vipBadge = '<span class="badge-vip" title="Membro VIP Oficial"><i class="fa-solid fa-crown"></i> VIP</span>';
             }
         }
