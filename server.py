@@ -234,6 +234,9 @@ def is_user_vip(user_id, username):
     vdata = server_vips.get(user_id)
     if not vdata:
         return False
+    # BLOQUEIO ESTRITO: Rejeita qualquer trial automático antigo
+    if vdata.get("trialGranted"):
+        return False
     if not vdata.get("isVip"):
         return False
     if vdata.get("isLifetime"):
@@ -793,19 +796,11 @@ async def websocket_handler(request):
                 clients[ws]["isAdmin"] = is_user_admin
                 clients[ws]["userTag"] = user_tag
 
-                # Auto-Grant 30 Dias de VIP Grátis para qualquer usuário que entrar pela 1ª vez!
+                # VIP ESTRITO: Auto-grant desativado! Apenas quem comprou ou ganhou VIP do Dono tem acesso.
                 trial_granted = False
-                if user_id not in server_vips and not clean_name.startswith("DIM"):
-                    expires_at = time.time() + (30 * 86400)
-                    server_vips[user_id] = {
-                        "isVip": True,
-                        "expiresAt": expires_at,
-                        "trialGranted": True,
-                        "username": username,
-                        "grantedAt": time.time()
-                    }
+                if user_id in server_vips and server_vips[user_id].get("trialGranted"):
+                    del server_vips[user_id]
                     save_vips(server_vips)
-                    trial_granted = True
 
                 user_is_vip = is_user_vip(user_id, username)
                 clients[ws]["isVip"] = user_is_vip
@@ -870,20 +865,30 @@ async def websocket_handler(request):
                     old_ch = clients[ws].get("voiceChannel")
                     new_ch = data.get("channelId")
 
-                    # Validação de acesso VIP para Salas de Cinema
+                    # Validação de acesso VIP estrita (Salas de Cinema e VIP)
                     if new_ch:
-                        current_srv_id = clients[ws].get("currentServerId", "default")
-                        current_srv = all_servers.get(current_srv_id, all_servers.get("default"))
-                        current_v_channels = current_srv.get("channels", {}).get("voice", server_channels.get("voice", []))
-                        is_cinema_channel = any(c.get("id") == new_ch and c.get("type") == "cinema" for c in current_v_channels)
+                        ch_str = str(new_ch).lower()
+                        is_vip_channel = (
+                            ch_str.startswith("cinema") or 
+                            "cinema" in ch_str or 
+                            "vip" in ch_str
+                        )
+                        if not is_vip_channel:
+                            current_srv_id = clients[ws].get("currentServerId", "default")
+                            current_srv = all_servers.get(current_srv_id, all_servers.get("default"))
+                            current_v_channels = current_srv.get("channels", {}).get("voice", server_channels.get("voice", []))
+                            for c in current_v_channels:
+                                if c.get("id") == new_ch and (c.get("type") == "cinema" or c.get("isVip") or "vip" in c.get("name", "").lower() or "cinema" in c.get("name", "").lower()):
+                                    is_vip_channel = True
+                                    break
 
-                        if is_cinema_channel:
+                        if is_vip_channel:
                             user_is_vip = is_user_vip(user_id, clients[ws].get("username"))
                             if not user_is_vip and not clients[ws].get("isOwner"):
                                 await ws.send_str(json.dumps({
                                     "type": "vip_required",
                                     "channelId": new_ch,
-                                    "message": "⭐ Esta Sala de Cinema é exclusiva para Membros VIP! Desbloqueie Filmes, Séries e TV Ao Vivo por apenas R$ 9,90/mês."
+                                    "message": "⭐ Esta sala é exclusiva para Membros VIP! Adquira seu Passe VIP para liberar Filmes, Séries e TV Ao Vivo."
                                 }))
                                 continue
 

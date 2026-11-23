@@ -637,6 +637,9 @@ async function handleServerMessage(data) {
 
         case 'vip_required':
             openVipModal();
+            if (state.currentVoiceChannel === data.channelId) {
+                leaveVoiceChannel(false);
+            }
             showToast('⭐ ' + (data.message || 'Esta sala é exclusiva para Membros VIP!'), 6000);
             break;
 
@@ -2517,6 +2520,18 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
         return;
     }
     if (state.currentVoiceChannel === newChannel) return;
+
+    // BLOQUEIO ANTECIPADO DE SALAS VIP / CINEMA NO CLIENTE
+    const chLower = String(newChannel).toLowerCase();
+    const isVipRoom = chLower.startsWith('cinema') || chLower.includes('vip') || chLower.includes('cinema');
+
+    if (isVipRoom && !state.isVip && !state.isOwner) {
+        openVipModal();
+        if (typeof showToast === 'function') {
+            showToast('⭐ Esta sala é exclusiva para Membros VIP! Compre seu Passe VIP para liberar o acesso.', 'warning');
+        }
+        return; // NÃO PERMITE ENTRAR!
+    }
 
     const oldChannel = state.currentVoiceChannel;
     state.currentVoiceChannel = newChannel;
