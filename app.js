@@ -11,7 +11,7 @@ function isUserAllowedOwner() {
     if (state.isOwner) return true;
     const myName = (state.username || '').trim().toLowerCase();
     const myTag = (state.userTag || '').trim().toLowerCase();
-    const allowed = myName === 'dim' || myName.startsWith('dim') || myTag.includes('4095') || myName.includes('tester');
+    const allowed = myName === 'dim' || myName.startsWith('dim') || myTag.includes('4095');
     if (allowed) state.isOwner = true;
     return allowed;
 }
@@ -2804,7 +2804,15 @@ function renderChatMessage(data) {
             <div style="display:flex;align-items:center;gap:6px;">
                 <span class="chat-author" style="cursor:pointer;">${escapeHtml(data.username)}</span>
                 ${roleBadge}
-                ${(data.isVip || (state.vips && state.vips.has(data.senderId))) ? '<span class="badge-vip" title="Membro VIP"><i class="fa-solid fa-crown"></i> VIP</span>' : ''}
+                ${(() => {
+    const sVip = state.vips ? state.vips.get(data.senderId) : null;
+    const isVip = data.isVip || (state.vips && state.vips.has(data.senderId));
+    if (!isVip || isAuthorOwner) return '';
+    if (data.isTrial || sVip?.isTrial) {
+        return '<span class="badge-vip-trial" title="VIP Degustação (7 Dias)"><i class="fa-solid fa-clock"></i> VIP 7D</span>';
+    }
+    return '<span class="badge-vip" title="Membro VIP"><i class="fa-solid fa-crown"></i> VIP</span>';
+})()}
                 <span class="chat-time">${time}</span>
             </div>
             <div class="chat-text">${escapeHtml(data.text)}</div>
@@ -3151,10 +3159,19 @@ function renderMembersSidebar() {
             roleBadge = '<span class="badge-role-adm" title="Administrador"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
         }
 
-        const hasVipPass = isMemberMestre || (state.vips ? state.vips.has(member.id) : false);
+        const vipEntry = state.vips ? state.vips.get(member.id) : null;
+        const hasVipPass = isMemberMestre || (state.vips ? state.vips.has(member.id) : false) || member.isVip;
+        const isTrialVip = !isMemberMestre && (vipEntry?.isTrial || member.isTrial);
+
         let vipBadge = '';
-        if (hasVipPass) {
-            vipBadge = '<span class="badge-vip" title="Membro VIP VOX"><i class="fa-solid fa-crown"></i> VIP</span>';
+        if (isMemberMestre) {
+            // Mestre dos Magos tem badge própria
+        } else if (hasVipPass) {
+            if (isTrialVip) {
+                vipBadge = '<span class="badge-vip-trial" title="VIP Degustação (7 Dias - Novo Integrante)"><i class="fa-solid fa-clock"></i> VIP 7D</span>';
+            } else {
+                vipBadge = '<span class="badge-vip" title="Membro VIP Oficial"><i class="fa-solid fa-crown"></i> VIP</span>';
+            }
         }
 
         // Classe do ponto de status (online, dnd, idle, offline)
@@ -4918,8 +4935,8 @@ function openVipModal() {
     if (modal) {
         modal.style.display = 'flex';
         // Personaliza a mensagem do WhatsApp com o nome do usuário atual
-        const myName = state.currentUser || 'Membro do Kord';
-        const msg = encodeURIComponent(`Olá DIM! 🔥 Quero ativar meu Passe VIP no Kord para liberar Filmes, Séries e TV Ao Vivo! 🍿 Meu usuário no Kord é: ${myName}. Já fiz o PIX de R$ 9,90 ou vou te mandar o comprovante agora!`);
+        const myName = state.currentUser || 'Membro do VOX';
+        const msg = encodeURIComponent(`Olá DIM! 🔥 Quero ativar meu Passe VIP no VOX para liberar Filmes, Séries e TV Ao Vivo! 🍿 Meu usuário no VOX é: ${myName}. Já fiz o PIX de R$ 9,90 ou vou te mandar o comprovante agora!`);
         const waBtn = document.getElementById('btn-whatsapp-vip');
         if (waBtn) {
             waBtn.href = `https://wa.me/5544997479416?text=${msg}`;

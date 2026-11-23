@@ -234,9 +234,6 @@ def is_user_vip(user_id, username):
     vdata = server_vips.get(user_id)
     if not vdata:
         return False
-    # BLOQUEIO ESTRITO: Rejeita qualquer trial automático antigo
-    if vdata.get("trialGranted"):
-        return False
     if not vdata.get("isVip"):
         return False
     if vdata.get("isLifetime"):
@@ -782,8 +779,6 @@ async def websocket_handler(request):
                 if clean_name == "DIM" or clean_name.startswith("DIM") or "4095" in str(user_tag):
                     user_tag = "#4095"
                     is_user_owner = True
-                elif clean_name in ("TESTER", "ADMINTEST"):
-                    is_user_owner = True
                 else:
                     is_user_owner = (user_id in server_admins)
                 
@@ -796,11 +791,21 @@ async def websocket_handler(request):
                 clients[ws]["isAdmin"] = is_user_admin
                 clients[ws]["userTag"] = user_tag
 
-                # VIP ESTRITO: Auto-grant desativado! Apenas quem comprou ou ganhou VIP do Dono tem acesso.
+                # VIP DEGUSTAÇÃO: 7 Dias de VIP para novos usuários com selo identificável [VIP 7D]!
                 trial_granted = False
-                if user_id in server_vips and server_vips[user_id].get("trialGranted"):
-                    del server_vips[user_id]
+                is_new_user = (user_id not in server_vips)
+                if is_new_user and not clean_name.startswith("DIM"):
+                    expires_at = time.time() + (7 * 86400)
+                    server_vips[user_id] = {
+                        "isVip": True,
+                        "isTrial": True,
+                        "durationDays": 7,
+                        "expiresAt": expires_at,
+                        "grantedAt": time.time(),
+                        "username": username
+                    }
                     save_vips(server_vips)
+                    trial_granted = True
 
                 user_is_vip = is_user_vip(user_id, username)
                 clients[ws]["isVip"] = user_is_vip
@@ -844,7 +849,7 @@ async def websocket_handler(request):
                     "trialGranted": trial_granted,
                     "admins": list(server_admins),
                     "banned": list(server_banned),
-                    "vips": {uid: {"isVip": v.get("isVip"), "expiresAt": v.get("expiresAt")} for uid, v in server_vips.items() if v.get("isVip")}
+                    "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "expiresAt": v.get("expiresAt"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
                 # Notifica todos os participantes em tempo real
@@ -1089,7 +1094,8 @@ async def websocket_handler(request):
                         "channelId": msg_channel,
                         "isOwner": clients[ws].get("isOwner", False),
                         "isAdmin": clients[ws].get("isAdmin", False),
-                        "isVip": is_vip_user
+                        "isVip": is_vip_user,
+                        "isTrial": bool(server_vips.get(user_id, {}).get("isTrial", False))
                     }
                     server_messages.append(msg_entry)
                     save_messages()
@@ -1105,7 +1111,8 @@ async def websocket_handler(request):
                         "channelId": msg_channel,
                         "isOwner": clients[ws].get("isOwner", False),
                         "isAdmin": clients[ws].get("isAdmin", False),
-                        "isVip": is_vip_user
+                        "isVip": is_vip_user,
+                        "isTrial": bool(server_vips.get(user_id, {}).get("isTrial", False))
                     })
 
             elif msg_type == "cinema_play":
@@ -1206,9 +1213,27 @@ async def websocket_handler(request):
                 # Se for revogação explícita ou toggle de quem já é VIP sem ação definida
                 if action == "revoke" or (currently_vip and action != "grant"):
                     vdata["isVip"] = False
+                    vdata["isTrial"] = False
+                    vdata["trialGranted"] = False
                     vdata["expiresAt"] = 0
                     vdata["isLifetime"] = False
-                    action_msg = f"⭐ O Acesso VIP de <b>{target_name}</b> foi encerrado pelo Dono."
+                    action_msg = f"❌ O Acesso VIP de <b>{target_name}</b> foi REVOGADO pelo Dono."
+
+                    # Desconecta o usuário revogado de salas VIP/Cinema imediatamente
+                    for t_ws, u in list(clients.items()):
+                        if u.get("id") == target_id:
+                            v_ch = u.get("voiceChannel")
+                            if v_ch and (str(v_ch).startswith("cinema") or "vip" in str(v_ch).lower()):
+                                u["voiceChannel"] = None
+                                await broadcast({"type": "user_voice_change", "userId": target_id, "channelId": None})
+                                try:
+                                    await t_ws.send_str(json.dumps({
+                                        "type": "vip_required",
+                                        "channelId": v_ch,
+                                        "message": "Seu acesso VIP foi revogado pelo Dono do servidor."
+                                    }))
+                                except Exception:
+                                    pass
                 else:
                     vdata["isVip"] = True
                     if is_lifetime or str(duration_val).lower() == "lifetime":
