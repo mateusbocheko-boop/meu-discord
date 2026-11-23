@@ -369,6 +369,39 @@ async def broadcast(message, exclude_ws=None):
     for ws in dead:
         clients.pop(ws, None)
 
+async def broadcast_to_server(server_id, message, exclude_ws=None):
+    payload = json.dumps(message)
+    dead = []
+    for ws, u in list(clients.items()):
+        if ws == exclude_ws:
+            continue
+        if u.get("currentServerId", "default") != server_id:
+            continue
+        try:
+            await ws.send_str(payload)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        clients.pop(ws, None)
+
+def is_current_server_owner(ws_client, server_id=None):
+    if not ws_client:
+        return False
+    sid = server_id or ws_client.get("currentServerId", "default")
+    if sid == "default":
+        return bool(ws_client.get("isOwner"))
+    srv = all_servers.get(sid)
+    return bool(srv and srv.get("ownerId") == ws_client.get("id"))
+
+def is_current_server_admin(ws_client, server_id=None):
+    if not ws_client:
+        return False
+    sid = server_id or ws_client.get("currentServerId", "default")
+    if sid == "default":
+        return bool(ws_client.get("isAdmin"))
+    srv = all_servers.get(sid)
+    return bool(srv and ws_client.get("id") in srv.get("admins", []))
+
 async def check_empty_cinema_rooms():
     for room, cinema in list(cinema_rooms.items()):
         if cinema is not None:
@@ -1070,7 +1103,14 @@ async def websocket_handler(request):
 
             elif msg_type == "chat_message":
                 if ws in clients:
-                    if user_id in server_muted_users:
+                    current_srv_id = clients[ws].get("currentServerId", "default")
+                    current_srv = all_servers.get(current_srv_id, all_servers.get("default"))
+                    is_muted_here = (
+                        (user_id in server_muted_users)
+                        if current_srv_id == "default"
+                        else (user_id in current_srv.get("mutedUsers", []))
+                    )
+                    if is_muted_here:
                         await ws.send_str(json.dumps({
                             "type": "error",
                             "message": "Você está silenciado neste servidor por um administrador."
@@ -1088,6 +1128,7 @@ async def websocket_handler(request):
 
                     msg_entry = {
                         "id": msg_id,
+                        "serverId": current_srv_id,
                         "senderId": user_id,
                         "username": clients[ws]["username"],
                         "avatar": clients[ws]["avatar"],
@@ -1095,25 +1136,26 @@ async def websocket_handler(request):
                         "timestamp": msg_ts,
                         "createdAt": time.time(),
                         "channelId": msg_channel,
-                        "isOwner": clients[ws].get("isOwner", False),
-                        "isAdmin": clients[ws].get("isAdmin", False),
+                        "isOwner": is_current_server_owner(clients[ws], current_srv_id),
+                        "isAdmin": is_current_server_admin(clients[ws], current_srv_id),
                         "isVip": is_vip_user,
                         "isTrial": bool(server_vips.get(user_id, {}).get("isTrial", False))
                     }
                     server_messages.append(msg_entry)
                     save_messages()
 
-                    await broadcast({
+                    await broadcast_to_server(current_srv_id, {
                         "type": "chat_message",
                         "id": msg_id,
+                        "serverId": current_srv_id,
                         "senderId": user_id,
                         "username": clients[ws]["username"],
                         "avatar": clients[ws]["avatar"],
                         "text": msg_text,
                         "timestamp": msg_ts,
                         "channelId": msg_channel,
-                        "isOwner": clients[ws].get("isOwner", False),
-                        "isAdmin": clients[ws].get("isAdmin", False),
+                        "isOwner": is_current_server_owner(clients[ws], current_srv_id),
+                        "isAdmin": is_current_server_admin(clients[ws], current_srv_id),
                         "isVip": is_vip_user,
                         "isTrial": bool(server_vips.get(user_id, {}).get("isTrial", False))
                     })
@@ -1291,15 +1333,15 @@ async def websocket_handler(request):
                 server_icon = data.get("icon", "🎮").strip() or "🎮"
                 new_id = f"srv_{uuid.uuid4().hex[:6]}"
 
+                # Servidor 100% isolado do principal: salas próprias com IDs únicos e SEM salas de cinema/VIP
                 new_channels = {
                     "text": [
-                        {"id": "geral", "name": "geral"},
-                        {"id": "conversas", "name": "conversas"}
+                        {"id": f"{new_id}_geral", "name": "geral"},
+                        {"id": f"{new_id}_conversas", "name": "conversas"}
                     ],
                     "voice": [
-                        {"id": "voz-1", "name": "🔊 Bate-Papo 1", "type": "voice", "icon": "fa-volume-high"},
-                        {"id": "jogos", "name": "Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
-                        {"id": "cinema-vip", "name": "🎬 Cinema VIP", "type": "cinema", "icon": "fa-film"}
+                        {"id": f"{new_id}_voz-1", "name": "Bate-Papo 1", "type": "voice", "icon": "fa-volume-high"},
+                        {"id": f"{new_id}_jogos", "name": "Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"}
                     ]
                 }
 
@@ -1310,7 +1352,10 @@ async def websocket_handler(request):
                     "ownerId": user_id,
                     "ownerName": username,
                     "channels": new_channels,
-                    "members": [user_id]
+                    "members": [user_id],
+                    "admins": [],
+                    "banned": [],
+                    "mutedUsers": []
                 }
                 save_servers(all_servers)
 
@@ -1320,35 +1365,71 @@ async def websocket_handler(request):
                         "id": new_id,
                         "name": server_name,
                         "icon": server_icon,
+                        "ownerId": user_id,
                         "isOwner": True,
+                        "isMainServer": False,
                         "channels": new_channels
                     }
                 }))
 
             elif msg_type == "switch_server":
                 target_server_id = data.get("serverId", "default")
-                sdata = all_servers.get(target_server_id, all_servers.get("default"))
+                sdata = all_servers.get(target_server_id)
+                if not sdata:
+                    target_server_id = "default"
+                    sdata = all_servers.get("default")
+
+                # Verifica banimento específico do servidor isolado
+                if target_server_id != "default" and user_id in sdata.get("banned", []):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "🔨 Você foi banido deste servidor pelo dono dele."
+                    }))
+                    continue
+
+                if target_server_id != "default" and user_id not in sdata.get("members", []):
+                    sdata.setdefault("members", []).append(user_id)
+                    save_servers(all_servers)
+
+                old_voice = clients[ws].get("voiceChannel")
                 clients[ws]["currentServerId"] = target_server_id
                 # Desconecta de voz ao trocar de servidor
                 clients[ws]["voiceChannel"] = None
+                if old_voice:
+                    await broadcast({
+                        "type": "user_voice_change",
+                        "userId": user_id,
+                        "channelId": None
+                    })
+                    await check_empty_cinema_rooms()
+
+                is_srv_owner = is_current_server_owner(clients[ws], target_server_id)
+                is_srv_admin = is_current_server_admin(clients[ws], target_server_id)
+                srv_msgs = [m for m in server_messages if m.get("serverId", "default") == target_server_id][-100:]
 
                 await ws.send_str(json.dumps({
                     "type": "server_switched",
                     "server": {
-                        "id": sdata.get("id"),
-                        "name": sdata.get("name"),
-                        "icon": sdata.get("icon"),
+                        "id": sdata.get("id", target_server_id),
+                        "name": sdata.get("name", "Servidor"),
+                        "icon": sdata.get("icon", "🎮"),
+                        "ownerId": sdata.get("ownerId"),
                         "channels": sdata.get("channels", server_channels),
-                        "isOwner": (sdata.get("ownerId") == user_id)
-                    }
+                        "isOwner": is_srv_owner,
+                        "isAdmin": is_srv_admin,
+                        "isMainServer": (target_server_id == "default"),
+                        "banned": sdata.get("banned", []) if target_server_id != "default" else list(server_banned),
+                        "admins": sdata.get("admins", []) if target_server_id != "default" else list(server_admins)
+                    },
+                    "messages": srv_msgs
                 }))
 
             elif msg_type == "admin_toggle_role":
-                # EXCLUSIVO DO DONO: Apenas DIM (DIM#4095) pode dar ou tirar cargo de ADM!
-                if not clients.get(ws, {}).get("isOwner"):
+                current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
+                if not is_current_server_owner(clients.get(ws), current_srv_id):
                     await ws.send_str(json.dumps({
                         "type": "error",
-                        "message": "Acesso negado! Apenas o Dono do Servidor (DIM#4095) pode conceder ou remover o cargo de Administrador."
+                        "message": "Acesso negado! Apenas o Dono deste servidor pode conceder ou remover o cargo de Administrador."
                     }))
                     continue
 
@@ -1365,11 +1446,43 @@ async def websocket_handler(request):
                     target_name = server_members[target_id].get("username", "")
 
                 clean_tname = target_name.strip().upper()
-                if clean_tname == "DIM" or clean_tname.startswith("DIM") or ("4095" in target_name):
+                if current_srv_id == "default" and (clean_tname == "DIM" or clean_tname.startswith("DIM") or ("4095" in target_name)):
                     await ws.send_str(json.dumps({
                         "type": "error",
                         "message": "O Dono do servidor já possui todos os privilégios supremos."
                     }))
+                    continue
+
+                if current_srv_id != "default":
+                    srv_obj = all_servers.get(current_srv_id)
+                    if not srv_obj:
+                        continue
+                    srv_admins = srv_obj.setdefault("admins", [])
+                    if target_id in srv_admins:
+                        srv_admins.remove(target_id)
+                        is_now_admin = False
+                        action_msg = f"🛡️ O cargo de Administrador (ADM) de <b>{target_name}</b> foi removido pelo Dono do servidor."
+                    else:
+                        srv_admins.append(target_id)
+                        is_now_admin = True
+                        action_msg = f"🛡️ O usuário <b>{target_name}</b> foi promovido a <b>Administrador (ADM)</b> neste servidor!"
+                    save_servers(all_servers)
+                    await broadcast_to_server(current_srv_id, {
+                        "type": "role_update",
+                        "serverId": current_srv_id,
+                        "userId": target_id,
+                        "isAdmin": is_now_admin,
+                        "admins": list(srv_admins)
+                    })
+                    await broadcast_to_server(current_srv_id, {
+                        "type": "chat_message",
+                        "serverId": current_srv_id,
+                        "senderId": "system",
+                        "username": "Servidor",
+                        "avatar": "#5865F2",
+                        "text": action_msg,
+                        "timestamp": time.strftime("%H:%M")
+                    })
                     continue
 
                 if target_id in server_admins:
@@ -1405,8 +1518,9 @@ async def websocket_handler(request):
                     "admins": list(server_admins)
                 })
 
-                await broadcast({
+                await broadcast_to_server("default", {
                     "type": "chat_message",
+                    "serverId": "default",
                     "senderId": "system",
                     "username": "Servidor",
                     "avatar": "#5865F2",
@@ -1415,23 +1529,24 @@ async def websocket_handler(request):
                 })
 
             elif msg_type in ("admin_stop_stream", "admin_disconnect_voice", "admin_kick_user", "admin_ban_user", "admin_unban_user", "admin_create_channel", "admin_delete_channel"):
-                is_owner = clients.get(ws, {}).get("isOwner", False)
-                is_admin = clients.get(ws, {}).get("isAdmin", False)
+                current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
+                is_owner = is_current_server_owner(clients.get(ws), current_srv_id)
+                is_admin = is_current_server_admin(clients.get(ws), current_srv_id)
                 is_mod_cmd = msg_type in ("admin_stop_stream", "admin_disconnect_voice", "admin_kick_user", "admin_ban_user")
 
                 if is_mod_cmd:
                     if not (is_owner or is_admin):
                         await ws.send_str(json.dumps({
                             "type": "error",
-                            "message": "Acesso negado! Apenas o Dono e Administradores podem executar esta ação."
+                            "message": "Acesso negado! Apenas o Dono e Administradores deste servidor podem executar esta ação."
                         }))
                         continue
                 else:
-                    # Comandos supremos exclusivos do Dono: criar/excluir salas e desbanir
+                    # Comandos exclusivos do Dono do servidor atual: criar/excluir salas e desbanir
                     if not is_owner:
                         await ws.send_str(json.dumps({
                             "type": "error",
-                            "message": "Acesso negado! Apenas o Dono do Servidor (DIM#4095) pode criar/excluir salas ou desbanir usuários."
+                            "message": "Acesso negado! Apenas o Dono deste servidor pode criar/excluir salas ou desbanir usuários."
                         }))
                         continue
 
@@ -1523,6 +1638,43 @@ async def websocket_handler(request):
                         }))
                         continue
 
+                    if current_srv_id != "default":
+                        srv_obj = all_servers.get(current_srv_id)
+                        if srv_obj and target_id in srv_obj.get("members", []) and target_id != srv_obj.get("ownerId"):
+                            srv_obj["members"].remove(target_id)
+                            save_servers(all_servers)
+                        for target_ws, u in list(clients.items()):
+                            if u.get("id") == target_id and u.get("currentServerId") == current_srv_id:
+                                u["currentServerId"] = "default"
+                                u["voiceChannel"] = None
+                                def_srv = all_servers.get("default", {})
+                                try:
+                                    await target_ws.send_str(json.dumps({
+                                        "type": "error",
+                                        "message": f"Você foi expulso do servidor {srv_obj.get('name', '')} pelo Dono."
+                                    }))
+                                    await target_ws.send_str(json.dumps({
+                                        "type": "server_switched",
+                                        "server": {
+                                            "id": "default",
+                                            "name": def_srv.get("name", "Kord Oficial"),
+                                            "icon": def_srv.get("icon", "🔥"),
+                                            "channels": def_srv.get("channels", server_channels),
+                                            "isOwner": u.get("isOwner", False),
+                                            "isMainServer": True
+                                        },
+                                        "messages": [m for m in server_messages if m.get("serverId", "default") == "default"][-100:]
+                                    }))
+                                except Exception:
+                                    pass
+                                await broadcast({
+                                    "type": "user_voice_change",
+                                    "userId": target_id,
+                                    "channelId": None
+                                })
+                                break
+                        continue
+
                     for target_ws, u in list(clients.items()):
                         if u.get("id") == target_id:
                             try:
@@ -1583,6 +1735,55 @@ async def websocket_handler(request):
                         continue
 
                     if target_id:
+                        if current_srv_id != "default":
+                            srv_obj = all_servers.get(current_srv_id)
+                            if srv_obj and target_id != srv_obj.get("ownerId"):
+                                srv_banned = srv_obj.setdefault("banned", [])
+                                if target_id not in srv_banned:
+                                    srv_banned.append(target_id)
+                                if target_id in srv_obj.get("members", []):
+                                    srv_obj["members"].remove(target_id)
+                                save_servers(all_servers)
+                                for target_ws, u in list(clients.items()):
+                                    if u.get("id") == target_id and u.get("currentServerId") == current_srv_id:
+                                        u["currentServerId"] = "default"
+                                        u["voiceChannel"] = None
+                                        def_srv = all_servers.get("default", {})
+                                        try:
+                                            await target_ws.send_str(json.dumps({
+                                                "type": "error",
+                                                "message": f"🔨 Você foi BANIDO do servidor {srv_obj.get('name', '')} pelo Dono."
+                                            }))
+                                            await target_ws.send_str(json.dumps({
+                                                "type": "server_switched",
+                                                "server": {
+                                                    "id": "default",
+                                                    "name": def_srv.get("name", "Kord Oficial"),
+                                                    "icon": def_srv.get("icon", "🔥"),
+                                                    "channels": def_srv.get("channels", server_channels),
+                                                    "isOwner": u.get("isOwner", False),
+                                                    "isMainServer": True
+                                                },
+                                                "messages": [m for m in server_messages if m.get("serverId", "default") == "default"][-100:]
+                                            }))
+                                        except Exception:
+                                            pass
+                                await broadcast_to_server(current_srv_id, {
+                                    "type": "user_banned",
+                                    "userId": target_id,
+                                    "bannedList": list(srv_banned)
+                                })
+                                await broadcast_to_server(current_srv_id, {
+                                    "type": "chat_message",
+                                    "serverId": current_srv_id,
+                                    "senderId": "system",
+                                    "username": "🛡️ Sistema",
+                                    "avatar": "#ED4245",
+                                    "text": f"🔨 O usuário <b>{banned_name}</b> foi BANIDO deste servidor pelo Dono.",
+                                    "timestamp": time.strftime("%H:%M")
+                                })
+                            continue
+
                         server_banned.add(target_id)
                         for m_id, m in server_members.items():
                             if m.get("username", "").strip().lower() == str(banned_name).strip().lower():
@@ -1629,7 +1830,17 @@ async def websocket_handler(request):
 
                 elif msg_type == "admin_unban_user":
                     target_id = data.get("targetUserId")
-                    if target_id in server_banned:
+                    if current_srv_id != "default":
+                        srv_obj = all_servers.get(current_srv_id)
+                        if srv_obj and target_id in srv_obj.get("banned", []):
+                            srv_obj["banned"].remove(target_id)
+                            save_servers(all_servers)
+                            await ws.send_str(json.dumps({
+                                "type": "unban_success",
+                                "userId": target_id,
+                                "banned": list(srv_obj["banned"])
+                            }))
+                    elif target_id in server_banned:
                         server_banned.remove(target_id)
                         save_banned(server_banned)
                         await ws.send_str(json.dumps({
@@ -1642,48 +1853,69 @@ async def websocket_handler(request):
                     ch_type = data.get("channelType", "voice")
                     name = data.get("name", "").strip()
                     icon = data.get("icon", "fa-volume-high" if ch_type == "voice" else "fa-hashtag")
+                    if current_srv_id != "default":
+                        # Servidores isolados NÃO podem ter salas de cinema ou VIP
+                        if ch_type == "cinema" or "cinema" in name.lower() or "vip" in name.lower():
+                            await ws.send_str(json.dumps({
+                                "type": "error",
+                                "message": "🚫 Salas de Cinema e VIP são exclusivas do servidor principal!"
+                            }))
+                            continue
                     if name:
                         slug = re.sub(r'[^a-zA-Z0-9_-]', '-', name.lower()).strip('-')
                         if not slug:
                             slug = f"canal-{int(time.time())}"
+                        if current_srv_id != "default":
+                            slug = f"{current_srv_id}_{slug}"
                         new_ch = {
                             "id": slug,
                             "name": name,
                             "type": ch_type,
                             "icon": icon
                         }
+                        target_channels = server_channels if current_srv_id == "default" else all_servers[current_srv_id].setdefault("channels", {"text": [], "voice": []})
                         if ch_type == "voice":
-                            existing_ids = [c["id"] for c in server_channels.get("voice", [])]
+                            existing_ids = [c["id"] for c in target_channels.get("voice", [])]
                             if slug in existing_ids:
                                 slug = f"{slug}-{int(time.time()) % 1000}"
                                 new_ch["id"] = slug
-                            server_channels.setdefault("voice", []).append(new_ch)
+                            target_channels.setdefault("voice", []).append(new_ch)
                         else:
-                            existing_ids = [c["id"] for c in server_channels.get("text", [])]
+                            existing_ids = [c["id"] for c in target_channels.get("text", [])]
                             if slug in existing_ids:
                                 slug = f"{slug}-{int(time.time()) % 1000}"
                                 new_ch["id"] = slug
-                            server_channels.setdefault("text", []).append(new_ch)
-                        save_channels(server_channels)
-                        await broadcast({
+                            target_channels.setdefault("text", []).append(new_ch)
+                        if current_srv_id == "default":
+                            save_channels(server_channels)
+                        else:
+                            save_servers(all_servers)
+                        await broadcast_to_server(current_srv_id, {
                             "type": "channel_created",
+                            "serverId": current_srv_id,
                             "channel": new_ch
                         })
 
                 elif msg_type == "admin_delete_channel":
                     ch_id = data.get("channelId")
                     ch_type = data.get("channelType", "voice")
-                    if ch_id and ch_id != "geral":
+                    protected_id = "geral" if current_srv_id == "default" else f"{current_srv_id}_geral"
+                    if ch_id and ch_id != protected_id:
+                        target_channels = server_channels if current_srv_id == "default" else all_servers[current_srv_id].setdefault("channels", {"text": [], "voice": []})
                         if ch_type == "voice":
-                            server_channels["voice"] = [c for c in server_channels.get("voice", []) if c["id"] != ch_id]
+                            target_channels["voice"] = [c for c in target_channels.get("voice", []) if c["id"] != ch_id]
                             for c in clients.values():
                                 if c.get("voiceChannel") == ch_id:
                                     c["voiceChannel"] = None
                         else:
-                            server_channels["text"] = [c for c in server_channels.get("text", []) if c["id"] != ch_id]
-                        save_channels(server_channels)
-                        await broadcast({
+                            target_channels["text"] = [c for c in target_channels.get("text", []) if c["id"] != ch_id]
+                        if current_srv_id == "default":
+                            save_channels(server_channels)
+                        else:
+                            save_servers(all_servers)
+                        await broadcast_to_server(current_srv_id, {
                             "type": "channel_deleted",
+                            "serverId": current_srv_id,
                             "channelId": ch_id,
                             "channelType": ch_type
                         })
