@@ -26,7 +26,7 @@
     <link rel="apple-touch-icon" href="/icon-192.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
     <link rel="icon" type="image/x-icon" href="/icon.ico">
-    <link rel="stylesheet" href="style.css?v=2.5">
+    <link rel="stylesheet" href="style.css?v=2.6">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -939,50 +939,63 @@
 
 <!-- MODAL DE ASSINATURA VIP (PIX / CINEMA & FILMES) -->
     <div class="modal-backdrop" id="vip-modal" style="display: none;">
-        <div class="modal-box" style="max-width: 440px; text-align: center; border: 1px solid rgba(255, 215, 0, 0.4); box-shadow: 0 0 35px rgba(255, 215, 0, 0.2);">
+        <div class="modal-box" style="max-width: 440px; text-align: center; border: 1px solid rgba(255, 215, 0, 0.4); box-shadow: 0 0 35px rgba(255, 215, 0, 0.25); background: #0b0e14;">
             <div class="modal-header" style="justify-content: flex-end; border: none; padding-bottom: 0;">
                 <button class="modal-close" id="btn-close-vip-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div style="padding: 10px 20px 24px;">
-                <div style="width: 60px; height: 60px; margin: 0 auto 12px; background: linear-gradient(135deg, #ffd700, #ff8c00); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 24px rgba(255, 215, 0, 0.45);">
-                    <i class="fa-solid fa-crown" style="font-size: 28px; color: #080b11;"></i>
+                <div style="width: 58px; height: 58px; margin: 0 auto 10px; background: linear-gradient(135deg, #ffd700, #ff8c00); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 24px rgba(255, 215, 0, 0.45);">
+                    <i class="fa-solid fa-crown" style="font-size: 26px; color: #080b11;"></i>
                 </div>
-                <h3 style="font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 6px;">VOX VIP Cinema</h3>
-                <p style="font-size: 12.5px; color: #949ba4; margin-bottom: 16px; line-height: 1.4;">
-                    Desbloqueie acesso exclusivo a todas as <b>Salas de Cinema</b>, filmes lançamentos, séries e canais de TV ao vivo com áudio cristalino e vídeo em <b>60 FPS</b>!
+                <h3 style="font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 4px;">VOX VIP Cinema</h3>
+                <p style="font-size: 12px; color: #949ba4; margin-bottom: 12px; line-height: 1.4;">
+                    Desbloqueie acesso exclusivo a todas as <b>Salas de Cinema</b>, filmes lançamentos, séries e TV ao vivo em <b>60 FPS</b>!
                 </p>
 
-                <div style="background: rgba(255, 215, 0, 0.08); border: 1px solid rgba(255, 215, 0, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px; text-align: left;">
-                    <div style="font-size: 12px; font-weight: 700; color: #ffd700; margin-bottom: 6px;">Vantagens Exclusivas:</div>
-                    <div style="font-size: 11.5px; color: #e2e8f5; display: flex; flex-direction: column; gap: 5px;">
-                        <div><i class="fa-solid fa-check text-green"></i> Selo brilhante <b>[VIP]</b> no seu perfil e chat</div>
-                        <div><i class="fa-solid fa-check text-green"></i> Acesso livre a todas as salas de Cinema</div>
-                        <div><i class="fa-solid fa-check text-green"></i> Catálogo completo de Filmes, Séries e TV Ao Vivo</div>
-                        <div><i class="fa-solid fa-check text-green"></i> Transmissões 1080p 60 FPS sem travamentos</div>
-                    </div>
+                <!-- CARD DO VALOR -->
+                <div style="display: inline-block; background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.35); padding: 4px 14px; border-radius: 20px; margin-bottom: 14px;">
+                    <span style="font-size: 20px; font-weight: 900; color: #ffd700;">R$ 9,90</span>
+                    <span style="font-size: 12px; font-weight: 600; color: #949ba4;">/ mês</span>
                 </div>
 
-                <div style="font-size: 26px; font-weight: 900; color: #ffd700; margin-bottom: 2px;">R$ 9,90 <span style="font-size: 12px; font-weight: 600; color: #949ba4;">/ mês</span></div>
-                <div style="font-size: 11px; color: #7f8ea3; margin-bottom: 14px;">Ativação rápida direto com o Dono (DIM)</div>
+                <!-- ÁREA PRINCIPAL: QR CODE PIX DINÂMICO -->
+                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 215, 0, 0.3); border-radius: 12px; padding: 14px; margin-bottom: 12px; text-align: center;">
+                    <div style="font-size: 11px; color: #ffd700; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                        <i class="fa-solid fa-qrcode"></i> Pague com QR Code Pix Direto (R$ 9,90)
+                    </div>
+                    <div style="font-size: 11px; color: #949ba4; margin-bottom: 10px;">
+                        Aponte a câmera do aplicativo do seu banco para ler o QR Code abaixo:
+                    </div>
 
-                <!-- CAIXA DA CHAVE PIX -->
-                <div style="background: #080b11; padding: 12px; border-radius: 8px; border: 1px solid rgba(255, 215, 0, 0.3); margin-bottom: 12px; text-align: center;">
-                    <div style="font-size: 11px; color: #ffd700; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Chave PIX (Telefone):</div>
-                    <div style="display: flex; gap: 8px; align-items: center; justify-content: center;">
-                        <input type="text" id="vip-pix-code" readonly value="44997479416" style="flex: 1; font-size: 13px; font-weight: 700; padding: 8px; background: #141b2a; border: 1px solid #383a40; color: #3ddc84; border-radius: 6px; text-align: center; letter-spacing: 0.5px;">
-                        <button id="btn-copy-vip-pix" style="background: #2b2d31; color: #fff; border: 1px solid #4e5058; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px;">
-                            <i class="fa-solid fa-copy"></i> Copiar
+                    <!-- CONTAINER DO QR CODE -->
+                    <div id="pix-qrcode-container" style="background: #ffffff; padding: 10px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 4px 18px rgba(0,0,0,0.5); min-width: 160px; min-height: 160px;">
+                        <span style="color: #666; font-size: 11px;">Carregando QR Code...</span>
+                    </div>
+
+                    <!-- BOTÃO COPIAR CÓDIGO PIX COPIA E COLA -->
+                    <div style="margin-top: 10px;">
+                        <button id="btn-copy-pix-payload" type="button" style="width: 100%; background: linear-gradient(135deg, #ffd700, #ff8c00); color: #080b11; border: none; padding: 10px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 3px 12px rgba(255, 215, 0, 0.25); transition: opacity 0.15s;">
+                            <i class="fa-solid fa-copy"></i> Copiar Código Pix Copia e Cola (R$ 9,90)
+                        </button>
+                    </div>
+
+                    <!-- CHAVE PIX MANUAL ALTERNATIVA -->
+                    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(255, 215, 0, 0.2); font-size: 11px; color: #949ba4; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        <span>Chave Celular:</span>
+                        <b style="color: #3ddc84; font-family: monospace; font-size: 12px;">(44) 99747-9416</b>
+                        <button id="btn-copy-vip-pix" type="button" style="background: #1c222d; color: #fff; border: 1px solid #383a40; padding: 3px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer;">
+                            Copiar
                         </button>
                     </div>
                 </div>
 
                 <!-- BOTÃO CHAMATIVO DO WHATSAPP -->
-                <a id="btn-whatsapp-vip" href="https://wa.me/5544997479416?text=Ol%C3%A1%20DIM!%20%F0%9F%94%A5%20Quero%20ativar%20meu%20Passe%20VIP%20no%20VOX%20para%20liberar%20todos%20os%20Filmes%2C%20S%C3%A9ries%20e%20TV%20Ao%20Vivo!%20J%C3%A1%20estou%20com%20o%20comprovante%20do%20PIX%20de%20R%24%209%2C90%20pronto%20para%20te%20enviar!" target="_blank" rel="noopener noreferrer" style="width: 100%; text-decoration: none; background: linear-gradient(135deg, #25d366, #128c7e); color: #ffffff; border: none; padding: 13px 16px; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 20px rgba(37, 211, 102, 0.4); transition: transform 0.15s, box-shadow 0.15s;">
-                    <i class="fa-brands fa-whatsapp" style="font-size: 22px;"></i>
-                    <span>Chamar no WhatsApp para Ativar VIP</span>
+                <a id="btn-whatsapp-vip" href="https://wa.me/5544997479416?text=Ol%C3%A1%20DIM!%20%F0%9F%94%A5%20Quero%20ativar%20meu%20Passe%20VIP%20no%20VOX%20para%20liberar%20todos%20os%20Filmes%2C%20S%C3%A9ries%20e%20TV%20Ao%20Vivo!%20J%C3%A1%20paguei%20o%20PIX%20de%20R%24%209%2C90%20pelo%20QR%20Code%20e%20estou%20te%20enviando%20o%20comprovante!" target="_blank" rel="noopener noreferrer" style="width: 100%; text-decoration: none; background: linear-gradient(135deg, #25d366, #128c7e); color: #ffffff; border: none; padding: 12px 16px; border-radius: 8px; font-size: 13.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 18px rgba(37, 211, 102, 0.35); transition: transform 0.15s;">
+                    <i class="fa-brands fa-whatsapp" style="font-size: 20px;"></i>
+                    <span>Já Paguei! Enviar Comprovante no WhatsApp</span>
                 </a>
-                <div style="font-size: 10.5px; color: #7f8ea3; margin-top: 10px; line-height: 1.3;">
-                    Ao clicar, o WhatsApp abre com seus dados prontos para o DIM ativar seu selo <b>[VIP]</b> na hora!
+                <div style="font-size: 10.5px; color: #7f8ea3; margin-top: 8px; line-height: 1.3;">
+                    Ao enviar o comprovante, o DIM ativa seu selo <b>[VIP]</b> no servidor imediatamente!
                 </div>
             </div>
         </div>
@@ -1028,7 +1041,8 @@
     <!-- Container de Notificações Toast -->
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="app.js?v=2.5"></script>
+    <script src="qrcode.min.js?v=2.6"></script>
+    <script src="app.js?v=2.6"></script>
 
     <!-- MENU RÁPIDO DE STATUS & ATIVIDADE VOX -->
     <div id="user-status-menu" class="vox-status-popover" style="display: none;">

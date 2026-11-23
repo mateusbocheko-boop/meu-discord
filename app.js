@@ -2097,11 +2097,13 @@ function openUserContextMenu(e, userId) {
         if (state.isOwner && !isSelf) {
             toggleVipBtn.style.display = 'flex';
             const isTargetVip = state.vips ? state.vips.has(userId) : false;
+            const vipEntry = state.vips ? state.vips.get(userId) : null;
+            const isTrial = vipEntry && (vipEntry.isTrial || vipEntry.trialGranted);
             const icon = document.getElementById('ctx-vip-icon');
             const text = document.getElementById('ctx-vip-role-text');
             if (isTargetVip) {
-                if (icon) icon.className = 'fa-solid fa-crown text-red';
-                if (text) text.textContent = 'Remover Acesso VIP';
+                if (icon) icon.className = 'fa-solid fa-ban text-red';
+                if (text) text.textContent = isTrial ? '❌ Revogar VIP 7D (Remover)' : '❌ Remover Acesso VIP';
                 toggleVipBtn.style.color = '#ff3366';
             } else {
                 if (icon) icon.className = 'fa-solid fa-crown text-gold';
@@ -4015,7 +4017,36 @@ function setupEventListeners() {
         }
     });
 
+    
+    // Evento de Copiar Código Pix Copia e Cola (R$ 9,90)
+    on('btn-copy-pix-payload', 'click', () => {
+        if (!activePixPayload) activePixPayload = generateVoxPixPayload();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(activePixPayload).then(() => {
+                showToast('📋 Código Pix Copia e Cola (R$ 9,90) copiado! Cole no app do seu banco para pagar.', 6000);
+            }).catch(() => {
+                prompt('Copie o Código Pix Copia e Cola abaixo (Ctrl+C):', activePixPayload);
+            });
+        } else {
+            prompt('Copie o Código Pix Copia e Cola abaixo (Ctrl+C):', activePixPayload);
+        }
+    });
+
     on('btn-copy-vip-pix', 'click', () => {
+        const phone = '44997479416';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(phone).then(() => {
+                showToast('📋 Chave Pix Telefone (44997479416) copiada!', 4000);
+            }).catch(() => {
+                showToast('📋 Chave: 44997479416');
+            });
+        } else {
+            showToast('📋 Chave: 44997479416');
+        }
+    });
+
+    // Legacy
+    on('_unused_btn_copy_vip_pix', 'click', () => {
         const inp = document.getElementById('vip-pix-code');
         if (inp) {
             inp.select();
@@ -4930,10 +4961,94 @@ function submitCreateServer() {
     closeCreateServerModal();
 }
 
+
+// =========================================================================
+// SISTEMA OFICIAL DE PAGAMENTO PIX QR CODE & COPIA E COLA (PADRÃO BANCO CENTRAL)
+// =========================================================================
+const VOX_PIX = {
+    key: "+5544997479416",
+    rawPhone: "44997479416",
+    name: "DIM VOX",
+    city: "MARINGA",
+    amount: 9.90,
+    txId: "VOXVIP"
+};
+
+function generateVoxPixPayload(amount = VOX_PIX.amount, key = VOX_PIX.key, name = VOX_PIX.name, city = VOX_PIX.city, txId = VOX_PIX.txId) {
+    function crc16(str) {
+        let crc = 0xFFFF;
+        for (let c = 0; c < str.length; c++) {
+            crc ^= (str.charCodeAt(c) << 8);
+            for (let i = 0; i < 8; i++) {
+                if ((crc & 0x8000) !== 0) {
+                    crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+                } else {
+                    crc = (crc << 1) & 0xFFFF;
+                }
+            }
+        }
+        let hex = crc.toString(16).toUpperCase();
+        while (hex.length < 4) hex = '0' + hex;
+        return hex;
+    }
+
+    const f = (id, val) => {
+        const strVal = String(val);
+        const len = String(strVal.length).padStart(2, '0');
+        return `${id}${len}${strVal}`;
+    };
+
+    let payload = "000201";       // Payload Format Indicator
+    payload += "010212";          // Point of Initiation (12 = dinâmico / estático recorrente com valor)
+    const gui = f("00", "br.gov.bcb.pix");
+    const pixKey = f("01", key);
+    payload += f("26", gui + pixKey);
+    payload += "52040000";        // Merchant Category Code
+    payload += "5303986";         // Moeda 986 (BRL - Real Brasileiro)
+    const amtStr = Number(amount).toFixed(2);
+    payload += f("54", amtStr);   // Valor da transação (R$ 9,90)
+    payload += "5802BR";          // País BR
+    payload += f("59", name.substring(0, 25)); // Nome do Beneficiário (DIM VOX)
+    payload += f("60", city.substring(0, 15)); // Cidade (MARINGA)
+    payload += f("62", f("05", txId));         // Identificador / TxID (VOXVIP)
+    const payloadToCrc = payload + "6304";
+    return payloadToCrc + crc16(payloadToCrc);
+}
+
+let activePixPayload = null;
+
+function renderVoxPixQrCode() {
+    const container = document.getElementById('pix-qrcode-container');
+    if (!container) return;
+
+    activePixPayload = generateVoxPixPayload();
+    container.innerHTML = '';
+
+    if (typeof QRCode !== 'undefined') {
+        try {
+            new QRCode(container, {
+                text: activePixPayload,
+                width: 155,
+                height: 155,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+            return;
+        } catch (e) {
+            console.warn('[VOX] Falha no QRCode local, usando fallback render:', e);
+        }
+    }
+    // Fallback caso script ainda não tenha carregado
+    const fallbackUrl = `https://api.qrserver.com/v1/create-qr-code/?size=155x155&margin=1&data=${encodeURIComponent(activePixPayload)}`;
+    container.innerHTML = `<img src="${fallbackUrl}" style="width:155px;height:155px;display:block;border-radius:4px;" alt="QR Code PIX R$ 9,90">`;
+}
+
 function openVipModal() {
     const modal = document.getElementById('vip-modal');
     if (modal) {
         modal.style.display = 'flex';
+        renderVoxPixQrCode();
         // Personaliza a mensagem do WhatsApp com o nome do usuário atual
         const myName = state.currentUser || 'Membro do VOX';
         const msg = encodeURIComponent(`Olá DIM! 🔥 Quero ativar meu Passe VIP no VOX para liberar Filmes, Séries e TV Ao Vivo! 🍿 Meu usuário no VOX é: ${myName}. Já fiz o PIX de R$ 9,90 ou vou te mandar o comprovante agora!`);
