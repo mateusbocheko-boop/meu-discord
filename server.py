@@ -710,6 +710,7 @@ async def iptv_vod_stream_handler(request):
 
 # --- WebSocket Signalling ---
 async def websocket_handler(request):
+    global server_messages, server_audit_logs, server_warnings, server_muted_users
     ws = web.WebSocketResponse(heartbeat=10.0)
     await ws.prepare(request)
 
