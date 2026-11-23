@@ -1051,6 +1051,16 @@ async def websocket_handler(request):
                         "streamInfo": clients[ws]["streamInfo"]
                     })
 
+            elif msg_type == "screen_update":
+                if ws in clients and clients[ws].get("isStreaming"):
+                    clients[ws]["streamInfo"] = data.get("streamInfo", clients[ws].get("streamInfo", {}))
+                    await broadcast({
+                        "type": "stream_updated",
+                        "userId": user_id,
+                        "username": clients[ws]["username"],
+                        "streamInfo": clients[ws]["streamInfo"]
+                    })
+
             # 4. Transmissão de tela encerrada
             elif msg_type == "screen_stop":
                 if ws in clients:

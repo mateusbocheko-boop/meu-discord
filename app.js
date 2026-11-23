@@ -440,11 +440,11 @@ const state = {
     isStreaming: false,
 
     streamConfig: {
-        resolution: 1440, // 720, 1080, 1440 (2K)
+        resolution: 1080, // 720, 1080, 1440 (2K)
         fps: 60,
         captureAudio: true,
         isolateVoice: true, // Não capturar áudio das salas de voz
-        bitrate: 12000 // kbps
+        bitrate: 8000 // kbps
     },
 
     users: new Map(), // userId -> userData
@@ -1007,6 +1007,22 @@ async function handleServerMessage(data) {
             showToast(`🔴 <b>${escapeHtml(data.username)}</b> iniciou uma transmissão 60 FPS!`);
             break;
 
+        case 'stream_updated':
+            const updStreamer = state.users.get(data.userId);
+            if (updStreamer) {
+                updStreamer.streamInfo = data.streamInfo;
+            }
+            const activeSt = state.activeStreams.get(data.userId);
+            if (activeSt && data.streamInfo) {
+                activeSt.info = data.streamInfo;
+                if (state.currentlyWatchingUserId === data.userId) {
+                    const resBadge = document.getElementById('hud-resolution');
+                    if (resBadge) resBadge.textContent = `${data.streamInfo.resolution || '1080p'} • ${data.streamInfo.fps || 60} FPS`;
+                }
+            }
+            renderVoiceUsers();
+            break;
+
         case 'force_afk':
             showToast(`💤 <b>${escapeHtml(data.message || 'Você foi movido para a sala AFK por inatividade.')}</b>`, 7000);
             switchVoiceChannel('afk', false);
@@ -1370,14 +1386,47 @@ async function handleWebRTCIce(data) {
     }
 }
 
+function getOptimalBitrate(res, fps) {
+    const is60 = fps >= 60;
+    if (res >= 1440) return is60 ? 12000 : 7500;
+    if (res >= 1080) return is60 ? 8000 : 4500;
+    return is60 ? 4500 : 2500;
+}
+
+function preferHardwareVideoCodec(pc) {
+    try {
+        if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return;
+        const caps = RTCRtpSender.getCapabilities('video');
+        if (!caps || !caps.codecs) return;
+        // Prioriza H264 (aceleração por GPU NVENC/AMD/QuickSync) e depois VP8 para manter 60 FPS sem travar o jogo
+        const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+        const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+        const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/h264' && c.mimeType.toLowerCase() !== 'video/vp8');
+        const ordered = [...h264, ...vp8, ...others];
+        pc.getTransceivers().forEach(t => {
+            if (t.sender && t.sender.track && t.sender.track.kind === 'video' && typeof t.setCodecPreferences === 'function') {
+                try { t.setCodecPreferences(ordered); } catch (e) {}
+            }
+        });
+    } catch (e) {}
+}
+
 async function optimizeSenderBitrate(sender) {
     try {
+        const res = state.streamConfig.resolution || 1080;
+        const fps = state.streamConfig.fps || 60;
+        const bitrateKbps = getOptimalBitrate(res, fps);
+        state.streamConfig.bitrate = bitrateKbps;
+
         const params = sender.getParameters();
         if (!params.encodings || params.encodings.length === 0) {
             params.encodings = [{}];
         }
-        params.encodings[0].maxBitrate = state.streamConfig.bitrate * 1000;
-        params.encodings[0].maxFramerate = state.streamConfig.fps;
+        // maintain-framerate impede o navegador de derrubar o FPS para 10-15 em cenas com movimento rápido (jogos)
+        params.degradationPreference = 'maintain-framerate';
+        params.encodings[0].maxBitrate = bitrateKbps * 1000;
+        params.encodings[0].maxFramerate = fps;
+        params.encodings[0].scaleResolutionDownBy = 1.0;
         params.encodings[0].priority = 'high';
         params.encodings[0].networkPriority = 'high';
         await sender.setParameters(params);
@@ -1385,8 +1434,37 @@ async function optimizeSenderBitrate(sender) {
 }
 
 function enhanceSDP(sdp) {
-    const b = state.streamConfig.bitrate;
-    return sdp.replace(/a=mid:video\r\n/g, `a=mid:video\r\nb=AS:${b}\r\nb=TIAS:${b * 1000}\r\n`);
+    if (!sdp) return sdp;
+    const b = getOptimalBitrate(state.streamConfig.resolution || 1080, state.streamConfig.fps || 60);
+    const startB = Math.min(4000, Math.round(b * 0.6));
+    const minB = 1500;
+    const lines = sdp.split('\r\n');
+    const out = [];
+    let inVideo = false;
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        if (line.startsWith('m=video')) {
+            inVideo = true;
+            out.push(line);
+            continue;
+        }
+        if (line.startsWith('m=')) {
+            inVideo = false;
+            out.push(line);
+            continue;
+        }
+        if (inVideo && line.startsWith('c=IN')) {
+            out.push(line);
+            out.push(`b=AS:${b}`);
+            out.push(`b=TIAS:${b * 1000}`);
+            continue;
+        }
+        if (inVideo && line.startsWith('a=fmtp:') && !line.includes('x-google-max-bitrate')) {
+            line += `;x-google-min-bitrate=${minB};x-google-start-bitrate=${startB};x-google-max-bitrate=${b}`;
+        }
+        out.push(line);
+    }
+    return out.join('\r\n');
 }
 
 // --- Filtro de Voz de Proximidade & Rejeição Extrema de Ruídos Externos (Web Audio API) ---
@@ -1740,12 +1818,13 @@ async function startScreenShare() {
 
     let stream = null;
     try {
-        // Captura de tela com áudio automático pré-marcado e alta fidelidade 48kHz
+        // Captura de tela com áudio automático pré-marcado e alta fidelidade 48kHz + prioridade de movimento (60 FPS)
         const constraints = {
             video: {
-                frameRate: { ideal: fps, max: fps },
+                frameRate: { ideal: fps, min: Math.min(30, fps), max: fps },
                 width: { ideal: width, max: width },
                 height: { ideal: height, max: height },
+                cursor: 'always',
                 displaySurface: 'monitor'
             },
             audio: {
@@ -1786,8 +1865,15 @@ async function startScreenShare() {
     }
 
     try {
+        // CRUCIAL PARA JOGOS 60 FPS: informa ao navegador para priorizar fluidez (motion) ao invés de texto estático (detail)
+        const vTrack = stream.getVideoTracks()[0];
+        if (vTrack && 'contentHint' in vTrack) {
+            vTrack.contentHint = 'motion';
+        }
+
         state.localScreenStream = stream;
         state.isStreaming = true;
+        state.streamConfig.bitrate = getOptimalBitrate(res, fps);
 
         // Garante que a transmissão SEMPRE venha com áudio
         let hasAudio = stream.getAudioTracks().length > 0;
@@ -1803,9 +1889,9 @@ async function startScreenShare() {
             }
         }
         if (hasAudio) {
-            showToast('🎮 Transmissão iniciada com áudio estéreo ativo!', 4000);
+            showToast(`🎮 Transmissão ${res}p ${fps} FPS iniciada com áudio estéreo ativo!`, 4000);
         } else {
-            showToast('🎮 Transmissão iniciada!', 3000);
+            showToast(`🎮 Transmissão ${res}p ${fps} FPS iniciada!`, 3000);
         }
 
         addStream(state.userId, stream, state.username + ' (Você)', {
@@ -1814,23 +1900,28 @@ async function startScreenShare() {
         });
 
         const btn = document.getElementById('btn-stream-toggle');
-        btn.classList.add('streaming');
-        document.getElementById('btn-stream-text').textContent = 'Parar Tela';
+        if (btn) btn.classList.add('streaming');
+        const btnText = document.getElementById('btn-stream-text');
+        if (btnText) btnText.textContent = 'Parar Tela';
+        const editBtn = document.getElementById('btn-stream-edit');
+        if (editBtn) editBtn.style.display = 'flex';
 
-        // Envia para os peers com renegociação
+        // Envia para os peers com renegociação, codec de hardware (H264/VP8) e SDP otimizado
         for (const [targetId, pc] of state.peerConnections.entries()) {
             stream.getTracks().forEach(track => {
                 const sender = pc.addTrack(track, stream);
                 if (track.kind === 'video') optimizeSenderBitrate(sender);
             });
+            preferHardwareVideoCodec(pc);
             try {
                 if (pc.signalingState === 'stable') {
                     const offer = await pc.createOffer();
-                    await pc.setLocalDescription(offer);
+                    const optimizedOffer = { type: offer.type, sdp: enhanceSDP(offer.sdp) };
+                    await pc.setLocalDescription(optimizedOffer);
                     sendWs({
                         type: 'webrtc_offer',
                         target: targetId,
-                        offer: offer
+                        offer: optimizedOffer
                     });
                 }
             } catch (e) {}
@@ -1841,13 +1932,180 @@ async function startScreenShare() {
             streamInfo: { resolution: `${res}p`, fps: fps }
         });
 
-        stream.getVideoTracks()[0].onended = () => stopScreenShare();
+        if (vTrack) vTrack.onended = () => stopScreenShare();
 
     } catch (e) {
         if (e.name !== 'NotAllowedError') {
             alert('Não foi possível iniciar a transmissão: ' + e.message);
         }
     }
+}
+
+function openStreamModal(editMode = false) {
+    const streamModal = document.getElementById('stream-modal');
+    if (!streamModal) return;
+
+    // Sincroniza cards de resolução e FPS com a configuração atual
+    document.querySelectorAll('#opt-resolution .opt-card').forEach(c => {
+        c.classList.toggle('active', parseInt(c.dataset.res) === state.streamConfig.resolution);
+    });
+    document.querySelectorAll('#opt-fps .opt-card').forEach(c => {
+        c.classList.toggle('active', parseInt(c.dataset.fps) === state.streamConfig.fps);
+    });
+
+    const titleEl = document.getElementById('stream-modal-title');
+    const confirmBtn = document.getElementById('btn-confirm-stream');
+    const switchBtn = document.getElementById('btn-switch-screen-source');
+
+    if (editMode && state.isStreaming) {
+        if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-sliders"></i> Editar Transmissão Ao Vivo';
+        if (confirmBtn) confirmBtn.innerHTML = '<i class="fa-solid fa-check"></i> Aplicar Sem Desligar';
+        if (switchBtn) switchBtn.style.display = 'inline-flex';
+    } else {
+        if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-display"></i> Transmissão de Tela em 60 FPS';
+        if (confirmBtn) confirmBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Começar a Transmitir (60 FPS)';
+        if (switchBtn) switchBtn.style.display = 'none';
+    }
+
+    streamModal.style.display = 'flex';
+}
+
+async function updateLiveStreamSettings() {
+    if (!state.isStreaming || !state.localScreenStream) return;
+
+    const res = state.streamConfig.resolution || 1080;
+    const fps = state.streamConfig.fps || 60;
+    const width = res === 1440 ? 2560 : (res === 1080 ? 1920 : 1280);
+    const height = res === 1440 ? 1440 : (res === 1080 ? 1080 : 720);
+    state.streamConfig.bitrate = getOptimalBitrate(res, fps);
+
+    const vTrack = state.localScreenStream.getVideoTracks()[0];
+    if (vTrack) {
+        if ('contentHint' in vTrack) vTrack.contentHint = 'motion';
+        try {
+            await vTrack.applyConstraints({
+                width: { ideal: width, max: width },
+                height: { ideal: height, max: height },
+                frameRate: { ideal: fps, min: Math.min(30, fps), max: fps }
+            });
+        } catch (err) {
+            console.warn('Fallback applyConstraints:', err);
+            try {
+                await vTrack.applyConstraints({ frameRate: { ideal: fps, max: fps } });
+            } catch (e2) {}
+        }
+    }
+
+    // Atualiza bitrate, framerate e degradationPreference em todos os peers sem derrubar a live!
+    for (const pc of state.peerConnections.values()) {
+        for (const sender of pc.getSenders()) {
+            if (sender.track && sender.track.kind === 'video') {
+                await optimizeSenderBitrate(sender);
+            }
+        }
+    }
+
+    const newInfo = { resolution: `${res}p`, fps: fps };
+    const mySt = state.activeStreams.get(state.userId);
+    if (mySt) mySt.info = newInfo;
+    if (state.currentlyWatchingUserId === state.userId) {
+        const resBadge = document.getElementById('hud-resolution');
+        if (resBadge) resBadge.textContent = `${res}p • ${fps} FPS`;
+    }
+
+    sendWs({
+        type: 'screen_update',
+        streamInfo: newInfo
+    });
+
+    showToast(`⚡ Live atualizada para <b>${res}p ${fps} FPS</b> sem desligar!`, 4000);
+}
+
+async function switchLiveScreenSource() {
+    if (!state.isStreaming || !state.localScreenStream) {
+        startScreenShare();
+        return;
+    }
+
+    const res = state.streamConfig.resolution || 1080;
+    const fps = state.streamConfig.fps || 60;
+    const width = res === 1440 ? 2560 : (res === 1080 ? 1920 : 1280);
+    const height = res === 1440 ? 1440 : (res === 1080 ? 1080 : 720);
+    state.streamConfig.bitrate = getOptimalBitrate(res, fps);
+
+    let newStream = null;
+    try {
+        newStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                frameRate: { ideal: fps, min: Math.min(30, fps), max: fps },
+                width: { ideal: width, max: width },
+                height: { ideal: height, max: height },
+                cursor: 'always',
+                displaySurface: 'monitor'
+            },
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                channelCount: 2,
+                sampleRate: 48000
+            },
+            systemAudio: 'include',
+            selfBrowserSurface: 'include',
+            surfaceSwitching: 'include'
+        });
+    } catch (err) {
+        if (err.name !== 'NotAllowedError') {
+            showToast('❌ Não foi possível trocar a janela da live: ' + err.message);
+        }
+        return;
+    }
+
+    const oldStream = state.localScreenStream;
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    const newAudioTrack = newStream.getAudioTracks()[0] || null;
+    if (newVideoTrack && 'contentHint' in newVideoTrack) {
+        newVideoTrack.contentHint = 'motion';
+    }
+
+    // Troca a faixa de vídeo (e áudio da tela) em todos os peers sem desconectar ninguém!
+    for (const pc of state.peerConnections.values()) {
+        const senders = pc.getSenders();
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender && newVideoTrack) {
+            try {
+                await videoSender.replaceTrack(newVideoTrack);
+                await optimizeSenderBitrate(videoSender);
+            } catch (e) {}
+        }
+        if (newAudioTrack) {
+            const screenAudioSender = senders.find(s => s.track && s.track.kind === 'audio' && oldStream.getAudioTracks().includes(s.track));
+            if (screenAudioSender) {
+                try { await screenAudioSender.replaceTrack(newAudioTrack); } catch (e) {}
+            }
+        }
+    }
+
+    state.localScreenStream = newStream;
+    if (newVideoTrack) newVideoTrack.onended = () => stopScreenShare();
+
+    // Atualiza o preview local e o mapa de streams sem fechar o palco
+    const newInfo = { resolution: `${res}p`, fps: fps };
+    addStream(state.userId, newStream, state.username + ' (Você)', newInfo);
+
+    // Encerra as faixas antigas com segurança após a troca
+    if (oldStream) {
+        oldStream.getTracks().forEach(t => {
+            try { t.onended = null; t.stop(); } catch (e) {}
+        });
+    }
+
+    sendWs({
+        type: 'screen_update',
+        streamInfo: newInfo
+    });
+
+    showToast(`🔄 Tela/Jogo da live trocado para <b>${res}p ${fps} FPS</b> sem desligar!`, 4000);
 }
 
 function stopScreenShare() {
@@ -1858,8 +2116,11 @@ function stopScreenShare() {
     state.isStreaming = false;
 
     const btn = document.getElementById('btn-stream-toggle');
-    btn.classList.remove('streaming');
-    document.getElementById('btn-stream-text').textContent = 'Transmitir Tela';
+    if (btn) btn.classList.remove('streaming');
+    const btnText = document.getElementById('btn-stream-text');
+    if (btnText) btnText.textContent = 'Transmitir Tela';
+    const editBtn = document.getElementById('btn-stream-edit');
+    if (editBtn) editBtn.style.display = 'none';
 
     removeStream(state.userId);
     sendWs({ type: 'screen_stop' });
@@ -3451,14 +3712,18 @@ function setupEventListeners() {
             showToast('🚫 <b>Transmissão de tela proibida no Cinema!</b><br>As salas de cinema são exclusivas para Filmes, Séries e TV via IPTV.<br>Para transmitir seu jogo ou tela, entre na sala <b>🎮 Jogos 60FPS</b> ou <b>🔊 Geral</b>.', 6000);
             return;
         }
-        if (streamModal) streamModal.style.display = 'flex';
+        openStreamModal(false);
+    });
+    on('btn-stream-edit', 'click', () => {
+        if (!state.isStreaming) return;
+        openStreamModal(true);
     });
     on('btn-quick-stream', 'click', () => {
         if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
             showToast('🚫 <b>Transmissão de tela proibida no Cinema!</b><br>Use a sala 🎮 Jogos 60FPS para transmitir sua tela.', 5000);
             return;
         }
-        if (streamModal) streamModal.style.display = 'flex';
+        openStreamModal(state.isStreaming);
     });
     on('btn-close-modal', 'click', () => { if (streamModal) streamModal.style.display = 'none'; });
     on('btn-cancel-stream', 'click', () => { if (streamModal) streamModal.style.display = 'none'; });
@@ -3485,7 +3750,16 @@ function setupEventListeners() {
 
     on('btn-confirm-stream', 'click', () => {
         if (streamModal) streamModal.style.display = 'none';
-        startScreenShare();
+        if (state.isStreaming) {
+            updateLiveStreamSettings();
+        } else {
+            startScreenShare();
+        }
+    });
+
+    on('btn-switch-screen-source', 'click', () => {
+        if (streamModal) streamModal.style.display = 'none';
+        switchLiveScreenSource();
     });
 
     // 4. Convidar Amigos (Abre Modal de Convite)

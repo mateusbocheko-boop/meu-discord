@@ -140,6 +140,10 @@
                         <i class="fa-solid fa-display"></i>
                         <span id="btn-stream-text">Transmitir Tela</span>
                     </button>
+                    <button class="btn-stream-action" id="btn-stream-edit" style="display: none;" title="Editar resolução, FPS ou trocar tela sem desligar a live">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>Editar Live</span>
+                    </button>
                     <button class="btn-stream-action" id="btn-voice-watch-toggle" style="display: none;">
                         <i class="fa-solid fa-tv"></i>
                         <span id="btn-voice-watch-text">Assistir Live</span>
@@ -463,7 +467,7 @@
     <div class="modal-backdrop" id="stream-modal" style="display: none;">
         <div class="modal-box">
             <div class="modal-header">
-                <h3><i class="fa-solid fa-display"></i> Transmissão de Tela em 60 FPS</h3>
+                <h3 id="stream-modal-title"><i class="fa-solid fa-display"></i> Transmissão de Tela em 60 FPS</h3>
                 <button class="modal-close" id="btn-close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body">
@@ -502,8 +506,11 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="flex-wrap: wrap; gap: 8px;">
                 <button class="btn-cancel" id="btn-cancel-stream">Cancelar</button>
+                <button class="btn-cancel" id="btn-switch-screen-source" style="display: none; background: #2b2d31; color: #fff; border: 1px solid #4e5058;">
+                    <i class="fa-solid fa-repeat"></i> Trocar Tela / Jogo
+                </button>
                 <button class="btn-start-stream" id="btn-confirm-stream">
                     <i class="fa-solid fa-bolt"></i> Começar a Transmitir (60 FPS)
                 </button>
