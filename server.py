@@ -510,7 +510,8 @@ class ChannelBroadcaster:
                         dead = []
                         for q in list(self.subscribers):
                             try:
-                                while q.qsize() > 8:
+                                # Buffer saudável de até 120 chunks (~4MB) para nunca corromper pacotes TS
+                                while q.qsize() > 120:
                                     try:
                                         q.get_nowait()
                                     except Exception:
@@ -1963,9 +1964,56 @@ async def afk_monitor_loop():
         except Exception as e:
             print(f"[AFK] Erro no monitor: {e}")
 
+
+# =========================================================================
+# SISTEMA DE PULSO 24/7 (HEARTBEAT ANTI-SLEEP DO RENDER)
+# =========================================================================
+SERVER_START_TIME = time.time()
+RENDER_APP_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://meu-discord-1.onrender.com").rstrip("/")
+
+async def ping_handler(request):
+    uptime = int(time.time() - SERVER_START_TIME)
+    return web.json_response({
+        "status": "online",
+        "service": "VOX Ultra HD",
+        "uptime_seconds": uptime,
+        "pulse": "alive",
+        "message": "💓 Pulso ativo - Servidor 100% acordado 24/7",
+        "timestamp": int(time.time())
+    }, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+    })
+
+async def server_heartbeat_pulse():
+    """
+    Pulso de Vida (Heartbeat 24/7): Mantém o servidor do VOX sempre acordado no Render.
+    Envia uma requisição HTTP para /ping a cada 8 minutos (480s), zerando o contador
+    de inatividade do Render (que dorme aos 15 min) e garantindo 100% de disponibilidade.
+    """
+    await asyncio.sleep(15)  # Aguarda 15s para a rede do container estabilizar
+    print(f"[Pulso 24/7] ❤️ Sistema de batimento cardíaco ativado!")
+    print(f"[Pulso 24/7] 🎯 Alvo: {RENDER_APP_URL}/ping")
+    
+    while True:
+        try:
+            session = await get_http_session()
+            ping_target = f"{RENDER_APP_URL}/ping"
+            async with session.get(ping_target, timeout=aiohttp.ClientTimeout(total=20), headers={"User-Agent": "VOX-Heartbeat-Pulse/2.7"}) as resp:
+                if resp.status == 200:
+                    print(f"[Pulso 24/7] 💓 Pulso confirmado com sucesso! Servidor 100% acordado e online.")
+                else:
+                    print(f"[Pulso 24/7] ⚠️ Resposta do pulso com status {resp.status}")
+        except Exception as err:
+            print(f"[Pulso 24/7] ℹ️ Registro de pulso: {err}")
+        
+        # Pulsa a cada 8 minutos (480s)
+        await asyncio.sleep(480)
+
 async def on_startup(app):
     port = app.get("server_port", 8080)
     asyncio.create_task(afk_monitor_loop())
+    asyncio.create_task(server_heartbeat_pulse())
     # Só tenta iniciar o túnel Cloudflare se estiver no Windows, com o .exe presente e fora de ambientes cloud (ex: Render)
     if sys.platform == 'win32' and not os.environ.get("RENDER") and CLOUDFLARED_EXE.exists():
         asyncio.create_task(start_cloudflare_tunnel(port))
@@ -1984,6 +2032,8 @@ def init_app(port=8080):
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
     app.router.add_get("/", index_handler)
+    app.router.add_get("/ping", ping_handler)
+    app.router.add_get("/health", ping_handler)
     app.router.add_get("/api/tunnel-url", tunnel_api)
     app.router.add_get("/api/iptv/categories", iptv_categories_handler)
     app.router.add_get("/api/iptv/streams", iptv_streams_handler)

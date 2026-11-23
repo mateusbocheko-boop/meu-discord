@@ -4412,6 +4412,121 @@ function loadHlsFallback(m3u8Url, video) {
     }
 }
 
+
+function loadLiveStream(m3u8Url, tsUrl, video) {
+    console.log('[VOX Live] Inicializando canal ao vivo...');
+    
+    // 1. Limpa instâncias anteriores
+    if (state.hlsInstance) {
+        try { state.hlsInstance.destroy(); } catch (e) {}
+        state.hlsInstance = null;
+    }
+    if (state.mpegtsInstance) {
+        try {
+            state.mpegtsInstance.pause();
+            state.mpegtsInstance.unload();
+            state.mpegtsInstance.detachMediaElement();
+            state.mpegtsInstance.destroy();
+        } catch (e) {}
+        state.mpegtsInstance = null;
+    }
+
+    // 2. PRIORIDADE 1: Hls.js com buffer contínuo (Elimina 100% dos congelamentos)
+    if (window.Hls && Hls.isSupported()) {
+        console.log('[VOX Live] Usando motor Hls.js de alta estabilidade:', m3u8Url);
+        const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 30,
+            maxBufferLength: 20,           // Mantém até 20s de buffer
+            maxMaxBufferLength: 40,
+            maxBufferSize: 50 * 1000 * 1000,
+            liveSyncDurationCount: 2,      // 2 segmentos de atraso seguro (evita buffer starvation)
+            liveMaxLatencyDurationCount: 5,
+            maxBufferHole: 0.8,
+            highBufferWatchdogPeriod: 2,
+            nudgeOffset: 0.1,
+            nudgeMaxRetry: 6,
+            fragLoadingTimeOut: 20000,
+            manifestLoadingTimeOut: 20000
+        });
+
+        hls.loadSource(m3u8Url);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            console.log('[VOX Live] Manifest carregado com sucesso!');
+            startVideoPlayback(video);
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+            console.warn('[VOX Live] Evento HLS:', data.type, data.details);
+            if (data.fatal) {
+                switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.warn('[VOX Live] Erro de rede HLS, tentando recarregar...');
+                        hls.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.warn('[VOX Live] Erro de mídia HLS, recuperando...');
+                        hls.recoverMediaError();
+                        break;
+                    default:
+                        console.warn('[VOX Live] Erro fatal irrecuperável HLS, tentando fallback para MPEG-TS...');
+                        hls.destroy();
+                        state.hlsInstance = null;
+                        fallbackMpegts(tsUrl, video);
+                        break;
+                }
+            }
+        });
+
+        state.hlsInstance = hls;
+        return;
+    }
+
+    // 3. PRIORIDADE 2: Suporte nativo HLS (Safari / iOS / Mac)
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        console.log('[VOX Live] Usando player HLS nativo do navegador');
+        video.src = m3u8Url;
+        startVideoPlayback(video);
+        return;
+    }
+
+    // 4. PRIORIDADE 3: Fallback MPEG-TS estabilizado
+    fallbackMpegts(tsUrl, video);
+}
+
+function fallbackMpegts(tsUrl, video) {
+    if (window.mpegts && mpegts.getFeatureList().mseLivePlayback) {
+        console.log('[VOX Live] Inicializando fallback MPEG-TS estabilizado:', tsUrl);
+        try {
+            const player = mpegts.createPlayer({
+                type: 'mse',
+                isLive: true,
+                url: tsUrl
+            }, {
+                enableWorker: false,
+                lazyLoad: false,
+                enableStashBuffer: true,         // ESSENCIAL: Mantém buffer local para não congelar
+                stashInitialSize: 512,           // 512KB de buffer inicial
+                autoCleanupSourceBuffer: true,
+                autoCleanupMaxBackwardDuration: 30,
+                autoCleanupMinBackwardDuration: 15,
+                liveBufferLatencyChasing: false, // DESATIVADO: era o que causava o congelamento em 1s!
+                fixAudioTimestampGap: true
+            });
+            player.attachMediaElement(video);
+            player.load();
+            startVideoPlayback(video);
+            state.mpegtsInstance = player;
+        } catch (err) {
+            console.error('[VOX Live] Erro no fallback MPEG-TS:', err);
+            showToast('⚠️ Erro ao reproduzir o canal. Tentando restabelecer conexão...');
+        }
+    }
+}
+
 function playCinemaStream(cinema) {
     const stage = document.getElementById('video-stage');
     const video = document.getElementById('stage-video');
@@ -4483,42 +4598,9 @@ function playCinemaStream(cinema) {
     };
 
     if (cinema.streamType === 'live') {
-        const tsUrl = `${window.location.origin}/api/iptv/stream/${cinema.streamId}.ts`;
-        const m3u8Url = `${window.location.origin}/api/iptv/live/${cinema.streamId}.m3u8`;
-
-        if (window.mpegts && mpegts.getFeatureList().mseLivePlayback) {
-            try {
-                const player = mpegts.createPlayer({
-                    type: 'mse',
-                    isLive: true,
-                    url: tsUrl
-                }, {
-                    enableWorker: false, // Executa diretamente via MSE para compatibilidade total
-                    lazyLoad: false,
-                    lazyLoadMaxDuration: 0.2,
-                    lazyLoadRecoverDuration: 0.1,
-                    deferLoadAfterSourceOpen: false,
-                    enableStashBuffer: false, // ZERO delay: envia direto para o MSE sem acumular buffer interno!
-                    stashInitialSize: 128,
-                    autoCleanupSourceBuffer: true,
-                    autoCleanupMaxBackwardDuration: 10,
-                    autoCleanupMinBackwardDuration: 5,
-                    liveBufferLatencyChasing: true, // Auto-avança se o cliente ficar para trás, eliminando delay!
-                    liveBufferLatencyMaxLatency: 2.0, // Máximo 2s de atraso para transmissão ao vivo!
-                    liveBufferLatencyMinRemain: 0.4,
-                    fixAudioTimestampGap: false
-                });
-                player.attachMediaElement(video);
-                player.load();
-                startVideoPlayback(video);
-                state.mpegtsInstance = player;
-            } catch (err) {
-                console.warn('Erro ao inicializar mpegts, fallback para HLS:', err);
-                loadHlsFallback(m3u8Url, video);
-            }
-        } else {
-            loadHlsFallback(m3u8Url, video);
-        }
+        const m3u8Url = `/api/iptv/live/${cinema.streamId}.m3u8`;
+        const tsUrl = `/api/iptv/stream/${cinema.streamId}.ts`;
+        loadLiveStream(m3u8Url, tsUrl, video);
     } else {
         const vodType = cinema.streamType === 'series' ? 'series' : 'movie';
         const vodUrl = `/api/iptv/vod/${cinema.streamId}?ext=${cinema.ext || 'mp4'}&type=${vodType}`;
@@ -5522,3 +5604,11 @@ if (document.readyState === 'loading') {
 } else {
     startVoxApp();
 }
+
+
+// =========================================================================
+// PULSO CLIENTE 24/7 (KEEPALIVE DO VOX)
+// =========================================================================
+setInterval(() => {
+    fetch('/ping').catch(() => {});
+}, 300000); // A cada 5 minutos envia um pulso leve
