@@ -38,6 +38,12 @@ except Exception as e:
 CLOUDFLARED_EXE = APP_DIR / "cloudflared.exe"
 
 import time
+from datetime import datetime, timezone, timedelta
+
+BRT_TZ = timezone(timedelta(hours=-3))
+
+def now_brt(fmt="%H:%M"):
+    return datetime.now(BRT_TZ).strftime(fmt)
 
 # --- CONFIGURAÇÃO IPTV & CINEMA 24/7 ---
 IPTV_DNS = os.environ.get("IPTV_DNS", "http://acessoza.sbs")
@@ -200,7 +206,7 @@ def log_audit(action, target_user_id, target_username, performed_by_id, performe
         "performedByName": performed_by_name,
         "details": details,
         "timestamp": time.time(),
-        "timeStr": time.strftime("%d/%m/%Y %H:%M:%S")
+        "timeStr": now_brt("%d/%m/%Y %H:%M:%S")
     }
     server_audit_logs.append(entry)
     save_audit_logs()
@@ -1133,7 +1139,7 @@ async def websocket_handler(request):
 
                     msg_id = f"msg_{int(time.time()*1000)}_{user_id[:4]}"
                     msg_channel = data.get("channelId", "geral")
-                    msg_ts = data.get("timestamp") or time.strftime("%H:%M")
+                    msg_ts = now_brt("%H:%M")
                     is_vip_user = is_user_vip(user_id, clients[ws]["username"])
 
                     msg_entry = {
@@ -1335,7 +1341,7 @@ async def websocket_handler(request):
                     "username": "Kord VIP",
                     "avatar": "#ffd700",
                     "text": action_msg,
-                    "timestamp": time.strftime("%H:%M")
+                    "timestamp": now_brt("%H:%M")
                 })
 
             elif msg_type == "create_server":
@@ -1491,7 +1497,7 @@ async def websocket_handler(request):
                         "username": "Servidor",
                         "avatar": "#5865F2",
                         "text": action_msg,
-                        "timestamp": time.strftime("%H:%M")
+                        "timestamp": now_brt("%H:%M")
                     })
                     continue
 
@@ -1535,7 +1541,7 @@ async def websocket_handler(request):
                     "username": "Servidor",
                     "avatar": "#5865F2",
                     "text": action_msg,
-                    "timestamp": time.strftime("%H:%M")
+                    "timestamp": now_brt("%H:%M")
                 })
 
             elif msg_type in ("admin_stop_stream", "admin_disconnect_voice", "admin_kick_user", "admin_ban_user", "admin_unban_user", "admin_create_channel", "admin_delete_channel"):
@@ -1592,7 +1598,7 @@ async def websocket_handler(request):
                         "username": "🛡️ Sistema",
                         "avatar": "#ED4245",
                         "text": "👑 O Dono do Servidor encerrou as transmissões de tela ativas/travadas.",
-                        "timestamp": time.strftime("%H:%M")
+                        "timestamp": now_brt("%H:%M")
                     })
 
                 elif msg_type == "admin_disconnect_voice":
@@ -1790,7 +1796,7 @@ async def websocket_handler(request):
                                     "username": "🛡️ Sistema",
                                     "avatar": "#ED4245",
                                     "text": f"🔨 O usuário <b>{banned_name}</b> foi BANIDO deste servidor pelo Dono.",
-                                    "timestamp": time.strftime("%H:%M")
+                                    "timestamp": now_brt("%H:%M")
                                 })
                             continue
 
@@ -1834,7 +1840,7 @@ async def websocket_handler(request):
                             "username": "🛡️ Sistema",
                             "avatar": "#ED4245",
                             "text": f"🔨 O usuário <b>{banned_name}</b> foi BANIDO permanentemente pelo Dono do Servidor.",
-                            "timestamp": time.strftime("%H:%M")
+                            "timestamp": now_brt("%H:%M")
                         })
                         await check_empty_cinema_rooms()
 
@@ -2034,7 +2040,7 @@ async def websocket_handler(request):
                     "warnedBy": clients[ws]["username"],
                     "warnedById": user_id,
                     "timestamp": time.time(),
-                    "timeStr": time.strftime("%d/%m/%Y %H:%M")
+                    "timeStr": now_brt("%d/%m/%Y %H:%M")
                 }
                 if target_id not in server_warnings:
                     server_warnings[target_id] = []

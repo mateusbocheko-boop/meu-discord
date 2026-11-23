@@ -3136,7 +3136,7 @@ function renderChatMessage(data) {
     const list = document.getElementById('messages-list');
     const row = document.createElement('div');
     row.className = 'chat-message-row';
-    const time = data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = data.timestamp || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
     const isAuthorOwner = data.isOwner || (data.username && data.username.trim().toLowerCase() === 'dim') || (data.username && data.username.trim().toLowerCase().startsWith('dim'));
     const isAuthorAdmin = !isAuthorOwner && (data.isAdmin || (state.serverAdmins && state.serverAdmins.has(data.senderId)));
 
@@ -3783,7 +3783,7 @@ function setupEventListeners() {
             sendWs({
                 type: 'chat_message',
                 text: text,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
             });
             chatInput.value = '';
         }
