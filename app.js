@@ -4383,16 +4383,17 @@ function loadHlsFallback(m3u8Url, video) {
     if (window.Hls && Hls.isSupported()) {
         const hls = new Hls({
             enableWorker: true,
+            // lowLatencyMode pode causar cortes em conexões instáveis; mantemos habilitado, mas aumentamos buffers
             lowLatencyMode: true,
-            backBufferLength: 10,
-            maxBufferLength: 8,
-            maxMaxBufferLength: 15,
-            liveSyncDurationCount: 2,
-            liveMaxLatencyDurationCount: 4,
-            maxBufferHole: 0.5,
-            highBufferWatchdogPeriod: 2,
-            nudgeOffset: 0.1,
-            nudgeMaxRetry: 5
+            backBufferLength: 30,          // segundos de pré‑buffer
+            maxBufferLength: 30,           // até 30 s de buffer total
+            maxMaxBufferLength: 60,        // limite máximo de buffer
+            liveSyncDurationCount: 5,      // 5 segmentos de atraso seguro
+            liveMaxLatencyDurationCount: 8,
+            maxBufferHole: 1.0,            // tolera pequenas lacunas
+            highBufferWatchdogPeriod: 5,   // verifica buffer com menos frequência
+            nudgeOffset: 0.25,
+            nudgeMaxRetry: 10
         });
         hls.loadSource(m3u8Url);
         hls.attachMedia(video);

@@ -2014,7 +2014,7 @@ async def server_heartbeat_pulse():
 
 async def on_startup(app):
     port = app.get("server_port", 8080)
-// asyncio.create_task(afk_monitor_loop())  // AFK mover desativado por solicitação do usuário
+# asyncio.create_task(afk_monitor_loop())  # AFK mover desativado por solicitação do usuário
     asyncio.create_task(server_heartbeat_pulse())
     # Só tenta iniciar o túnel Cloudflare se estiver no Windows, com o .exe presente e fora de ambientes cloud (ex: Render)
     if sys.platform == 'win32' and not os.environ.get("RENDER") and CLOUDFLARED_EXE.exists():
