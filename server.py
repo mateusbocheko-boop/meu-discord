@@ -439,17 +439,23 @@ def load_servers():
     if SERVERS_FILE.exists():
         try:
             with open(SERVERS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                loaded = json.load(f)
+            if "default" in loaded:
+                if loaded["default"].get("name") in ("Kord Oficial", "Kord", ""):
+                    loaded["default"]["name"] = "VOX Oficial"
+                    loaded["default"]["description"] = "Comunidade Principal do VOX • Voz, Filmes e 60 FPS"
+                    save_servers(loaded)
+            return loaded
         except Exception:
             pass
     default_servers = {
         "default": {
             "id": "default",
-            "name": "Kord Oficial",
+            "name": "VOX Oficial",
             "icon": "🔥",
             "ownerId": "DIM#4095",
             "ownerName": "DIM",
-            "description": "Comunidade Principal do Kord • Voz, Filmes e 60 FPS",
+            "description": "Comunidade Principal do VOX • Voz, Filmes e 60 FPS",
             "channels": server_channels,
             "members": []
         }
@@ -1729,6 +1735,14 @@ async def websocket_handler(request):
                     "ownerName": username,
                     "channels": new_channels,
                     "members": [user_id],
+                    "memberProfiles": {
+                        user_id: {
+                            "id": user_id,
+                            "username": username,
+                            "avatar": avatar,
+                            "userTag": clients[ws].get("userTag", "")
+                        }
+                    },
                     "admins": [],
                     "banned": [],
                     "mutedUsers": []
@@ -1792,7 +1806,13 @@ async def websocket_handler(request):
 
                 if user_id not in found_srv.get("members", []):
                     found_srv.setdefault("members", []).append(user_id)
-                    save_servers(all_servers)
+                found_srv.setdefault("memberProfiles", {})[user_id] = {
+                    "id": user_id,
+                    "username": username,
+                    "avatar": clients[ws].get("avatar", "#5865F2"),
+                    "userTag": clients[ws].get("userTag", "")
+                }
+                save_servers(all_servers)
 
                 old_voice = clients[ws].get("voiceChannel")
                 clients[ws]["currentServerId"] = found_id
@@ -1823,6 +1843,7 @@ async def websocket_handler(request):
                         "isAdmin": is_srv_admin,
                         "isMainServer": False,
                         "memberIds": list(set(([found_srv.get("ownerId")] if found_srv.get("ownerId") else []) + found_srv.get("members", []))),
+                        "memberProfiles": list((found_srv.get("memberProfiles") or {}).values()),
                         "banned": found_srv.get("banned", []),
                         "admins": found_srv.get("admins", [])
                     },
@@ -1856,8 +1877,15 @@ async def websocket_handler(request):
                     continue
 
                 # Dono supremo DIM visualiza servidores criados SEM ser adicionado como usuário/membro deles!
-                if target_server_id != "default" and not is_global_dim and user_id not in sdata.get("members", []):
-                    sdata.setdefault("members", []).append(user_id)
+                if target_server_id != "default" and not is_global_dim:
+                    if user_id not in sdata.get("members", []):
+                        sdata.setdefault("members", []).append(user_id)
+                    sdata.setdefault("memberProfiles", {})[user_id] = {
+                        "id": user_id,
+                        "username": username,
+                        "avatar": clients[ws].get("avatar", "#5865F2"),
+                        "userTag": clients[ws].get("userTag", "")
+                    }
                     save_servers(all_servers)
 
                 old_voice = clients[ws].get("voiceChannel")
@@ -1892,12 +1920,66 @@ async def websocket_handler(request):
                         "isAdmin": is_srv_admin,
                         "isMainServer": (target_server_id == "default"),
                         "memberIds": srv_member_ids,
+                        "memberProfiles": list((sdata.get("memberProfiles") or {}).values()) if target_server_id != "default" else [],
                         "isInspectOnly": (is_global_dim and target_server_id != "default" and user_id not in (srv_member_ids or [])),
                         "banned": sdata.get("banned", []) if target_server_id != "default" else list(server_banned),
                         "admins": sdata.get("admins", []) if target_server_id != "default" else list(server_admins)
                     },
                     "messages": srv_msgs
                 }))
+
+            elif msg_type == "admin_delete_server":
+                # EXCLUSIVO DO MESTRE DOS MAGOS (DIM): pode excluir qualquer servidor particular criado
+                if not clients.get(ws, {}).get("isOwner"):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "🚫 Apenas o Mestre dos Magos (DIM) pode excluir servidores criados!"
+                    }))
+                    continue
+                target_srv_id = data.get("serverId")
+                if not target_srv_id or target_srv_id == "default" or target_srv_id not in all_servers:
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "Servidor inválido ou não pode ser excluído."
+                    }))
+                    continue
+
+                deleted_name = all_servers[target_srv_id].get("name", target_srv_id)
+                del all_servers[target_srv_id]
+                save_servers(all_servers)
+
+                def_srv = all_servers.get("default", {})
+                def_msgs = [m for m in server_messages if m.get("serverId", "default") == "default"][-100:]
+                for c_ws, c_u in list(clients.items()):
+                    try:
+                        await c_ws.send_str(json.dumps({
+                            "type": "servers_list_updated",
+                            "servers": get_user_servers(c_u.get("id"), is_global_owner=bool(c_u.get("isOwner", False)))
+                        }))
+                        if c_u.get("currentServerId") == target_srv_id:
+                            c_u["currentServerId"] = "default"
+                            c_u["voiceChannel"] = None
+                            await c_ws.send_str(json.dumps({
+                                "type": "server_switched",
+                                "server": {
+                                    "id": "default",
+                                    "name": def_srv.get("name", "VOX Oficial"),
+                                    "icon": def_srv.get("icon", "🔥"),
+                                    "channels": def_srv.get("channels", server_channels),
+                                    "isOwner": bool(c_u.get("isOwner", False)),
+                                    "isAdmin": bool(c_u.get("isAdmin", False)),
+                                    "isMainServer": True,
+                                    "banned": list(server_banned),
+                                    "admins": list(server_admins)
+                                },
+                                "messages": def_msgs
+                            }))
+                            await c_ws.send_str(json.dumps({
+                                "type": "error",
+                                "message": f"🗑️ O servidor \"{deleted_name}\" foi excluído pelo Mestre."
+                            }))
+                    except Exception:
+                        pass
 
             elif msg_type == "admin_toggle_role":
                 current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
@@ -2132,7 +2214,7 @@ async def websocket_handler(request):
                                         "type": "server_switched",
                                         "server": {
                                             "id": "default",
-                                            "name": def_srv.get("name", "Kord Oficial"),
+                                            "name": def_srv.get("name", "VOX Oficial"),
                                             "icon": def_srv.get("icon", "🔥"),
                                             "channels": def_srv.get("channels", server_channels),
                                             "isOwner": u.get("isOwner", False),
@@ -2233,7 +2315,7 @@ async def websocket_handler(request):
                                                 "type": "server_switched",
                                                 "server": {
                                                     "id": "default",
-                                                    "name": def_srv.get("name", "Kord Oficial"),
+                                                    "name": def_srv.get("name", "VOX Oficial"),
                                                     "icon": def_srv.get("icon", "🔥"),
                                                     "channels": def_srv.get("channels", server_channels),
                                                     "isOwner": u.get("isOwner", False),

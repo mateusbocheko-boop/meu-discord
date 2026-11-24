@@ -1,4 +1,4 @@
-document.title = 'Kord';
+document.title = 'VOX';
 // Reset owner privileges from local storage
 try { localStorage.removeItem('discord_is_owner'); } catch (e) {}
 
@@ -89,6 +89,30 @@ function updateOwnerUI() {
     // Mantém o botão IPTV/Cinema visível tanto no servidor principal quanto nos servidores particulares (mesmo sistema VIP do VOX)
     const iptvBtn = document.getElementById('btn-open-iptv');
     if (iptvBtn) iptvBtn.style.display = '';
+
+    // Botão exclusivo do Mestre (DIM) para excluir qualquer servidor particular criado
+    let delSrvBtn = document.getElementById('btn-master-delete-server');
+    const brandHeader = document.querySelector('.kord-brand-header') || document.querySelector('.kord-brand-title')?.parentElement;
+    if (!delSrvBtn && brandHeader) {
+        delSrvBtn = document.createElement('button');
+        delSrvBtn.id = 'btn-master-delete-server';
+        delSrvBtn.title = 'Excluir este servidor permanentemente (Exclusivo do Mestre)';
+        delSrvBtn.style.cssText = 'display:none;background:#da373c;color:#fff;border:none;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;margin-left:auto;align-items:center;gap:4px;';
+        delSrvBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+        delSrvBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (!state.isOwner || !state.currentServerId || state.currentServerId === 'default') return;
+            const srvObj = (state.userServers || []).find(s => s.id === state.currentServerId);
+            const srvName = srvObj ? srvObj.name : state.currentServerId;
+            if (confirm(`🧙‍♂️ MESTRE: Deseja excluir PERMANENTEMENTE o servidor "${srvName}"?`)) {
+                sendWs({ type: 'admin_delete_server', serverId: state.currentServerId });
+            }
+        };
+        brandHeader.appendChild(delSrvBtn);
+    }
+    if (delSrvBtn) {
+        delSrvBtn.style.display = (state.isOwner && isCustomSrv) ? 'inline-flex' : 'none';
+    }
 
     renderBannedList();
 }
@@ -864,6 +888,8 @@ async function handleServerMessage(data) {
                 state.isCurrentServerAdmin = !!data.server.isAdmin;
                 state.currentServerOwnerId = data.server.ownerId || null;
                 state.currentServerMemberIds = Array.isArray(data.server.memberIds) ? new Set(data.server.memberIds) : null;
+                state.currentServerMemberProfiles = Array.isArray(data.server.memberProfiles) ? data.server.memberProfiles : [];
+                state.currentServerAdmins = new Set(data.server.admins || []);
                 state.bannedUsers = data.server.banned || [];
                 if (state.currentVoiceChannel) {
                     leaveVoiceChannel(false);
@@ -905,6 +931,10 @@ async function handleServerMessage(data) {
                 state.currentServerMemberIds = (data.server.id !== 'default' && Array.isArray(data.server.memberIds))
                     ? new Set(data.server.memberIds)
                     : null;
+                state.currentServerMemberProfiles = (data.server.id !== 'default' && Array.isArray(data.server.memberProfiles))
+                    ? data.server.memberProfiles
+                    : [];
+                state.currentServerAdmins = (data.server.id !== 'default') ? new Set(data.server.admins || []) : new Set();
                 state.bannedUsers = data.server.banned || [];
                 if (state.currentVoiceChannel) {
                     leaveVoiceChannel(false);
@@ -3697,13 +3727,32 @@ function renderMembersSidebar() {
         }
     }
 
-    // 4. ISOLAMENTO DE MEMBROS POR SERVIDOR: Em servidores particulares, mostra APENAS usuários daquele servidor!
-    if (isCustomServer && state.currentServerMemberIds) {
-        for (const uid of Array.from(uniqueMap.keys())) {
-            if (!state.currentServerMemberIds.has(uid)) {
-                uniqueMap.delete(uid);
+    // 4. ISOLAMENTO DE MEMBROS POR SERVIDOR: Em servidores particulares, mostra APENAS usuários cadastrados naquele servidor (online e offline)!
+    if (isCustomServer) {
+        if (Array.isArray(state.currentServerMemberProfiles)) {
+            state.currentServerMemberProfiles.forEach(mp => {
+                if (mp && mp.id && !uniqueMap.has(mp.id)) {
+                    uniqueMap.set(mp.id, { ...mp });
+                }
+            });
+        }
+        if (state.currentServerMemberIds) {
+            for (const uid of Array.from(uniqueMap.keys())) {
+                if (!state.currentServerMemberIds.has(uid)) {
+                    uniqueMap.delete(uid);
+                }
             }
         }
+    }
+
+    // Atualiza título da seção de Dono/Mestre conforme o servidor atual
+    const headerMestreSpan = document.querySelector('#section-mestre .header-mestre span');
+    if (headerMestreSpan) {
+        const countEl = document.getElementById('count-mestre');
+        const curCount = countEl ? countEl.textContent : '0';
+        headerMestreSpan.innerHTML = isCustomServer
+            ? `👑 DONO DO SERVIDOR — <b id="count-mestre">${curCount}</b>`
+            : `🧙‍♂️ MESTRE DOS MAGOS — <b id="count-mestre">${curCount}</b>`;
     }
 
     let countMestre = 0;
@@ -3738,20 +3787,30 @@ function renderMembersSidebar() {
         const isDeafened = !!vState.isDeafened;
         const isSpeaking = !!vState.isSpeaking;
 
-        // Classificação: MESTRE DOS MAGOS > ADM > VIP > DISPONÍVEIS
+        // Classificação: MESTRE DOS MAGOS (ou DONO DO SERVIDOR particular) > ADM > VIP > DISPONÍVEIS > OFFLINE
         const mNameLower = (member.username || '').trim().toLowerCase();
-        const isMemberMestre = mNameLower === 'dim' || 
-                               mNameLower.startsWith('dim') ||
-                               (member.userTag && member.userTag.includes('4095')) ||
-                               member.isMaster ||
-                               (isMe && isMeDim);
+        const isMemberMestre = isCustomServer
+            ? (state.currentServerOwnerId && member.id === state.currentServerOwnerId)
+            : (mNameLower === 'dim' ||
+               mNameLower.startsWith('dim') ||
+               (member.userTag && member.userTag.includes('4095')) ||
+               member.isMaster ||
+               (isMe && isMeDim));
 
-        const isMemberAdmin = !isMemberMestre && (member.isAdmin || (state.serverAdmins && state.serverAdmins.has(member.id)) || member.isOwner);
-        const isMemberVip = !isMemberMestre && !isMemberAdmin && (state.vips ? state.vips.has(member.id) : false);
+        const isMemberAdmin = !isMemberMestre && (
+            isCustomServer
+                ? (state.currentServerAdmins && state.currentServerAdmins.has(member.id))
+                : (member.isAdmin || (state.serverAdmins && state.serverAdmins.has(member.id)) || member.isOwner)
+        );
+        const vipEntryForCat = state.vips ? state.vips.get(member.id) : null;
+        const hasVisibleVip = !!(vipEntryForCat?.isVip && !(vipEntryForCat?.isTrial && vipEntryForCat?.hideBadge));
+        const isMemberVip = !isMemberMestre && !isMemberAdmin && hasVisibleVip;
 
         let roleBadge = '';
         if (isMemberMestre) {
-            roleBadge = '<span class="badge-role-mestre" title="Mestre dos Magos"><i class="fa-solid fa-crown"></i> MESTRE</span>';
+            roleBadge = isCustomServer
+                ? '<span class="badge-role-mestre" title="Dono do Servidor"><i class="fa-solid fa-crown"></i> DONO</span>'
+                : '<span class="badge-role-mestre" title="Mestre dos Magos"><i class="fa-solid fa-crown"></i> MESTRE</span>';
         } else if (isMemberAdmin) {
             roleBadge = '<span class="badge-role-adm" title="Administrador"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
         }
@@ -5876,9 +5935,16 @@ function renderUserServers() {
             if (srv.id === 'default') return;
             const pill = document.createElement('div');
             pill.className = `server-pill user-server-item ${state.currentServerId === srv.id ? 'active' : ''}`;
-            pill.title = srv.name;
+            pill.title = state.isOwner ? `${srv.name} (Botão direito para excluir)` : srv.name;
             pill.innerHTML = `<span>${escapeHtml(srv.icon || '🎮')}</span>`;
             pill.onclick = () => switchServer(srv.id);
+            pill.oncontextmenu = (e) => {
+                if (!state.isOwner) return;
+                e.preventDefault();
+                if (confirm(`🧙‍♂️ MESTRE: Deseja excluir PERMANENTEMENTE o servidor "${srv.name}"?`)) {
+                    sendWs({ type: 'admin_delete_server', serverId: srv.id });
+                }
+            };
             rail.appendChild(pill);
         });
     }
