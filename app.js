@@ -534,6 +534,75 @@ function sendWs(data) {
 function initWebSocket() {
     socket = new WebSocket(wsUrl);
 
+function getOrCreateVoxDeviceId() {
+    let devId = null;
+    try { devId = localStorage.getItem('vox_device_id'); } catch (e) {}
+    if (!devId) {
+        const match = document.cookie.match(/(?:^|;\s*)vox_dev_id=([^;]+)/);
+        if (match) devId = decodeURIComponent(match[1]);
+    }
+    if (!devId) {
+        devId = 'dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    try { localStorage.setItem('vox_device_id', devId); } catch (e) {}
+    try { document.cookie = `vox_dev_id=${encodeURIComponent(devId)}; max-age=31536000; path=/; SameSite=Lax`; } catch (e) {}
+    return devId;
+}
+
+function computeVoxDeviceFingerprint() {
+    try {
+        let gpu = '';
+        try {
+            const c = document.createElement('canvas');
+            const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+            if (gl) {
+                const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+                gpu = dbg ? (gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : '';
+            }
+        } catch (e) {}
+
+        let canvasSig = '';
+        try {
+            const c2 = document.createElement('canvas');
+            c2.width = 160; c2.height = 30;
+            const ctx = c2.getContext('2d');
+            if (ctx) {
+                ctx.textBaseline = 'top';
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#f60';
+                ctx.fillRect(10, 1, 62, 20);
+                ctx.fillStyle = '#069';
+                ctx.fillText('VOX-FP-60FPS', 2, 10);
+                canvasSig = c2.toDataURL().slice(-64);
+            }
+        } catch (e) {}
+
+        const raw = [
+            navigator.platform || '',
+            navigator.hardwareConcurrency || '',
+            navigator.deviceMemory || '',
+            navigator.language || '',
+            `${screen.width}x${screen.height}x${screen.colorDepth}`,
+            Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+            gpu,
+            canvasSig
+        ].join('|');
+
+        // Hash determinístico FNV-1a 64-bit (duas passadas de 32-bit)
+        let h1 = 0x811c9dc5, h2 = 0x01000193;
+        for (let i = 0; i < raw.length; i++) {
+            const ch = raw.charCodeAt(i);
+            h1 ^= ch;
+            h1 = Math.imul(h1, 0x01000193);
+            h2 ^= ch;
+            h2 = Math.imul(h2, 0x85ebca6b);
+        }
+        return 'fp_' + (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+    } catch (e) {
+        return '';
+    }
+}
+
     socket.onopen = () => {
         console.log('✅ WebSocket Conectado!');
         sendWs({
@@ -542,7 +611,9 @@ function initWebSocket() {
             username: state.username,
             avatar: state.avatarColor,
             userTag: state.userTag,
-            tag: state.userTag
+            tag: state.userTag,
+            deviceId: getOrCreateVoxDeviceId(),
+            deviceFingerprint: computeVoxDeviceFingerprint()
         });
     };
 

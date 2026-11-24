@@ -98,6 +98,7 @@ cloudflared_proc = None
 # --- BACKUP AUTOMÁTICO NA NUVEM (GITHUB GIST PRIVADO) ---
 # Mantém usuários, logins, VIPs, servidores, canais, ADMs, banidos e mensagens salvos entre atualizações do Render!
 import threading
+import hashlib
 import urllib.request
 import urllib.error
 
@@ -107,7 +108,7 @@ CLOUD_BACKUP_FILENAME = "vox_cloud_backup.json"
 CLOUD_BACKUP_FILES = [
     "members.json", "vips.json", "servers.json", "channels.json",
     "banned.json", "owners.json", "admins.json", "messages.json",
-    "audit_logs.json", "warnings.json", "muted_users.json"
+    "audit_logs.json", "warnings.json", "muted_users.json", "trial_claims.json"
 ]
 _cloud_sync_timer = None
 _cloud_sync_lock = threading.Lock()
@@ -363,6 +364,32 @@ def save_vips(data):
         print(f"Erro ao salvar VIPs: {e}")
 
 server_vips = load_vips()
+
+TRIAL_CLAIMS_FILE = APP_DIR / "trial_claims.json"
+
+def load_trial_claims():
+    if TRIAL_CLAIMS_FILE.exists():
+        try:
+            with open(TRIAL_CLAIMS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    data.setdefault("ips", {})
+                    data.setdefault("fingerprints", {})
+                    data.setdefault("deviceIds", {})
+                    return data
+        except Exception:
+            pass
+    return {"ips": {}, "fingerprints": {}, "deviceIds": {}}
+
+def save_trial_claims(data):
+    try:
+        with open(TRIAL_CLAIMS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
+    except Exception as e:
+        print(f"Erro ao salvar trial_claims: {e}")
+
+trial_claims = load_trial_claims()
 
 def is_user_vip(user_id, username):
     clean_name = (username or "").strip().upper()
@@ -889,6 +916,10 @@ async def websocket_handler(request):
     ws = web.WebSocketResponse(heartbeat=10.0)
     await ws.prepare(request)
 
+    raw_xff = request.headers.get("X-Forwarded-For", "")
+    client_ip = (raw_xff.split(",")[0].strip() if raw_xff else (request.remote or "")).strip()
+    ip_hash = hashlib.sha256(f"vox_ip:{client_ip}".encode("utf-8")).hexdigest()[:32] if client_ip else ""
+
     user_id = None
     try:
         async for msg in ws:
@@ -966,22 +997,58 @@ async def websocket_handler(request):
                 clients[ws]["isAdmin"] = is_user_admin
                 clients[ws]["userTag"] = user_tag
 
-                # TRIAL 15 DIAS: Acesso às salas VIP por 15 dias SEM badge visível para outros
+                # TRIAL 15 DIAS COM 3 TRAVAS ANTI-BURLA (IP + Impressão Digital do Aparelho + Device ID)
+                device_fp = str(data.get("deviceFingerprint") or "").strip()[:64]
+                device_id = str(data.get("deviceId") or "").strip()[:64]
+                clients[ws]["ipHash"] = ip_hash
+                clients[ws]["deviceFingerprint"] = device_fp
+                clients[ws]["deviceId"] = device_id
+
                 trial_granted = False
                 is_new_user = (user_id not in server_vips)
                 if is_new_user and not clean_name.startswith("DIM"):
-                    expires_at = time.time() + (15 * 86400)
-                    server_vips[user_id] = {
-                        "isVip": True,
-                        "isTrial": True,
-                        "hideBadge": True,
-                        "durationDays": 15,
-                        "expiresAt": expires_at,
-                        "grantedAt": time.time(),
-                        "username": username
-                    }
-                    save_vips(server_vips)
-                    trial_granted = True
+                    already_used_ip = bool(ip_hash and ip_hash in trial_claims.get("ips", {}))
+                    already_used_fp = bool(device_fp and device_fp in trial_claims.get("fingerprints", {}))
+                    already_used_dev = bool(device_id and device_id in trial_claims.get("deviceIds", {}))
+
+                    if already_used_ip or already_used_fp or already_used_dev:
+                        # Aparelho ou IP já utilizou ou teve o trial revogado -> bloqueia novo trial grátis
+                        server_vips[user_id] = {
+                            "isVip": False,
+                            "isTrial": False,
+                            "hideBadge": True,
+                            "trialBlocked": True,
+                            "ipHash": ip_hash,
+                            "deviceFingerprint": device_fp,
+                            "deviceId": device_id,
+                            "username": username
+                        }
+                        save_vips(server_vips)
+                        print(f"[AntiBurla] Trial 15D bloqueado para {username} ({user_id}) - IP/aparelho já utilizado.")
+                    else:
+                        expires_at = time.time() + (15 * 86400)
+                        server_vips[user_id] = {
+                            "isVip": True,
+                            "isTrial": True,
+                            "hideBadge": True,
+                            "durationDays": 15,
+                            "expiresAt": expires_at,
+                            "grantedAt": time.time(),
+                            "ipHash": ip_hash,
+                            "deviceFingerprint": device_fp,
+                            "deviceId": device_id,
+                            "username": username
+                        }
+                        save_vips(server_vips)
+                        claim_rec = {"userId": user_id, "username": username, "claimedAt": time.time(), "revoked": False}
+                        if ip_hash:
+                            trial_claims["ips"][ip_hash] = claim_rec
+                        if device_fp:
+                            trial_claims["fingerprints"][device_fp] = claim_rec
+                        if device_id:
+                            trial_claims["deviceIds"][device_id] = claim_rec
+                        save_trial_claims(trial_claims)
+                        trial_granted = True
 
                 user_is_vip = is_user_vip(user_id, username)
                 clients[ws]["isVip"] = user_is_vip
@@ -1413,6 +1480,25 @@ async def websocket_handler(request):
                     vdata["expiresAt"] = 0
                     vdata["isLifetime"] = False
                     action_msg = f"❌ O Acesso VIP de <b>{target_name}</b> foi REVOGADO pelo Dono."
+
+                    # Trava 3: marca IP e aparelho do usuário revogado como já utilizados para impedir burla com nova conta
+                    rev_ip = vdata.get("ipHash", "")
+                    rev_fp = vdata.get("deviceFingerprint", "")
+                    rev_dev = vdata.get("deviceId", "")
+                    for _, u in list(clients.items()):
+                        if u.get("id") == target_id:
+                            rev_ip = rev_ip or u.get("ipHash", "")
+                            rev_fp = rev_fp or u.get("deviceFingerprint", "")
+                            rev_dev = rev_dev or u.get("deviceId", "")
+                            break
+                    rev_rec = {"userId": target_id, "username": target_name, "claimedAt": time.time(), "revoked": True}
+                    if rev_ip:
+                        trial_claims["ips"][rev_ip] = rev_rec
+                    if rev_fp:
+                        trial_claims["fingerprints"][rev_fp] = rev_rec
+                    if rev_dev:
+                        trial_claims["deviceIds"][rev_dev] = rev_rec
+                    save_trial_claims(trial_claims)
 
                     # Desconecta o usuário revogado de salas VIP/Cinema imediatamente
                     for t_ws, u in list(clients.items()):
