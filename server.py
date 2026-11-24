@@ -956,15 +956,23 @@ async def websocket_handler(request):
                         pass
                     clients.pop(old_ws, None)
 
+                reconn_voice = data.get("voiceChannel") or None
+                reconn_streaming = bool(data.get("isStreaming", False)) and bool(reconn_voice) and not str(reconn_voice).startswith("cinema-")
+                reconn_stream_info = data.get("streamInfo") if reconn_streaming else None
+                reconn_server_id = data.get("currentServerId") or "default"
+                if reconn_server_id not in all_servers:
+                    reconn_server_id = "default"
+
                 clients[ws] = {
                     "id": user_id,
                     "username": username,
                     "avatar": avatar,
-                    "voiceChannel": None,
-                    "isMuted": False,
-                    "isDeafened": False,
-                    "isStreaming": False,
-                    "streamInfo": None,
+                    "voiceChannel": reconn_voice,
+                    "isMuted": bool(data.get("isMuted", False)) or (reconn_voice == "afk"),
+                    "isDeafened": bool(data.get("isDeafened", False)),
+                    "isStreaming": reconn_streaming,
+                    "streamInfo": reconn_stream_info,
+                    "currentServerId": reconn_server_id,
                     "status": data.get("status", "online"),
                     "activity": data.get("activity", None)
                 }
@@ -1053,7 +1061,15 @@ async def websocket_handler(request):
                 user_is_vip = is_user_vip(user_id, username)
                 clients[ws]["isVip"] = user_is_vip
                 clients[ws]["vipExpiresAt"] = server_vips.get(user_id, {}).get("expiresAt")
-                clients[ws]["currentServerId"] = "default"
+                # Se não for VIP nem Dono, não permite reconectar direto em sala VIP/Cinema
+                if clients[ws].get("voiceChannel"):
+                    vc_l = str(clients[ws]["voiceChannel"]).lower()
+                    if (vc_l.startswith("cinema") or "vip" in vc_l) and not user_is_vip and not is_user_owner:
+                        clients[ws]["voiceChannel"] = None
+                        clients[ws]["isStreaming"] = False
+                        clients[ws]["streamInfo"] = None
+                if not clients[ws].get("currentServerId"):
+                    clients[ws]["currentServerId"] = "default"
 
                 is_new_member = (user_id not in server_members)
                 server_members[user_id] = {

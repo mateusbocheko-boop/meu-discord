@@ -612,6 +612,14 @@ function computeVoxDeviceFingerprint() {
             avatar: state.avatarColor,
             userTag: state.userTag,
             tag: state.userTag,
+            voiceChannel: state.currentVoiceChannel || null,
+            isMuted: !!state.isMuted,
+            isDeafened: !!state.isDeafened,
+            isStreaming: !!state.isStreaming,
+            streamInfo: state.isStreaming ? { resolution: `${state.streamConfig.resolution}p`, fps: state.streamConfig.fps } : null,
+            currentServerId: state.currentServerId || 'default',
+            status: state.userStatus || 'online',
+            activity: state.userActivity || null,
             deviceId: getOrCreateVoxDeviceId(),
             deviceFingerprint: computeVoxDeviceFingerprint()
         });
@@ -675,6 +683,14 @@ async function handleServerMessage(data) {
             }
             if (data.onlineIds) {
                 state.onlineUserIds = new Set(data.onlineIds);
+                // Remove transmissões fantasma de usuários que não estão mais online/transmitindo após reinício do servidor
+                for (const uid of Array.from(state.activeStreams.keys())) {
+                    if (uid === state.userId && state.isStreaming) continue;
+                    const uObj = state.users.get(uid);
+                    if (!state.onlineUserIds.has(uid) || !uObj || !uObj.isStreaming) {
+                        removeStream(uid);
+                    }
+                }
             }
             if (data.channels) {
                 state.channels = data.channels;
