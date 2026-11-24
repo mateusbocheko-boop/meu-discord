@@ -3536,6 +3536,7 @@ function renderChatMessage(data) {
 }
 
 function showToast(text, duration = 4000) {
+    if (window.voxPrefs && window.voxPrefs.showToasts === false) return;
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = 'toast';
@@ -3567,6 +3568,7 @@ function closeMobileDrawers() {
 
 // --- SONS DE VOZ IDÊNTICOS AO DISCORD (SINTETIZADOS WEB AUDIO API) ---
 function playDiscordVoiceJoinSound() {
+    if (window.voxPrefs && window.voxPrefs.soundVoice === false) return;
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtx) return;
@@ -6700,6 +6702,7 @@ function setupAuditModalTabs() {
 // Inicializa controles do VOX após o carregamento da página
 function startVoxApp() {
     initVoxStatusAndActivity();
+    if (typeof initVoxDiscordSettings === 'function') initVoxDiscordSettings();
     renderMembersSidebar();
     updateMyProfileUI();
     // Sincronização em tempo real para amigos sempre se enxergarem
@@ -6725,3 +6728,283 @@ if (document.readyState === 'loading') {
 setInterval(() => {
     fetch('/ping').catch(() => {});
 }, 300000); // A cada 5 minutos envia um pulso leve
+
+// =========================================================================
+// CONFIGURAÇÕES COMPLETAS ESTILO DISCORD (FUNCIONAIS - SEM COBRANÇA)
+// =========================================================================
+window.voxPrefs = (() => {
+    const defaults = {
+        theme: 'default',
+        chatFontSize: 14,
+        compactChat: false,
+        reduceMotion: false,
+        highContrast: false,
+        soundVoice: true,
+        soundChat: true,
+        showToasts: true,
+        shareActivity: true,
+        showOnline: true,
+        enableKeybinds: true,
+        timeFormat: '24h',
+        devMode: false
+    };
+    try {
+        const saved = JSON.parse(localStorage.getItem('vox_user_prefs') || '{}');
+        return { ...defaults, ...saved };
+    } catch (e) {
+        return defaults;
+    }
+})();
+
+function saveVoxPrefs() {
+    try { localStorage.setItem('vox_user_prefs', JSON.stringify(window.voxPrefs)); } catch (e) {}
+    applyVoxVisualPrefs();
+}
+
+function applyVoxVisualPrefs() {
+    const p = window.voxPrefs;
+    let styleEl = document.getElementById('vox-dynamic-prefs-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'vox-dynamic-prefs-style';
+        document.head.appendChild(styleEl);
+    }
+
+    let themeCss = '';
+    if (p.theme === 'amoled') {
+        themeCss = `
+            body, .main-stage-area, .chat-container { background-color: #000000 !important; }
+            .channels-sidebar, .members-sidebar, .user-footer, .servers-rail { background-color: #06070a !important; }
+        `;
+    } else if (p.theme === 'cyber') {
+        themeCss = `
+            body, .main-stage-area, .chat-container { background-color: #130b24 !important; }
+            .channels-sidebar, .members-sidebar, .user-footer { background-color: #0d0719 !important; }
+            .servers-rail { background-color: #080410 !important; }
+        `;
+    } else if (p.theme === 'ocean') {
+        themeCss = `
+            body, .main-stage-area, .chat-container { background-color: #0a192f !important; }
+            .channels-sidebar, .members-sidebar, .user-footer { background-color: #071324 !important; }
+            .servers-rail { background-color: #040c18 !important; }
+        `;
+    }
+
+    const compactCss = p.compactChat ? `.chat-msg, .message-row { padding-top: 2px !important; padding-bottom: 2px !important; margin-bottom: 2px !important; }` : '';
+    const motionCss = p.reduceMotion ? `*, *::before, *::after { transition: none !important; animation: none !important; }` : '';
+    const contrastCss = p.highContrast ? `body, .chat-text, .member-name { color: #ffffff !important; } .channel-item, .voice-channel { border: 1px solid rgba(255,255,255,0.08); }` : '';
+
+    styleEl.textContent = `
+        ${themeCss}
+        .chat-text { font-size: ${p.chatFontSize || 14}px !important; }
+        ${compactCss}
+        ${motionCss}
+        ${contrastCss}
+    `;
+}
+
+function initVoxDiscordSettings() {
+    applyVoxVisualPrefs();
+    const p = window.voxPrefs;
+
+    // 1. Atualiza mini cabeçalho da sidebar + info dev ao abrir configurações
+    const refreshSettingsMeta = () => {
+        const sbName = document.getElementById('settings-sidebar-name');
+        const sbAv = document.getElementById('settings-sidebar-avatar');
+        if (sbName) sbName.textContent = state.username || 'Você';
+        if (sbAv) applyAvatarToElement(sbAv, state.username, state.avatarColor, state.avatarUrl);
+
+        const devUid = document.getElementById('dev-my-userid');
+        const devSrv = document.getElementById('dev-current-server');
+        const devWs = document.getElementById('dev-ws-status');
+        if (devUid) devUid.textContent = state.userId || '-';
+        if (devSrv) devSrv.textContent = state.currentServerId || 'default';
+        if (devWs) {
+            const isOpen = (typeof socket !== 'undefined' && socket && socket.readyState === WebSocket.OPEN);
+            devWs.textContent = isOpen ? 'Conectado (Tempo Real)' : 'Reconectando...';
+            devWs.style.color = isOpen ? '#22c55e' : '#f59e0b';
+        }
+
+        const curGameEl = document.getElementById('settings-games-current');
+        if (curGameEl) {
+            curGameEl.textContent = (state.userActivity && state.userActivity.name)
+                ? `🎮 Jogando ${state.userActivity.name}`
+                : 'Nenhuma atividade definida';
+        }
+    };
+
+    const origOpenSettings = window.openUserSettingsModal || openUserSettingsModal;
+    if (typeof origOpenSettings === 'function' && !window._voxSettingsWrapped) {
+        window._voxSettingsWrapped = true;
+        const _orig = origOpenSettings;
+        openUserSettingsModal = function(tabName = 'profile') {
+            _orig(tabName);
+            refreshSettingsMeta();
+        };
+    }
+
+    // 2. Busca em tempo real nas abas da sidebar
+    const searchInp = document.getElementById('settings-search-input');
+    if (searchInp) {
+        searchInp.addEventListener('input', () => {
+            const q = searchInp.value.trim().toLowerCase();
+            document.querySelectorAll('.settings-sidebar .settings-tab').forEach(tab => {
+                if (tab.id === 'btn-settings-logout') return;
+                tab.style.display = (!q || tab.textContent.toLowerCase().includes(q)) ? 'flex' : 'none';
+            });
+        });
+    }
+
+    // 3. Checkboxes sincronizados com voxPrefs
+    const bindChk = (id, key, onChangeExtra = null) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.checked = !!p[key];
+        el.addEventListener('change', () => {
+            p[key] = el.checked;
+            saveVoxPrefs();
+            if (onChangeExtra) onChangeExtra(el.checked);
+        });
+    };
+
+    bindChk('pref-share-activity', 'shareActivity', (val) => {
+        if (!val && typeof clearUserActivity === 'function') clearUserActivity();
+        showToast(val ? '🎮 Exibição de atividade ativada.' : '🔒 Atividade ocultada.');
+    });
+    bindChk('pref-show-online', 'showOnline', (val) => {
+        if (typeof setUserStatus === 'function') setUserStatus(val ? 'online' : 'invisible');
+    });
+    bindChk('pref-sound-voice', 'soundVoice');
+    bindChk('pref-sound-chat', 'soundChat');
+    bindChk('pref-show-toasts', 'showToasts');
+    bindChk('pref-compact-chat', 'compactChat');
+    bindChk('pref-reduce-motion', 'reduceMotion');
+    bindChk('pref-high-contrast', 'highContrast');
+    bindChk('pref-enable-keybinds', 'enableKeybinds');
+    bindChk('pref-dev-mode', 'devMode');
+
+    // 4. Temas (Aparência)
+    document.querySelectorAll('#pref-opt-theme .opt-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.theme === p.theme);
+        card.addEventListener('click', () => {
+            document.querySelectorAll('#pref-opt-theme .opt-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            p.theme = card.dataset.theme;
+            saveVoxPrefs();
+            showToast(`🎨 Tema alterado!`);
+        });
+    });
+
+    // 5. Tamanho da fonte do chat
+    const fontSlider = document.getElementById('pref-chat-font-size');
+    const fontVal = document.getElementById('pref-font-size-val');
+    if (fontSlider) {
+        fontSlider.value = p.chatFontSize || 14;
+        if (fontVal) fontVal.textContent = `${fontSlider.value}px`;
+        fontSlider.addEventListener('input', () => {
+            p.chatFontSize = parseInt(fontSlider.value);
+            if (fontVal) fontVal.textContent = `${p.chatFontSize}px`;
+            saveVoxPrefs();
+        });
+    }
+
+    // 6. Formato do relógio (24h / 12h)
+    document.querySelectorAll('#pref-opt-timeformat .opt-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.timefmt === p.timeFormat);
+        card.addEventListener('click', () => {
+            document.querySelectorAll('#pref-opt-timeformat .opt-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            p.timeFormat = card.dataset.timefmt;
+            saveVoxPrefs();
+            showToast(`🕒 Formato de horário: ${p.timeFormat === '12h' ? '12 horas' : '24 horas'}`);
+        });
+    });
+
+    // 7. Jogos registrados (botões rápidos)
+    document.querySelectorAll('.settings-quick-game-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const game = btn.getAttribute('data-game') || '';
+            if (!game) {
+                if (typeof clearUserActivity === 'function') clearUserActivity();
+            } else {
+                state.userActivity = { type: 'playing', name: game };
+                try { localStorage.setItem('vox_user_activity', JSON.stringify(state.userActivity)); } catch (e) {}
+                sendWs({ type: 'set_activity', activity: state.userActivity });
+                renderMembersSidebar();
+                showToast(`🎮 Atividade definida: Jogando ${game}`);
+            }
+            refreshSettingsMeta();
+        });
+    });
+
+    const openActFromSettings = document.getElementById('btn-settings-open-activity');
+    if (openActFromSettings) {
+        openActFromSettings.addEventListener('click', () => {
+            closeUserSettingsModal();
+            const actModal = document.getElementById('user-activity-modal');
+            if (actModal) actModal.style.display = 'flex';
+        });
+    }
+
+    // 8. Limpar Cache Local
+    const clearCacheBtn = document.getElementById('btn-clear-local-cache');
+    if (clearCacheBtn) {
+        clearCacheBtn.addEventListener('click', () => {
+            if (confirm('Limpar preferências locais e volumes salvos neste navegador? Sua conta e VIP na nuvem continuarão intactos.')) {
+                try {
+                    localStorage.removeItem('dc_user_volumes');
+                    localStorage.removeItem('vox_user_prefs');
+                } catch (e) {}
+                showToast('🧹 Cache local limpo! Recarregando...');
+                setTimeout(() => location.reload(), 800);
+            }
+        });
+    }
+
+    // 9. Copiar User ID (Desenvolvedor)
+    const copyUidBtn = document.getElementById('btn-copy-my-userid');
+    if (copyUidBtn) {
+        copyUidBtn.addEventListener('click', () => {
+            if (navigator.clipboard && state.userId) {
+                navigator.clipboard.writeText(state.userId).then(() => showToast('📋 User ID copiado!'));
+            }
+        });
+    }
+
+    // 10. Botão Sair
+    const logoutBtn = document.getElementById('btn-settings-logout');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            if (confirm('Deseja sair da sua sessão atual no VOX?')) {
+                if (state.currentVoiceChannel) leaveVoiceChannel(true);
+                try {
+                    localStorage.removeItem('kord_user_profile');
+                    localStorage.removeItem('discord_user_profile');
+                    localStorage.removeItem('dc_username');
+                    localStorage.removeItem('vox_username');
+                    localStorage.removeItem('vox_avatar_url');
+                } catch (e) {}
+                location.reload();
+            }
+        });
+    }
+
+    // 11. Atalhos de teclado globais funcionais (Ctrl+Shift+M, Ctrl+Shift+D, Escape)
+    document.addEventListener('keydown', (e) => {
+        if (!window.voxPrefs || window.voxPrefs.enableKeybinds === false) return;
+        if (e.key === 'Escape') {
+            ['user-settings-modal', 'stream-modal', 'iptv-modal', 'vip-modal', 'create-server-modal', 'invite-modal', 'user-activity-modal'].forEach(id => {
+                const m = document.getElementById(id);
+                if (m && m.style.display !== 'none') m.style.display = 'none';
+            });
+            return;
+        }
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'm') {
+            e.preventDefault();
+            document.getElementById('btn-mic')?.click();
+        } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+            e.preventDefault();
+            document.getElementById('btn-deafen')?.click();
+        }
+    });
+}

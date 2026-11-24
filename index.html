@@ -544,13 +544,37 @@
     <!-- MODAL DE CONFIGURAÇÕES KORD (MEU PERFIL + VOZ & VÍDEO) -->
     <div class="modal-backdrop" id="user-settings-modal" style="display: none;">
         <div class="settings-modal-box">
-            <!-- Sidebar de abas das configurações -->
-            <div class="settings-sidebar">
-                <div class="settings-category">CONFIGURAÇÕES DE USUÁRIO</div>
-                <div class="settings-tab active" data-tab="profile"><i class="fa-solid fa-user"></i> Meu Perfil</div>
-                <div class="settings-category">CONFIGURAÇÕES DO APLICATIVO</div>
-                <div class="settings-tab" data-tab="voice"><i class="fa-solid fa-microphone-lines"></i> Voz & Vídeo</div>
+            <!-- Sidebar de abas das configurações (Estilo Discord completo - sem Cobrança) -->
+            <div class="settings-sidebar" style="overflow-y: auto;">
+                <div style="display:flex;align-items:center;gap:10px;padding:6px 8px 12px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:10px;cursor:pointer;" onclick="switchSettingsTab('profile')">
+                    <div id="settings-sidebar-avatar" style="width:36px;height:36px;border-radius:50%;background:#5865F2;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;flex-shrink:0;overflow:hidden;">U</div>
+                    <div style="min-width:0;flex:1;">
+                        <div id="settings-sidebar-name" style="font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Você</div>
+                        <div style="font-size:11px;color:#94a3b8;">Editar perfil <i class="fa-solid fa-pen" style="font-size:9px;margin-left:3px;"></i></div>
+                    </div>
+                </div>
+                <div style="margin-bottom:10px;padding:0 4px;">
+                    <input type="text" id="settings-search-input" placeholder="🔍 Buscar configuração..." style="width:100%;padding:7px 10px;background:#080b11;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#fff;font-size:12px;outline:none;">
+                </div>
+                <div class="settings-category">CONTA & PRIVACIDADE</div>
+                <div class="settings-tab active" data-tab="profile"><i class="fa-solid fa-user"></i> Conta / Perfil</div>
+                <div class="settings-tab" data-tab="privacy"><i class="fa-solid fa-shield-halved"></i> Dados e privacidade</div>
+                <div class="settings-tab" data-tab="notifications"><i class="fa-solid fa-bell"></i> Notificações</div>
+
+                <div class="settings-category">EXPERIÊNCIA</div>
+                <div class="settings-tab" data-tab="voice"><i class="fa-solid fa-microphone-lines"></i> Voz e vídeo</div>
                 <div class="settings-tab" data-tab="stream"><i class="fa-solid fa-display"></i> Transmissão 60FPS</div>
+                <div class="settings-tab" data-tab="appearance"><i class="fa-solid fa-palette"></i> Aparência</div>
+                <div class="settings-tab" data-tab="accessibility"><i class="fa-solid fa-universal-access"></i> Acessibilidade</div>
+                <div class="settings-tab" data-tab="keybinds"><i class="fa-solid fa-keyboard"></i> Sistema & Atalhos</div>
+                <div class="settings-tab" data-tab="language"><i class="fa-solid fa-language"></i> Idioma e Horário</div>
+
+                <div class="settings-category">JOGOS E APPS</div>
+                <div class="settings-tab" data-tab="games"><i class="fa-solid fa-gamepad"></i> Jogos registrados</div>
+
+                <div class="settings-category">AVANÇADO</div>
+                <div class="settings-tab" data-tab="developer"><i class="fa-solid fa-code"></i> Desenvolvedor</div>
+                <div class="settings-tab" id="btn-settings-logout" style="color:#f23f43;margin-top:8px;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;"><i class="fa-solid fa-right-from-bracket"></i> Sair</div>
             </div>
 
             <!-- Conteúdo da aba -->
@@ -707,6 +731,185 @@
                         <p class="hint">
                             Quando ativado, os áudios recebidos das salas de voz dos amigos são reproduzidos de forma isolada, impedindo retorno e eco na sua transmissão de tela.
                         </p>
+                    </div>
+                </div>
+
+                <!-- ABA 4: DADOS E PRIVACIDADE -->
+                <div class="settings-page" id="tab-page-privacy">
+                    <h2>Dados e Privacidade</h2>
+                    <p class="modal-desc">Controle o que os outros integrantes do VOX podem ver sobre você:</p>
+                    <div class="setting-checkbox" style="margin-top: 16px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-share-activity" checked>
+                            <span>Exibir minha atividade de jogos/filmes para outros usuários</span>
+                        </label>
+                    </div>
+                    <div class="setting-checkbox" style="margin-top: 10px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-show-online" checked>
+                            <span>Mostrar meu status online na barra lateral direita</span>
+                        </label>
+                    </div>
+                    <div class="setting-group" style="margin-top: 20px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <label>LIMPEZA DE CACHE LOCAL</label>
+                        <p class="hint" style="margin-bottom: 10px;">Remove volumes salvos e preferências locais do navegador sem apagar sua conta na nuvem.</p>
+                        <button type="button" id="btn-clear-local-cache" style="background:#2b2d31;color:#fff;border:1px solid rgba(255,255,255,0.18);padding:8px 14px;border-radius:6px;font-size:12.5px;font-weight:700;cursor:pointer;">
+                            <i class="fa-solid fa-broom"></i> Limpar Cache Local
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ABA 5: NOTIFICAÇÕES -->
+                <div class="settings-page" id="tab-page-notifications">
+                    <h2>Notificações e Sons</h2>
+                    <p class="modal-desc">Escolha quais alertas sonoros e avisos visuais deseja receber:</p>
+                    <div class="setting-checkbox" style="margin-top: 16px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-sound-voice" checked>
+                            <span>Tocar som ao entrar ou sair de salas de voz</span>
+                        </label>
+                    </div>
+                    <div class="setting-checkbox" style="margin-top: 10px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-sound-chat" checked>
+                            <span>Tocar som discreto ao receber nova mensagem no chat</span>
+                        </label>
+                    </div>
+                    <div class="setting-checkbox" style="margin-top: 10px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-show-toasts" checked>
+                            <span>Exibir notificações flutuantes (avisos no canto da tela)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ABA 6: APARÊNCIA -->
+                <div class="settings-page" id="tab-page-appearance">
+                    <h2>Aparência</h2>
+                    <p class="modal-desc">Personalize o visual do VOX do seu jeito:</p>
+                    <div class="setting-group" style="margin-top: 16px;">
+                        <label>TEMA DO VOX</label>
+                        <div class="option-cards" id="pref-opt-theme">
+                            <div class="opt-card active" data-theme="default">🌌 VOX Escuro</div>
+                            <div class="opt-card" data-theme="amoled">🖤 Meia-Noite (AMOLED)</div>
+                            <div class="opt-card" data-theme="cyber">💜 Roxo Cyber</div>
+                            <div class="opt-card" data-theme="ocean">🌊 Azul Oceano</div>
+                        </div>
+                    </div>
+                    <div class="setting-group" style="margin-top: 16px;">
+                        <label>TAMANHO DA FONTE DO CHAT: <b id="pref-font-size-val">14px</b></label>
+                        <input type="range" id="pref-chat-font-size" min="12" max="18" step="1" value="14" style="width:100%;accent-color:#00f2fe;cursor:pointer;">
+                    </div>
+                    <div class="setting-checkbox" style="margin-top: 14px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-compact-chat">
+                            <span>Modo Compacto (mensagens mais próximas no chat)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ABA 7: ACESSIBILIDADE -->
+                <div class="settings-page" id="tab-page-accessibility">
+                    <h2>Acessibilidade</h2>
+                    <p class="modal-desc">Ajustes de conforto visual e leitura:</p>
+                    <div class="setting-checkbox" style="margin-top: 16px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-reduce-motion">
+                            <span>Reduzir animações e transições da interface</span>
+                        </label>
+                    </div>
+                    <div class="setting-checkbox" style="margin-top: 10px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-high-contrast">
+                            <span>Alto contraste (textos mais claros e bordas mais nítidas)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ABA 8: SISTEMA & ATALHOS -->
+                <div class="settings-page" id="tab-page-keybinds">
+                    <h2>Sistema e Atalhos de Teclado</h2>
+                    <p class="modal-desc">Use atalhos rápidos enquanto estiver no VOX:</p>
+                    <div class="setting-checkbox" style="margin-top: 16px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-enable-keybinds" checked>
+                            <span>Ativar atalhos de teclado rápidos no VOX</span>
+                        </label>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 10px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:8px;">
+                            <span>🎙️ Mutar / Desmutar Microfone</span>
+                            <kbd style="background:#080b11;border:1px solid rgba(255,255,255,0.2);padding:4px 8px;border-radius:5px;font-family:monospace;font-size:12px;">Ctrl + Shift + M</kbd>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:8px;">
+                            <span>🎧 Ensurdecer / Reativar Áudio</span>
+                            <kbd style="background:#080b11;border:1px solid rgba(255,255,255,0.2);padding:4px 8px;border-radius:5px;font-family:monospace;font-size:12px;">Ctrl + Shift + D</kbd>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:8px;">
+                            <span>❌ Fechar Janela / Configurações</span>
+                            <kbd style="background:#080b11;border:1px solid rgba(255,255,255,0.2);padding:4px 8px;border-radius:5px;font-family:monospace;font-size:12px;">ESC</kbd>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ABA 9: IDIOMA E HORÁRIO -->
+                <div class="settings-page" id="tab-page-language">
+                    <h2>Idioma e Horário</h2>
+                    <p class="modal-desc">Preferências regionais de idioma e relógio do chat:</p>
+                    <div class="setting-group" style="margin-top: 16px;">
+                        <label>IDIOMA DA INTERFACE</label>
+                        <div class="option-cards">
+                            <div class="opt-card active">🇧🇷 Português (Brasil)</div>
+                        </div>
+                    </div>
+                    <div class="setting-group" style="margin-top: 16px;">
+                        <label>FORMATO DO RELÓGIO</label>
+                        <div class="option-cards" id="pref-opt-timeformat">
+                            <div class="opt-card active" data-timefmt="24h">24 horas (23:45)</div>
+                            <div class="opt-card" data-timefmt="12h">12 horas (11:45 PM)</div>
+                        </div>
+                    </div>
+                    <p class="hint" style="margin-top: 12px;">Fuso horário ativo: <b>Horário de Brasília (America/Sao_Paulo • UTC-3)</b></p>
+                </div>
+
+                <!-- ABA 10: JOGOS REGISTRADOS -->
+                <div class="settings-page" id="tab-page-games">
+                    <h2>Jogos Registrados & Atividade</h2>
+                    <p class="modal-desc">Escolha rapidamente o jogo que aparece abaixo do seu nome na lista da direita:</p>
+                    <div style="margin-top: 14px; padding: 12px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <div>
+                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;">ATIVIDADE ATUAL</div>
+                            <div id="settings-games-current" style="font-size:14px;font-weight:800;color:#22c55e;margin-top:2px;">Nenhuma atividade definida</div>
+                        </div>
+                        <button type="button" id="btn-settings-open-activity" style="background:#22c55e;color:#080b11;border:none;padding:8px 14px;border-radius:6px;font-weight:800;font-size:12px;cursor:pointer;">
+                            <i class="fa-solid fa-gamepad"></i> Alterar Jogo
+                        </button>
+                    </div>
+                    <div style="margin-top: 16px; display:flex; flex-wrap:wrap; gap:8px;">
+                        <button type="button" class="settings-quick-game-btn" data-game="Valorant" style="background:#1c222d;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">🎮 Valorant</button>
+                        <button type="button" class="settings-quick-game-btn" data-game="Counter-Strike 2" style="background:#1c222d;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">🎮 CS 2</button>
+                        <button type="button" class="settings-quick-game-btn" data-game="League of Legends" style="background:#1c222d;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">🎮 LoL</button>
+                        <button type="button" class="settings-quick-game-btn" data-game="Grand Theft Auto V" style="background:#1c222d;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">🎮 GTA V</button>
+                        <button type="button" class="settings-quick-game-btn" data-game="Minecraft" style="background:#1c222d;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">🎮 Minecraft</button>
+                        <button type="button" class="settings-quick-game-btn" data-game="Fortnite" style="background:#1c222d;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">🎮 Fortnite</button>
+                        <button type="button" class="settings-quick-game-btn" data-game="" style="background:rgba(242,63,67,0.15);color:#f23f43;border:1px solid rgba(242,63,67,0.35);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">❌ Limpar</button>
+                    </div>
+                </div>
+
+                <!-- ABA 11: DESENVOLVEDOR -->
+                <div class="settings-page" id="tab-page-developer">
+                    <h2>Modo Desenvolvedor</h2>
+                    <p class="modal-desc">Ferramentas avançadas de diagnóstico e IDs do VOX:</p>
+                    <div class="setting-checkbox" style="margin-top: 16px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-dev-mode">
+                            <span>Ativar Modo Desenvolvedor (exibe IDs e diagnóstico técnico)</span>
+                        </label>
+                    </div>
+                    <div style="margin-top: 16px; padding: 12px; background: #080b11; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; font-family: monospace; font-size: 12px; color: #b5bac1; display:flex; flex-direction:column; gap:6px;">
+                        <div>Seu User ID: <b id="dev-my-userid" style="color:#00f2fe;">-</b> <button type="button" id="btn-copy-my-userid" style="margin-left:6px;background:#1c222d;color:#fff;border:1px solid #383a40;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px;">Copiar</button></div>
+                        <div>Servidor Atual: <b id="dev-current-server" style="color:#ffd700;">default</b></div>
+                        <div>Status WebSocket: <b id="dev-ws-status" style="color:#22c55e;">Conectado</b></div>
                     </div>
                 </div>
             </div>
