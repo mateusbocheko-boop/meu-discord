@@ -842,6 +842,10 @@ async function handleServerMessage(data) {
                     try { localStorage.setItem('vox_banner_url', state.bannerUrl); } catch (e) {}
                 }
             }
+            if (data.friendsData) {
+                state.friendsData = data.friendsData;
+                if (typeof renderFriendsUI === 'function') renderFriendsUI();
+            }
             if (data.onlineIds) {
                 state.onlineUserIds = new Set(data.onlineIds);
                 // Remove transmissões fantasma de usuários que não estão mais online/transmitindo após reinício do servidor
@@ -1173,6 +1177,26 @@ async function handleServerMessage(data) {
         case 'tunnel_ready':
             state.publicTunnelUrl = data.publicTunnelUrl;
             showToast('🌐 Link público gerado! Clique em "Convidar Amigos".');
+            break;
+
+        case 'friends_updated':
+            state.friendsData = data.friendsData || { friends: [], incoming: [], outgoing: [] };
+            if (typeof renderFriendsUI === 'function') renderFriendsUI();
+            if (data.notify) {
+                showToast(data.notify);
+                if (typeof playNotificationSound === 'function') playNotificationSound();
+            }
+            // Se a aba de busca estiver aberta, refaz a pesquisa para atualizar os botões
+            if (document.getElementById('friends-modal')?.style.display === 'flex') {
+                const sInp = document.getElementById('input-friend-search');
+                if (sInp) sendWs({ type: 'friend_search', query: sInp.value.trim() });
+            }
+            break;
+
+        case 'friend_search_results':
+            if (typeof renderFriendSearchResults === 'function') {
+                renderFriendSearchResults(data.results || []);
+            }
             break;
 
         case 'user_joined':
@@ -2777,6 +2801,36 @@ function openUserContextMenu(e, userId) {
     const watchBtn = document.getElementById('ctx-btn-watch-stream');
     watchBtn.style.display = state.activeStreams.has(userId) ? 'flex' : 'none';
 
+    // Botão de Adicionar Amigo no menu de contexto
+    const ctxFriendBtn = document.getElementById('ctx-btn-add-friend');
+    if (ctxFriendBtn) {
+        if (isSelf) {
+            ctxFriendBtn.style.display = 'none';
+        } else {
+            ctxFriendBtn.style.display = 'flex';
+            const rel = typeof getFriendRelation === 'function' ? getFriendRelation(userId) : 'none';
+            const fIcon = document.getElementById('ctx-add-friend-icon');
+            const fTxt = document.getElementById('ctx-add-friend-text');
+            if (rel === 'friend') {
+                ctxFriendBtn.style.color = '#f23f43';
+                if (fIcon) fIcon.className = 'fa-solid fa-user-minus';
+                if (fTxt) fTxt.textContent = 'Remover Amigo';
+            } else if (rel === 'incoming') {
+                ctxFriendBtn.style.color = '#22c55e';
+                if (fIcon) fIcon.className = 'fa-solid fa-user-check';
+                if (fTxt) fTxt.textContent = 'Aceitar Pedido de Amizade';
+            } else if (rel === 'outgoing') {
+                ctxFriendBtn.style.color = '#f59e0b';
+                if (fIcon) fIcon.className = 'fa-solid fa-clock';
+                if (fTxt) fTxt.textContent = 'Pedido Enviado (Cancelar)';
+            } else {
+                ctxFriendBtn.style.color = '#22c55e';
+                if (fIcon) fIcon.className = 'fa-solid fa-user-plus';
+                if (fTxt) fTxt.textContent = 'Adicionar Amigo';
+            }
+        }
+    }
+
     // Identifica se o alvo é o Dono supremo (Mestre DIM#4095) ou Dono do servidor particular atual
     const isCustomSrvCtx = !!(state.currentServerId && state.currentServerId !== 'default');
     const isTargetMaster = (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (String(user?.userTag || '').includes('4095'));
@@ -3003,6 +3057,30 @@ function openUserProfileModal(userId) {
     modal.dataset.username = name;
     const watchBtn = document.getElementById('vup-btn-watch-stream');
     if (watchBtn) watchBtn.style.display = state.activeStreams.has(userId) ? 'inline-flex' : 'none';
+
+    const vupFriendBtn = document.getElementById('vup-btn-add-friend');
+    const vupFriendLbl = document.getElementById('vup-add-friend-label');
+    if (vupFriendBtn) {
+        if (isSelf) {
+            vupFriendBtn.style.display = 'none';
+        } else {
+            vupFriendBtn.style.display = 'inline-flex';
+            const rel = typeof getFriendRelation === 'function' ? getFriendRelation(userId) : 'none';
+            if (rel === 'friend') {
+                vupFriendBtn.style.background = '#da373c';
+                if (vupFriendLbl) vupFriendLbl.textContent = 'Remover Amigo';
+            } else if (rel === 'incoming') {
+                vupFriendBtn.style.background = '#23a55a';
+                if (vupFriendLbl) vupFriendLbl.textContent = 'Aceitar Amigo';
+            } else if (rel === 'outgoing') {
+                vupFriendBtn.style.background = '#d97706';
+                if (vupFriendLbl) vupFriendLbl.textContent = 'Cancelar Pedido';
+            } else {
+                vupFriendBtn.style.background = '#23a55a';
+                if (vupFriendLbl) vupFriendLbl.textContent = 'Adicionar Amigo';
+            }
+        }
+    }
 
     modal.style.display = 'flex';
 }
@@ -7607,4 +7685,250 @@ function initVoxDiscordSettings() {
             document.getElementById('btn-deafen')?.click();
         }
     });
+}
+
+
+// ============================================================================
+// SISTEMA DE AMIGOS & PESQUISA POR NOME#TAG (ESTILO DISCORD)
+// ============================================================================
+function getFriendRelation(uid) {
+    const fd = state.friendsData || { friends: [], incoming: [], outgoing: [] };
+    if ((fd.friends || []).some(f => f.id === uid)) return 'friend';
+    if ((fd.incoming || []).some(f => f.id === uid)) return 'incoming';
+    if ((fd.outgoing || []).some(f => f.id === uid)) return 'outgoing';
+    return 'none';
+}
+
+function handleFriendActionClick(uid) {
+    if (!uid || uid === state.userId) return;
+    const rel = getFriendRelation(uid);
+    if (rel === 'friend') {
+        if (confirm('Deseja remover este usuário da sua lista de amigos?')) {
+            sendWs({ type: 'friend_remove', targetUserId: uid });
+        }
+    } else if (rel === 'incoming') {
+        sendWs({ type: 'friend_accept', fromUserId: uid });
+    } else if (rel === 'outgoing') {
+        sendWs({ type: 'friend_decline', targetUserId: uid });
+    } else {
+        sendWs({ type: 'friend_request', targetUserId: uid });
+    }
+}
+
+function _renderFriendRowHTML(u, actionsHtml) {
+    const avatarBg = u.avatarUrl
+        ? `background-image:url('${u.avatarUrl}');background-size:cover;background-position:center;`
+        : `background:${u.avatar || '#5865F2'};`;
+    const avatarInner = u.avatarUrl ? '' : escapeHtml((u.username || 'U')[0].toUpperCase());
+    const bannerStyle = u.bannerUrl
+        ? `background-image:linear-gradient(90deg, rgba(17,18,20,0.86) 0%, rgba(17,18,20,0.58) 70%, rgba(17,18,20,0.72) 100%), url('${u.bannerUrl}');background-size:cover;background-position:center;`
+        : `background:#1e1f22;`;
+    const dotColor = u.online ? '#23a55a' : '#80848e';
+    const subText = u.online
+        ? (u.activity?.name ? `🎮 Jogando ${escapeHtml(u.activity.name)}` : (u.voiceChannel ? `🎙️ Em voz: ${escapeHtml(u.voiceChannel)}` : '🟢 Online'))
+        : '⚫ Offline';
+    const tagStr = u.userTag ? (String(u.userTag).startsWith('#') ? u.userTag : `#${u.userTag}`) : '#6060';
+    return `
+        <div style="${bannerStyle} border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px; min-width:0; cursor:pointer;" onclick="closeFriendsModal(); openUserProfileModal('${escapeHtml(u.id)}');">
+                <div style="position:relative; width:40px; height:40px; flex-shrink:0;">
+                    <div style="width:40px; height:40px; border-radius:50%; ${avatarBg} color:#fff; font-weight:800; font-size:16px; display:flex; align-items:center; justify-content:center;">${avatarInner}</div>
+                    <span style="position:absolute; bottom:-1px; right:-1px; width:13px; height:13px; border-radius:50%; background:${dotColor}; border:2.5px solid #111214;"></span>
+                </div>
+                <div style="min-width:0;">
+                    <div style="font-size:14px; font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 3px rgba(0,0,0,0.9);">
+                        ${escapeHtml(u.username || 'Usuário')} <span style="font-size:12px; color:#949ba4; font-weight:600;">${escapeHtml(tagStr)}</span>
+                    </div>
+                    <div style="font-size:11.5px; color:#b5bac1;">${subText}</div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                ${actionsHtml}
+            </div>
+        </div>
+    `;
+}
+
+function renderFriendsUI() {
+    const fd = state.friendsData || { friends: [], incoming: [], outgoing: [] };
+    const friends = fd.friends || [];
+    const incoming = fd.incoming || [];
+    const outgoing = fd.outgoing || [];
+
+    const cAll = document.getElementById('friends-count-all');
+    const cPend = document.getElementById('friends-count-pending');
+    const badge = document.getElementById('friends-pending-badge');
+    if (cAll) cAll.textContent = friends.length;
+    if (cPend) cPend.textContent = incoming.length + outgoing.length;
+    if (badge) {
+        if (incoming.length > 0) {
+            badge.textContent = incoming.length;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    const listEl = document.getElementById('friends-list-container');
+    if (listEl) {
+        if (friends.length === 0) {
+            listEl.innerHTML = `<div style="text-align:center; padding:32px 16px; color:#949ba4; font-size:13px;">Você ainda não adicionou amigos.<br>Clique em <b>➕ Adicionar Amigo</b> para pesquisar pelo Nome ou #número!</div>`;
+        } else {
+            const sorted = [...friends].sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+            listEl.innerHTML = sorted.map(f => _renderFriendRowHTML(f, `
+                <button type="button" onclick="closeFriendsModal(); openUserProfileModal('${escapeHtml(f.id)}');" style="background:#2b2d31;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;" title="Ver Perfil"><i class="fa-solid fa-id-card"></i></button>
+                <button type="button" onclick="handleFriendActionClick('${escapeHtml(f.id)}');" style="background:rgba(242,63,67,0.15);color:#f23f43;border:1px solid rgba(242,63,67,0.35);padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;" title="Remover Amigo"><i class="fa-solid fa-user-minus"></i></button>
+            `)).join('');
+        }
+    }
+
+    const incEl = document.getElementById('friends-incoming-container');
+    if (incEl) {
+        if (incoming.length === 0) {
+            incEl.innerHTML = `<div style="color:#80848e; font-size:12.5px; padding:8px 0;">Nenhum pedido recebido no momento.</div>`;
+        } else {
+            incEl.innerHTML = incoming.map(u => _renderFriendRowHTML(u, `
+                <button type="button" onclick="sendWs({type:'friend_accept', fromUserId:'${escapeHtml(u.id)}'});" style="background:#23a55a;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-check"></i> Aceitar</button>
+                <button type="button" onclick="sendWs({type:'friend_decline', targetUserId:'${escapeHtml(u.id)}'});" style="background:#da373c;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+            `)).join('');
+        }
+    }
+
+    const outEl = document.getElementById('friends-outgoing-container');
+    if (outEl) {
+        if (outgoing.length === 0) {
+            outEl.innerHTML = `<div style="color:#80848e; font-size:12.5px; padding:8px 0;">Nenhum pedido enviado pendente.</div>`;
+        } else {
+            outEl.innerHTML = outgoing.map(u => _renderFriendRowHTML(u, `
+                <span style="font-size:11.5px;color:#f59e0b;font-weight:700;margin-right:4px;">⏳ Pendente</span>
+                <button type="button" onclick="sendWs({type:'friend_decline', targetUserId:'${escapeHtml(u.id)}'});" style="background:#2b2d31;color:#f23f43;border:1px solid rgba(242,63,67,0.35);padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Cancelar</button>
+            `)).join('');
+        }
+    }
+}
+
+function renderFriendSearchResults(results) {
+    const box = document.getElementById('friends-search-results');
+    if (!box) return;
+    if (!results || results.length === 0) {
+        box.innerHTML = `<div style="text-align:center; padding:24px; color:#949ba4; font-size:13px;">Nenhum usuário encontrado com esse Nome ou #número.</div>`;
+        return;
+    }
+    box.innerHTML = results.map(u => {
+        let btnHtml = '';
+        if (u.relation === 'friend') {
+            btnHtml = `<span style="background:rgba(35,165,90,0.18);color:#22c55e;border:1px solid rgba(35,165,90,0.4);padding:6px 12px;border-radius:6px;font-size:12px;font-weight:800;">✅ Amigo</span>`;
+        } else if (u.relation === 'incoming') {
+            btnHtml = `<button type="button" onclick="sendWs({type:'friend_accept', fromUserId:'${escapeHtml(u.id)}'});" style="background:#23a55a;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;">✅ Aceitar Pedido</button>`;
+        } else if (u.relation === 'outgoing') {
+            btnHtml = `<button type="button" onclick="sendWs({type:'friend_decline', targetUserId:'${escapeHtml(u.id)}'});" style="background:rgba(245,158,11,0.18);color:#f59e0b;border:1px solid rgba(245,158,11,0.4);padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">⏳ Enviado (Cancelar)</button>`;
+        } else {
+            btnHtml = `<button type="button" onclick="sendWs({type:'friend_request', targetUserId:'${escapeHtml(u.id)}'});" style="background:#5865f2;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-user-plus"></i> Adicionar</button>`;
+        }
+        return _renderFriendRowHTML(u, btnHtml);
+    }).join('');
+}
+
+function switchFriendsTab(tabName) {
+    document.querySelectorAll('.friends-pane').forEach(p => { p.style.display = 'none'; });
+    const target = document.getElementById(`friends-pane-${tabName}`);
+    if (target) target.style.display = 'block';
+    document.querySelectorAll('.friends-tab-btn').forEach(btn => {
+        const active = btn.dataset.ftab === tabName;
+        if (btn.dataset.ftab === 'add') {
+            btn.style.background = active ? '#1e8e4d' : '#23a55a';
+            btn.style.color = '#fff';
+        } else {
+            btn.style.background = active ? '#2b2d31' : 'transparent';
+            btn.style.color = active ? '#fff' : '#b5bac1';
+        }
+    });
+    if (tabName === 'add') {
+        const inp = document.getElementById('input-friend-search');
+        sendWs({ type: 'friend_search', query: inp ? inp.value.trim() : '' });
+        if (inp) setTimeout(() => inp.focus(), 60);
+    }
+}
+
+function openFriendsModal(tabName = 'all') {
+    const modal = document.getElementById('friends-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    renderFriendsUI();
+    switchFriendsTab(tabName);
+}
+
+function closeFriendsModal() {
+    const modal = document.getElementById('friends-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function initVoxFriendsSystem() {
+    const openBtn = document.getElementById('btn-open-friends');
+    if (openBtn) openBtn.addEventListener('click', () => openFriendsModal('all'));
+    const closeBtn = document.getElementById('btn-close-friends-modal');
+    if (closeBtn) closeBtn.addEventListener('click', closeFriendsModal);
+    const modal = document.getElementById('friends-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeFriendsModal();
+        });
+    }
+    document.querySelectorAll('.friends-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchFriendsTab(btn.dataset.ftab));
+    });
+
+    const searchInp = document.getElementById('input-friend-search');
+    let searchTimer = null;
+    if (searchInp) {
+        searchInp.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                sendWs({ type: 'friend_search', query: searchInp.value.trim() });
+            }, 180);
+        });
+        searchInp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const q = searchInp.value.trim();
+                if (q) sendWs({ type: 'friend_request', query: q });
+            }
+        });
+    }
+    const sendQueryBtn = document.getElementById('btn-send-friend-by-query');
+    if (sendQueryBtn) {
+        sendQueryBtn.addEventListener('click', () => {
+            const q = searchInp ? searchInp.value.trim() : '';
+            if (!q) {
+                showToast('Digite o Nome ou #número do usuário para enviar o pedido.');
+                return;
+            }
+            sendWs({ type: 'friend_request', query: q });
+        });
+    }
+
+    const ctxFriendBtn = document.getElementById('ctx-btn-add-friend');
+    if (ctxFriendBtn) {
+        ctxFriendBtn.addEventListener('click', () => {
+            const uid = state.activeContextUserId;
+            closeUserContextMenu();
+            if (uid) handleFriendActionClick(uid);
+        });
+    }
+    const vupFriendBtn = document.getElementById('vup-btn-add-friend');
+    if (vupFriendBtn) {
+        vupFriendBtn.addEventListener('click', () => {
+            const uid = document.getElementById('view-user-profile-modal')?.dataset?.userId;
+            if (uid) {
+                handleFriendActionClick(uid);
+                closeUserProfileModal();
+            }
+        });
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVoxFriendsSystem);
+} else {
+    initVoxFriendsSystem();
 }

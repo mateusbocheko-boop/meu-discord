@@ -110,7 +110,8 @@ CLOUD_BACKUP_FILENAME = "vox_cloud_backup.json"
 CLOUD_BACKUP_FILES = [
     "members.json", "vips.json", "servers.json", "channels.json",
     "banned.json", "owners.json", "admins.json", "messages.json",
-    "audit_logs.json", "warnings.json", "muted_users.json", "trial_claims.json"
+    "audit_logs.json", "warnings.json", "muted_users.json", "trial_claims.json",
+    "friends.json"
 ]
 _cloud_sync_timer = None
 _cloud_sync_lock = threading.Lock()
@@ -603,6 +604,75 @@ def save_admins(data):
         print(f"Erro ao salvar administradores: {e}")
 
 server_admins = load_admins()
+
+# --- SISTEMA DE AMIGOS PERSISTENTE NA NUVEM ---
+FRIENDS_FILE = APP_DIR / "friends.json"
+
+def load_friends():
+    if FRIENDS_FILE.exists():
+        try:
+            with open(FRIENDS_FILE, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if isinstance(d, dict):
+                    d.setdefault("friendships", {})
+                    d.setdefault("requests", {})
+                    return d
+        except Exception:
+            pass
+    return {"friendships": {}, "requests": {}}
+
+def save_friends(data):
+    try:
+        with open(FRIENDS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
+    except Exception as e:
+        print(f"Erro ao salvar amigos: {e}")
+
+server_friends = load_friends()
+
+def _build_friend_profile(uid):
+    live_u = None
+    for u in clients.values():
+        if u.get("id") == uid:
+            live_u = u
+            break
+    mem = server_members.get(uid, {})
+    return {
+        "id": uid,
+        "username": (live_u or mem).get("username") or "Usuário",
+        "userTag": (live_u or mem).get("userTag") or "#6060",
+        "avatar": (live_u or mem).get("avatar") or "#5865F2",
+        "avatarUrl": (live_u or {}).get("avatarUrl") or mem.get("avatarUrl") or "",
+        "bannerUrl": (live_u or {}).get("bannerUrl") or mem.get("bannerUrl") or "",
+        "online": live_u is not None and (live_u.get("status", "online") not in ("invisible", "offline")),
+        "status": (live_u or {}).get("status", "offline"),
+        "activity": (live_u or {}).get("activity"),
+        "voiceChannel": (live_u or {}).get("voiceChannel")
+    }
+
+def get_user_friends_payload(uid):
+    f_ids = list(server_friends.get("friendships", {}).get(uid, []))
+    inc_ids = list(server_friends.get("requests", {}).get(uid, []))
+    out_ids = [t_uid for t_uid, reqs in server_friends.get("requests", {}).items() if uid in reqs]
+    return {
+        "friends": [_build_friend_profile(fid) for fid in f_ids],
+        "incoming": [_build_friend_profile(iid) for iid in inc_ids],
+        "outgoing": [_build_friend_profile(oid) for oid in out_ids]
+    }
+
+async def push_friends_update(uid, notify_msg=None):
+    payload = get_user_friends_payload(uid)
+    for c_ws, u in list(clients.items()):
+        if u.get("id") == uid:
+            try:
+                await c_ws.send_str(json.dumps({
+                    "type": "friends_updated",
+                    "friendsData": payload,
+                    "notify": notify_msg
+                }))
+            except Exception:
+                pass
 
 def get_local_ip():
     try:
@@ -1218,6 +1288,7 @@ async def websocket_handler(request):
                     "trialGranted": trial_granted,
                     "admins": list(server_admins),
                     "banned": list(server_banned),
+                    "friendsData": get_user_friends_payload(user_id),
                     "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "hideBadge": bool(v.get("hideBadge", False)), "expiresAt": v.get("expiresAt"), "durationDays": v.get("durationDays"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
@@ -2798,6 +2869,160 @@ async def websocket_handler(request):
                         "room": room,
                         "cinema": None
                     })
+
+            elif msg_type == "friend_search":
+                q = str(data.get("query") or "").strip().lower()
+                my_friends = set(server_friends.get("friendships", {}).get(user_id, []))
+                my_incoming = set(server_friends.get("requests", {}).get(user_id, []))
+                my_outgoing = {t_uid for t_uid, reqs in server_friends.get("requests", {}).items() if user_id in reqs}
+
+                candidates = {}
+                for mid, m in server_members.items():
+                    if mid != user_id:
+                        candidates[mid] = m
+                for u in clients.values():
+                    uid_c = u.get("id")
+                    if uid_c and uid_c != user_id:
+                        candidates[uid_c] = u
+
+                results = []
+                for cid, rec in candidates.items():
+                    uname = str(rec.get("username") or "")
+                    utag = str(rec.get("userTag") or "#6060")
+                    if not utag.startswith("#"):
+                        utag = "#" + utag
+                    full_str = f"{uname}{utag}".lower()
+                    tag_digits = utag.lstrip("#").lower()
+                    q_clean = q.lstrip("#")
+                    matched = (
+                        not q
+                        or (q in uname.lower())
+                        or (q in utag.lower())
+                        or (q in full_str)
+                        or (q_clean and q_clean in tag_digits)
+                    )
+                    if matched:
+                        prof = _build_friend_profile(cid)
+                        if cid in my_friends:
+                            prof["relation"] = "friend"
+                        elif cid in my_incoming:
+                            prof["relation"] = "incoming"
+                        elif cid in my_outgoing:
+                            prof["relation"] = "outgoing"
+                        else:
+                            prof["relation"] = "none"
+                        results.append(prof)
+                results.sort(key=lambda x: (not x["online"], x["username"].lower()))
+                await ws.send_str(json.dumps({
+                    "type": "friend_search_results",
+                    "query": q,
+                    "results": results[:25]
+                }))
+
+            elif msg_type == "friend_request":
+                target_id = data.get("targetUserId")
+                q = str(data.get("query") or "").strip().lower()
+                if not target_id and q:
+                    # Busca exata por Nome#Tag ou Nome
+                    for mid, m in server_members.items():
+                        if mid == user_id:
+                            continue
+                        uname = str(m.get("username") or "").lower()
+                        utag = str(m.get("userTag") or "#6060").lower()
+                        if not utag.startswith("#"):
+                            utag = "#" + utag
+                        if q == f"{uname}{utag}" or q == uname or q == utag or q.lstrip("#") == utag.lstrip("#"):
+                            target_id = mid
+                            break
+                if not target_id or target_id == user_id:
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "Usuário não encontrado! Verifique o Nome e o #número."
+                    }))
+                    continue
+
+                fships = server_friends.setdefault("friendships", {})
+                reqs = server_friends.setdefault("requests", {})
+                if target_id in fships.get(user_id, []):
+                    await ws.send_str(json.dumps({"type": "error", "message": "Esse usuário já é seu amigo!"}))
+                    continue
+
+                my_name = clients.get(ws, {}).get("username", "Usuário")
+                # Se o alvo já tinha me mandado pedido, aceita automaticamente!
+                if target_id in reqs.get(user_id, []):
+                    reqs[user_id] = [x for x in reqs[user_id] if x != target_id]
+                    fships.setdefault(user_id, [])
+                    fships.setdefault(target_id, [])
+                    if target_id not in fships[user_id]:
+                        fships[user_id].append(target_id)
+                    if user_id not in fships[target_id]:
+                        fships[target_id].append(user_id)
+                    save_friends(server_friends)
+                    t_name = _build_friend_profile(target_id)["username"]
+                    await push_friends_update(user_id, f"🤝 Agora você e {t_name} são amigos!")
+                    await push_friends_update(target_id, f"🤝 {my_name} aceitou seu pedido de amizade!")
+                else:
+                    t_reqs = reqs.setdefault(target_id, [])
+                    if user_id not in t_reqs:
+                        t_reqs.append(user_id)
+                        save_friends(server_friends)
+                    t_name = _build_friend_profile(target_id)["username"]
+                    await push_friends_update(user_id, f"📨 Pedido de amizade enviado para {t_name}!")
+                    await push_friends_update(target_id, f"🤝 {my_name} enviou um pedido de amizade para você!")
+
+            elif msg_type == "friend_accept":
+                from_id = data.get("fromUserId")
+                if not from_id:
+                    continue
+                reqs = server_friends.setdefault("requests", {})
+                fships = server_friends.setdefault("friendships", {})
+                if from_id in reqs.get(user_id, []):
+                    reqs[user_id] = [x for x in reqs[user_id] if x != from_id]
+                    fships.setdefault(user_id, [])
+                    fships.setdefault(from_id, [])
+                    if from_id not in fships[user_id]:
+                        fships[user_id].append(from_id)
+                    if user_id not in fships[from_id]:
+                        fships[from_id].append(user_id)
+                    save_friends(server_friends)
+                    my_name = clients.get(ws, {}).get("username", "Usuário")
+                    f_name = _build_friend_profile(from_id)["username"]
+                    await push_friends_update(user_id, f"🤝 Agora você e {f_name} são amigos!")
+                    await push_friends_update(from_id, f"🤝 {my_name} aceitou seu pedido de amizade!")
+
+            elif msg_type == "friend_decline":
+                target_id = data.get("targetUserId")
+                if not target_id:
+                    continue
+                reqs = server_friends.setdefault("requests", {})
+                changed = False
+                if target_id in reqs.get(user_id, []):
+                    reqs[user_id] = [x for x in reqs[user_id] if x != target_id]
+                    changed = True
+                if user_id in reqs.get(target_id, []):
+                    reqs[target_id] = [x for x in reqs[target_id] if x != user_id]
+                    changed = True
+                if changed:
+                    save_friends(server_friends)
+                    await push_friends_update(user_id, "Pedido de amizade removido.")
+                    await push_friends_update(target_id)
+
+            elif msg_type == "friend_remove":
+                target_id = data.get("targetUserId")
+                if not target_id:
+                    continue
+                fships = server_friends.setdefault("friendships", {})
+                changed = False
+                if target_id in fships.get(user_id, []):
+                    fships[user_id] = [x for x in fships[user_id] if x != target_id]
+                    changed = True
+                if user_id in fships.get(target_id, []):
+                    fships[target_id] = [x for x in fships[target_id] if x != user_id]
+                    changed = True
+                if changed:
+                    save_friends(server_friends)
+                    await push_friends_update(user_id, "Amigo removido da sua lista.")
+                    await push_friends_update(target_id)
 
     finally:
         if ws in clients:
