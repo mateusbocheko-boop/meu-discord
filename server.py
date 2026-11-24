@@ -1008,11 +1008,18 @@ async def websocket_handler(request):
                 saved_av_url = server_members.get(user_id, {}).get("avatarUrl", "")
                 final_av_url = raw_av_url if raw_av_url else saved_av_url
 
+                raw_banner_url = str(data.get("bannerUrl") or "").strip()
+                if raw_banner_url and (not raw_banner_url.startswith("data:image/") or len(raw_banner_url) > 160000):
+                    raw_banner_url = ""
+                saved_banner_url = server_members.get(user_id, {}).get("bannerUrl", "")
+                final_banner_url = raw_banner_url if raw_banner_url else saved_banner_url
+
                 clients[ws] = {
                     "id": user_id,
                     "username": username,
                     "avatar": avatar,
                     "avatarUrl": final_av_url,
+                    "bannerUrl": final_banner_url,
                     "voiceChannel": reconn_voice,
                     "isMuted": bool(data.get("isMuted", False)) or (reconn_voice == "afk"),
                     "isDeafened": bool(data.get("isDeafened", False)),
@@ -1123,6 +1130,7 @@ async def websocket_handler(request):
                     "username": username,
                     "avatar": avatar,
                     "avatarUrl": clients[ws].get("avatarUrl", ""),
+                    "bannerUrl": clients[ws].get("bannerUrl", ""),
                     "userTag": user_tag,
                     "joinedAt": server_members.get(user_id, {}).get("joinedAt", int(time.time())),
                     "isOwner": is_user_owner,
@@ -1352,12 +1360,17 @@ async def websocket_handler(request):
                         new_av_url = str(data.get("avatarUrl") or "").strip()
                         if new_av_url == "" or (new_av_url.startswith("data:image/") and len(new_av_url) <= 60000):
                             clients[ws]["avatarUrl"] = new_av_url
+                    if "bannerUrl" in data:
+                        new_bn_url = str(data.get("bannerUrl") or "").strip()
+                        if new_bn_url == "" or (new_bn_url.startswith("data:image/") and len(new_bn_url) <= 160000):
+                            clients[ws]["bannerUrl"] = new_bn_url
                     if user_id in server_members:
                         server_members[user_id]["username"] = clients[ws]["username"]
                         server_members[user_id]["avatar"] = clients[ws]["avatar"]
                         server_members[user_id]["avatarUrl"] = clients[ws].get("avatarUrl", "")
+                        server_members[user_id]["bannerUrl"] = clients[ws].get("bannerUrl", "")
                         save_members(server_members)
-                    # Atualiza foto/nome nos perfis salvos dos servidores particulares também
+                    # Atualiza foto/banner/nome nos perfis salvos dos servidores particulares também
                     srv_changed = False
                     for s_obj in all_servers.values():
                         mp = s_obj.get("memberProfiles")
@@ -1365,6 +1378,7 @@ async def websocket_handler(request):
                             mp[user_id]["username"] = clients[ws]["username"]
                             mp[user_id]["avatar"] = clients[ws]["avatar"]
                             mp[user_id]["avatarUrl"] = clients[ws].get("avatarUrl", "")
+                            mp[user_id]["bannerUrl"] = clients[ws].get("bannerUrl", "")
                             srv_changed = True
                     if srv_changed:
                         save_servers(all_servers)
@@ -1767,6 +1781,8 @@ async def websocket_handler(request):
                             "id": user_id,
                             "username": username,
                             "avatar": avatar,
+                            "avatarUrl": clients[ws].get("avatarUrl", ""),
+                            "bannerUrl": clients[ws].get("bannerUrl", ""),
                             "userTag": clients[ws].get("userTag", "")
                         }
                     },
@@ -1837,6 +1853,8 @@ async def websocket_handler(request):
                     "id": user_id,
                     "username": username,
                     "avatar": clients[ws].get("avatar", "#5865F2"),
+                    "avatarUrl": clients[ws].get("avatarUrl", ""),
+                    "bannerUrl": clients[ws].get("bannerUrl", ""),
                     "userTag": clients[ws].get("userTag", "")
                 }
                 save_servers(all_servers)
@@ -1911,6 +1929,8 @@ async def websocket_handler(request):
                         "id": user_id,
                         "username": username,
                         "avatar": clients[ws].get("avatar", "#5865F2"),
+                        "avatarUrl": clients[ws].get("avatarUrl", ""),
+                        "bannerUrl": clients[ws].get("bannerUrl", ""),
                         "userTag": clients[ws].get("userTag", "")
                     }
                     save_servers(all_servers)

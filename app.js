@@ -760,6 +760,7 @@ function computeVoxDeviceFingerprint() {
             username: state.username,
             avatar: state.avatarColor,
             avatarUrl: state.avatarUrl || (() => { try { return localStorage.getItem('vox_avatar_url') || ''; } catch (e) { return ''; } })(),
+            bannerUrl: state.bannerUrl || (() => { try { return localStorage.getItem('vox_banner_url') || ''; } catch (e) { return ''; } })(),
             userTag: state.userTag,
             tag: state.userTag,
             voiceChannel: state.currentVoiceChannel || null,
@@ -835,6 +836,10 @@ async function handleServerMessage(data) {
                     state.avatarUrl = meMem.avatarUrl;
                     try { localStorage.setItem('vox_avatar_url', state.avatarUrl); } catch (e) {}
                     updateMyProfileUI();
+                }
+                if (meMem && meMem.bannerUrl && !state.bannerUrl) {
+                    state.bannerUrl = meMem.bannerUrl;
+                    try { localStorage.setItem('vox_banner_url', state.bannerUrl); } catch (e) {}
                 }
             }
             if (data.onlineIds) {
@@ -2751,8 +2756,8 @@ function openUserContextMenu(e, userId) {
     document.getElementById('ctx-username').textContent = name + (isSelf ? ' (Você)' : '');
     document.getElementById('ctx-tag').textContent = isSelf ? state.userTag : (user?.userTag || '#6060');
     const av = document.getElementById('ctx-user-avatar');
-    av.textContent = name[0].toUpperCase();
-    av.style.backgroundColor = avatar;
+    const targetAvatarUrl = isSelf ? state.avatarUrl : (user?.avatarUrl || '');
+    applyAvatarToElement(av, name, avatar || '#5865F2', targetAvatarUrl);
 
     // Slider de volume (0 a 200%)
     const currentVol = state.userVolumes.get(userId) ?? 100;
@@ -2863,6 +2868,133 @@ function closeUserContextMenu() {
     const menu = document.getElementById('user-context-menu');
     if (menu) menu.style.display = 'none';
     state.activeContextUserId = null;
+}
+
+function openUserProfileModal(userId) {
+    if (!userId) return;
+    const modal = document.getElementById('view-user-profile-modal');
+    if (!modal) return;
+
+    const isSelf = (userId === state.userId);
+    const liveUser = state.users.get(userId);
+    const memUser = state.serverMembers.get(userId);
+    const user = Object.assign({}, memUser || {}, liveUser || {});
+
+    const name = isSelf ? state.username : (user.username || 'Usuário');
+    const tag = isSelf ? state.userTag : (user.userTag || '#6060');
+    const avatarColor = isSelf ? (state.avatarColor || '#5865F2') : (user.avatar || user.avatarColor || '#5865F2');
+    const avatarUrl = isSelf ? (state.avatarUrl || '') : (user.avatarUrl || memUser?.avatarUrl || '');
+    const bannerUrl = isSelf ? (state.bannerUrl || '') : (user.bannerUrl || memUser?.bannerUrl || '');
+    const isOnline = isSelf || (state.onlineUserIds && state.onlineUserIds.has(userId)) || !!liveUser;
+    const rawStatus = isSelf ? (state.userStatus || 'online') : (isOnline ? (user.status || 'online') : 'offline');
+
+    // Banner
+    const bannerEl = document.getElementById('vup-banner');
+    if (bannerEl) {
+        if (bannerUrl) {
+            bannerEl.style.backgroundImage = `url(${bannerUrl})`;
+            bannerEl.style.backgroundSize = 'cover';
+            bannerEl.style.backgroundPosition = 'center';
+        } else {
+            bannerEl.style.backgroundImage = '';
+            bannerEl.style.background = `linear-gradient(135deg, ${avatarColor}, #5865f2)`;
+        }
+    }
+
+    // Avatar
+    const avEl = document.getElementById('vup-avatar');
+    if (avEl) applyAvatarToElement(avEl, name, avatarColor, avatarUrl);
+
+    // Status Dot + Texto
+    const statusMap = {
+        online: { color: '#23a55a', label: '🟢 Online' },
+        idle: { color: '#f0b232', label: '🌙 Ausente' },
+        dnd: { color: '#f23f43', label: '⛔ Não Perturbe' },
+        invisible: { color: '#80848e', label: '⚫ Offline' },
+        offline: { color: '#80848e', label: '⚫ Offline' }
+    };
+    const stInfo = statusMap[rawStatus] || statusMap.online;
+    const dotEl = document.getElementById('vup-status-dot');
+    if (dotEl) dotEl.style.background = stInfo.color;
+    const stTextEl = document.getElementById('vup-status-text');
+    if (stTextEl) stTextEl.textContent = stInfo.label;
+
+    // Nome e Tag
+    const nameEl = document.getElementById('vup-username');
+    if (nameEl) nameEl.textContent = name + (isSelf ? ' (Você)' : '');
+    const tagEl = document.getElementById('vup-tag');
+    if (tagEl) tagEl.textContent = tag;
+
+    // Badges (MESTRE, ADM, VIP)
+    const badgesEl = document.getElementById('vup-badges');
+    if (badgesEl) {
+        const badges = [];
+        const isTargetOwner = (user && user.isOwner) || (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (String(tag).includes('4095'));
+        const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin));
+        const vipEntry = state.vips ? state.vips.get(userId) : null;
+        if (isTargetOwner) {
+            badges.push(`<span style="background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;font-size:10px;font-weight:900;padding:3px 8px;border-radius:999px;">👑 MESTRE</span>`);
+        }
+        if (isTargetAdmin) {
+            badges.push(`<span style="background:rgba(35,165,90,0.2);color:#23a55a;border:1px solid rgba(35,165,90,0.5);font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;">🛡️ ADM</span>`);
+        }
+        if (vipEntry && !vipEntry.hideBadge) {
+            const tier = typeof getVipTierBadge === 'function' ? getVipTierBadge(vipEntry) : { label: 'VIP', color: '#ffd700' };
+            badges.push(`<span style="background:rgba(255,215,0,0.16);color:${tier.color || '#ffd700'};border:1px solid ${tier.color || '#ffd700'};font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;">👑 ${tier.label || 'VIP'}</span>`);
+        }
+        badgesEl.innerHTML = badges.join('');
+    }
+
+    // Atividade (Jogo) e Sala de Voz
+    const actEl = document.getElementById('vup-activity-text');
+    if (actEl) {
+        const act = isSelf ? state.userActivity : user.activity;
+        if (act && act.name) {
+            actEl.style.display = 'block';
+            actEl.textContent = `🎮 Jogando ${act.name}`;
+        } else {
+            actEl.style.display = 'none';
+        }
+    }
+    const voiceEl = document.getElementById('vup-voice-text');
+    if (voiceEl) {
+        const vc = isSelf ? state.currentVoiceChannel : user.voiceChannel;
+        if (vc) {
+            voiceEl.style.display = 'block';
+            voiceEl.textContent = `🎙️ Na sala de voz: ${vc}`;
+        } else {
+            voiceEl.style.display = 'none';
+        }
+    }
+
+    // Membro desde
+    const joinedEl = document.getElementById('vup-joined-at');
+    if (joinedEl) {
+        const ts = memUser?.joinedAt || user?.joinedAt;
+        if (ts) {
+            try {
+                const d = new Date(ts * 1000);
+                joinedEl.textContent = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' });
+            } catch (e) {
+                joinedEl.textContent = 'Membro registrado';
+            }
+        } else {
+            joinedEl.textContent = 'Membro do VOX';
+        }
+    }
+
+    // Botões de ação
+    modal.dataset.userId = userId;
+    modal.dataset.username = name;
+    const watchBtn = document.getElementById('vup-btn-watch-stream');
+    if (watchBtn) watchBtn.style.display = state.activeStreams.has(userId) ? 'inline-flex' : 'none';
+
+    modal.style.display = 'flex';
+}
+
+function closeUserProfileModal() {
+    const modal = document.getElementById('view-user-profile-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 
@@ -3354,6 +3486,20 @@ function updateSettingsPreview() {
     applyAvatarToElement(av, inputVal, state.avatarColor, state.avatarUrl);
     const remBtn = document.getElementById('btn-remove-avatar-photo');
     if (remBtn) remBtn.style.display = state.avatarUrl ? 'inline-flex' : 'none';
+
+    const bannerEl = document.getElementById('settings-preview-banner');
+    if (bannerEl) {
+        if (state.bannerUrl) {
+            bannerEl.style.backgroundImage = `url(${state.bannerUrl})`;
+            bannerEl.style.backgroundSize = 'cover';
+            bannerEl.style.backgroundPosition = 'center';
+        } else {
+            bannerEl.style.backgroundImage = '';
+            bannerEl.style.background = `linear-gradient(135deg, ${state.avatarColor || '#00f2fe'}, #5865f2)`;
+        }
+    }
+    const remBannerBtn = document.getElementById('btn-remove-banner-photo');
+    if (remBannerBtn) remBannerBtn.style.display = state.bannerUrl ? 'inline-flex' : 'none';
 }
 
 function saveUserProfile() {
@@ -3374,6 +3520,8 @@ function saveUserProfile() {
     try {
         if (state.avatarUrl) localStorage.setItem('vox_avatar_url', state.avatarUrl);
         else localStorage.removeItem('vox_avatar_url');
+        if (state.bannerUrl) localStorage.setItem('vox_banner_url', state.bannerUrl);
+        else localStorage.removeItem('vox_banner_url');
     } catch (e) {}
 
     const profileObj = {
@@ -3381,6 +3529,7 @@ function saveUserProfile() {
         username: state.username,
         avatarColor: state.avatarColor,
         avatarUrl: state.avatarUrl || '',
+        bannerUrl: state.bannerUrl || '',
         userTag: state.userTag
     };
     localStorage.setItem('kord_user_profile', JSON.stringify(profileObj));
@@ -3396,7 +3545,8 @@ function saveUserProfile() {
         type: 'update_profile',
         username: state.username,
         avatar: state.avatarColor,
-        avatarUrl: state.avatarUrl || ''
+        avatarUrl: state.avatarUrl || '',
+        bannerUrl: state.bannerUrl || ''
     });
 
     renderVoiceUsers();
@@ -4049,6 +4199,9 @@ function updateMyProfileUI() {
     if (!state.avatarUrl) {
         try { state.avatarUrl = localStorage.getItem('vox_avatar_url') || ''; } catch (e) {}
     }
+    if (!state.bannerUrl) {
+        try { state.bannerUrl = localStorage.getItem('vox_banner_url') || ''; } catch (e) {}
+    }
     const un = document.getElementById('my-username');
     const tag = document.getElementById('my-tag');
     const av = document.getElementById('my-avatar');
@@ -4387,7 +4540,8 @@ function setupEventListeners() {
         });
     };
 
-    on('btn-vid-play', 'click', () => {
+    on('btn-vid-play', 'click', (e) => {
+        e.stopPropagation();
         if (!vid) return;
         if (!canControlCurrentCinema()) {
             showToast('🔒 Apenas quem iniciou o filme/série pode pausar ou mexer no tempo.');
@@ -4406,7 +4560,8 @@ function setupEventListeners() {
         }
     });
 
-    on('btn-vid-stop', 'click', () => {
+    on('btn-vid-stop', 'click', (e) => {
+        e.stopPropagation();
         if (!canControlCurrentCinema()) {
             showToast('🔒 Apenas quem iniciou o filme/série pode parar a transmissão.');
             return;
@@ -4414,7 +4569,8 @@ function setupEventListeners() {
         stopCinemaStream();
     });
 
-    on('btn-vid-back10', 'click', () => {
+    on('btn-vid-back10', 'click', (e) => {
+        e.stopPropagation();
         if (!vid) return;
         if (!canControlCurrentCinema()) {
             showToast('🔒 Apenas quem iniciou o filme/série pode voltar o tempo.');
@@ -4424,7 +4580,8 @@ function setupEventListeners() {
         syncCinemaNow();
     });
 
-    on('btn-vid-fwd10', 'click', () => {
+    on('btn-vid-fwd10', 'click', (e) => {
+        e.stopPropagation();
         if (!vid) return;
         if (!canControlCurrentCinema()) {
             showToast('🔒 Apenas quem iniciou o filme/série pode avançar o tempo.');
@@ -4435,7 +4592,19 @@ function setupEventListeners() {
         syncCinemaNow();
     });
 
-    on('btn-vid-next-ep', 'click', () => {
+    on('btn-vid-prev-ep', 'click', (e) => {
+        e.stopPropagation();
+        if (!canControlCurrentCinema()) {
+            showToast('🔒 Apenas quem iniciou a série pode voltar para o episódio anterior.');
+            return;
+        }
+        if (typeof playPrevSeriesEpisode === 'function') {
+            playPrevSeriesEpisode();
+        }
+    });
+
+    on('btn-vid-next-ep', 'click', (e) => {
+        e.stopPropagation();
         if (!canControlCurrentCinema()) {
             showToast('🔒 Apenas quem iniciou a série pode passar para o próximo episódio.');
             return;
@@ -4585,6 +4754,49 @@ function setupEventListeners() {
         closeUserContextMenu();
     });
 
+    on('ctx-btn-view-profile', 'click', () => {
+        const uid = state.activeContextUserId;
+        closeUserContextMenu();
+        if (uid) openUserProfileModal(uid);
+    });
+
+    on('ctx-header-open-profile', 'click', () => {
+        const uid = state.activeContextUserId;
+        closeUserContextMenu();
+        if (uid) openUserProfileModal(uid);
+    });
+
+    on('btn-close-view-profile', 'click', closeUserProfileModal);
+    const vupModalEl = document.getElementById('view-user-profile-modal');
+    if (vupModalEl) {
+        vupModalEl.addEventListener('click', (e) => {
+            if (e.target === vupModalEl) closeUserProfileModal();
+        });
+    }
+    on('vup-btn-mention', 'click', () => {
+        const m = document.getElementById('view-user-profile-modal');
+        const name = m?.dataset?.username || 'Amigo';
+        if (chatInput) {
+            chatInput.value += `@${name} `;
+            chatInput.focus();
+        }
+        closeUserProfileModal();
+    });
+    on('vup-btn-watch-stream', 'click', () => {
+        const m = document.getElementById('view-user-profile-modal');
+        const uid = m?.dataset?.userId;
+        if (uid) selectLiveStream(uid);
+        closeUserProfileModal();
+    });
+    on('vup-btn-copy-id', 'click', () => {
+        const m = document.getElementById('view-user-profile-modal');
+        const uid = m?.dataset?.userId;
+        if (uid) {
+            navigator.clipboard.writeText(uid);
+            showToast('📋 ID copiado para a Área de Transferência.');
+        }
+    });
+
     on('ctx-btn-mention', 'click', () => {
         if (!state.activeContextUserId) return;
         const user = state.users.get(state.activeContextUserId);
@@ -4715,6 +4927,68 @@ function setupEventListeners() {
         renderMembersSidebar();
         renderVoiceUsers();
         showToast('🗑️ Foto de perfil removida.');
+    });
+
+    // Upload e compressão automática de Foto do Banner (480x160 JPEG ~20KB salva na nuvem)
+    const bannerInput = document.getElementById('input-banner-photo');
+    on('btn-upload-banner-photo', 'click', () => {
+        if (bannerInput) bannerInput.click();
+    });
+    if (bannerInput) {
+        bannerInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const targetW = 480;
+                    const targetH = 160;
+                    const targetRatio = targetW / targetH;
+                    const imgRatio = img.width / img.height;
+                    let sx = 0, sy = 0, sw = img.width, sh = img.height;
+                    if (imgRatio > targetRatio) {
+                        sw = img.height * targetRatio;
+                        sx = (img.width - sw) / 2;
+                    } else {
+                        sh = img.width / targetRatio;
+                        sy = (img.height - sh) / 2;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+                    state.bannerUrl = canvas.toDataURL('image/jpeg', 0.78);
+                    try { localStorage.setItem('vox_banner_url', state.bannerUrl); } catch (err) {}
+                    updateSettingsPreview();
+                    sendWs({
+                        type: 'update_profile',
+                        username: state.username,
+                        avatar: state.avatarColor,
+                        avatarUrl: state.avatarUrl || '',
+                        bannerUrl: state.bannerUrl
+                    });
+                    showToast('🖼️ Banner do perfil atualizado e salvo na nuvem!');
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+            bannerInput.value = '';
+        });
+    }
+    on('btn-remove-banner-photo', 'click', () => {
+        state.bannerUrl = '';
+        try { localStorage.removeItem('vox_banner_url'); } catch (e) {}
+        updateSettingsPreview();
+        sendWs({
+            type: 'update_profile',
+            username: state.username,
+            avatar: state.avatarColor,
+            avatarUrl: state.avatarUrl || '',
+            bannerUrl: ''
+        });
+        showToast('🗑️ Banner do perfil removido.');
     });
     on('btn-toggle-mic-test', 'click', toggleMicTest);
 
@@ -5542,10 +5816,10 @@ function playCinemaStream(cinema) {
     document.getElementById('hud-res').textContent = '1080p FHD';
     document.getElementById('hud-fps').textContent = '60 FPS';
 
-    const isVodOrSeries = (cinema.streamType === 'vod' || cinema.streamType === 'series');
+    const isVodOrSeries = (cinema.streamType !== 'live');
     const canCtrl = isOwner || state.isOwner;
     const btnPlay = document.getElementById('btn-vid-play');
-    if (btnPlay) btnPlay.style.display = (canCtrl && isVodOrSeries) ? 'inline-flex' : (canCtrl ? 'flex' : 'none');
+    if (btnPlay) btnPlay.style.display = canCtrl ? 'inline-flex' : 'none';
 
     const progressWrap = document.getElementById('cinema-progress-wrap');
     if (progressWrap) progressWrap.style.display = isVodOrSeries ? 'flex' : 'none';
@@ -5553,10 +5827,24 @@ function playCinemaStream(cinema) {
     const seekEl = document.getElementById('vid-seek-slider');
     if (seekEl) seekEl.disabled = !canCtrl;
 
-    ['btn-vid-stop', 'btn-vid-back10', 'btn-vid-fwd10'].forEach(id => {
+    const btnStop = document.getElementById('btn-vid-stop');
+    if (btnStop) btnStop.style.display = canCtrl ? 'inline-flex' : 'none';
+
+    ['btn-vid-back10', 'btn-vid-fwd10'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = (canCtrl && isVodOrSeries) ? 'inline-flex' : 'none';
     });
+
+    const prevEpBtn = document.getElementById('btn-vid-prev-ep');
+    if (prevEpBtn) {
+        const hasPrevEp = (
+            cinema.streamType === 'series' &&
+            canCtrl &&
+            Array.isArray(state.currentSeriesPlaylist) &&
+            state.currentSeriesIndex > 0
+        );
+        prevEpBtn.style.display = hasPrevEp ? 'inline-flex' : 'none';
+    }
 
     const nextEpBtn = document.getElementById('btn-vid-next-ep');
     if (nextEpBtn) {
@@ -5962,6 +6250,44 @@ async function openSeriesEpisodes(series) {
     } catch (e) {
         grid.innerHTML = '<div class="iptv-placeholder">Erro ao carregar episódios da série.</div>';
     }
+}
+
+function playPrevSeriesEpisode() {
+    if (!Array.isArray(state.currentSeriesPlaylist) || state.currentSeriesIndex <= 0) {
+        showToast('ℹ️ Você já está no primeiro episódio desta série!');
+        return;
+    }
+    const prevIdx = state.currentSeriesIndex - 1;
+    const prevEp = state.currentSeriesPlaylist[prevIdx];
+    const targetRoom = state.currentVoiceChannel;
+    if (!targetRoom || !targetRoom.includes('cinema-')) return;
+
+    state.currentSeriesIndex = prevIdx;
+    const cinemaObj = {
+        streamId: prevEp.streamId,
+        streamName: prevEp.streamName,
+        streamType: 'series',
+        ext: prevEp.ext || 'mp4',
+        poster: prevEp.poster || '',
+        startedBy: state.username,
+        startedById: state.userId,
+        currentTime: 0,
+        isPlaying: true
+    };
+    if (!state.cinemaRooms) state.cinemaRooms = {};
+    state.cinemaRooms[targetRoom] = cinemaObj;
+
+    sendWs({
+        type: 'cinema_play',
+        room: targetRoom,
+        streamId: prevEp.streamId,
+        streamName: prevEp.streamName,
+        streamType: 'series',
+        ext: prevEp.ext || 'mp4',
+        poster: prevEp.poster || ''
+    });
+    playCinemaStream(cinemaObj);
+    showToast(`⏮️ Episódio anterior: <b>${escapeHtml(prevEp.streamName)}</b>`);
 }
 
 function playNextSeriesEpisode() {
@@ -6735,6 +7061,8 @@ setInterval(() => {
 window.voxPrefs = (() => {
     const defaults = {
         theme: 'default',
+        accent: '#00f2fe',
+        uiZoom: 100,
         chatFontSize: 14,
         compactChat: false,
         reduceMotion: false,
@@ -6746,7 +7074,13 @@ window.voxPrefs = (() => {
         showOnline: true,
         enableKeybinds: true,
         timeFormat: '24h',
-        devMode: false
+        devMode: false,
+        micVolume: 100,
+        outVolume: 100,
+        inputMode: 'vad',
+        pttKey: 'v',
+        micSensitivity: 50,
+        soundboardVol: 80
     };
     try {
         const saved = JSON.parse(localStorage.getItem('vox_user_prefs') || '{}');
@@ -6788,14 +7122,26 @@ function applyVoxVisualPrefs() {
             .channels-sidebar, .members-sidebar, .user-footer { background-color: #071324 !important; }
             .servers-rail { background-color: #040c18 !important; }
         `;
+    } else if (p.theme === 'emerald') {
+        themeCss = `
+            body, .main-stage-area, .chat-container { background-color: #061b14 !important; }
+            .channels-sidebar, .members-sidebar, .user-footer { background-color: #04130e !important; }
+            .servers-rail { background-color: #020a07 !important; }
+        `;
     }
 
+    const accentCss = p.accent && p.accent !== '#00f2fe'
+        ? `:root { --kord-accent: ${p.accent}; } .opt-card.active, .settings-tab.active { border-color: ${p.accent} !important; }`
+        : '';
+    const zoomCss = (p.uiZoom && p.uiZoom !== 100) ? `body { zoom: ${p.uiZoom}%; }` : '';
     const compactCss = p.compactChat ? `.chat-msg, .message-row { padding-top: 2px !important; padding-bottom: 2px !important; margin-bottom: 2px !important; }` : '';
     const motionCss = p.reduceMotion ? `*, *::before, *::after { transition: none !important; animation: none !important; }` : '';
     const contrastCss = p.highContrast ? `body, .chat-text, .member-name { color: #ffffff !important; } .channel-item, .voice-channel { border: 1px solid rgba(255,255,255,0.08); }` : '';
 
     styleEl.textContent = `
         ${themeCss}
+        ${accentCss}
+        ${zoomCss}
         .chat-text { font-size: ${p.chatFontSize || 14}px !important; }
         ${compactCss}
         ${motionCss}
@@ -6883,7 +7229,7 @@ function initVoxDiscordSettings() {
     bindChk('pref-enable-keybinds', 'enableKeybinds');
     bindChk('pref-dev-mode', 'devMode');
 
-    // 4. Temas (Aparência)
+    // 4. Temas, Cor de Destaque e Zoom (Aparência PRO)
     document.querySelectorAll('#pref-opt-theme .opt-card').forEach(card => {
         card.classList.toggle('active', card.dataset.theme === p.theme);
         card.addEventListener('click', () => {
@@ -6893,6 +7239,179 @@ function initVoxDiscordSettings() {
             saveVoxPrefs();
             showToast(`🎨 Tema alterado!`);
         });
+    });
+
+    document.querySelectorAll('#pref-opt-accent .opt-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.accent === p.accent);
+        card.addEventListener('click', () => {
+            document.querySelectorAll('#pref-opt-accent .opt-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            p.accent = card.dataset.accent;
+            saveVoxPrefs();
+            showToast('✨ Cor de destaque atualizada!');
+        });
+    });
+
+    const zoomSlider = document.getElementById('pref-ui-zoom');
+    const zoomVal = document.getElementById('pref-zoom-val');
+    if (zoomSlider) {
+        zoomSlider.value = p.uiZoom || 100;
+        if (zoomVal) zoomVal.textContent = `${zoomSlider.value}%`;
+        zoomSlider.addEventListener('input', () => {
+            p.uiZoom = parseInt(zoomSlider.value);
+            if (zoomVal) zoomVal.textContent = `${p.uiZoom}%`;
+            saveVoxPrefs();
+        });
+    }
+
+    // 4.5 Voz PRO: Volume Entrada, Volume Saída, Push-to-Talk e Sensibilidade
+    const micVolSlider = document.getElementById('pref-mic-volume');
+    const micVolVal = document.getElementById('pref-mic-vol-val');
+    if (micVolSlider) {
+        micVolSlider.value = p.micVolume ?? 100;
+        if (micVolVal) micVolVal.textContent = `${micVolSlider.value}%`;
+        micVolSlider.addEventListener('input', () => {
+            p.micVolume = parseInt(micVolSlider.value);
+            if (micVolVal) micVolVal.textContent = `${p.micVolume}%`;
+            if (voiceGateGain && voiceAudioCtx && !state.isMuted) {
+                try { voiceGateGain.gain.setTargetAtTime(Math.max(0.05, p.micVolume / 100), voiceAudioCtx.currentTime, 0.02); } catch (e) {}
+            }
+            saveVoxPrefs();
+        });
+    }
+
+    const outVolSlider = document.getElementById('pref-out-volume');
+    const outVolVal = document.getElementById('pref-out-vol-val');
+    if (outVolSlider) {
+        outVolSlider.value = p.outVolume ?? 100;
+        if (outVolVal) outVolVal.textContent = `${outVolSlider.value}%`;
+        outVolSlider.addEventListener('input', () => {
+            p.outVolume = parseInt(outVolSlider.value);
+            if (outVolVal) outVolVal.textContent = `${p.outVolume}%`;
+            const factor = Math.min(1.0, Math.max(0, p.outVolume / 100));
+            state.remoteAudioElements.forEach((el, uid) => {
+                if (!state.isDeafened && !state.userMutedLocally.has(uid)) {
+                    const uVol = (state.userVolumes.get(uid) ?? 100) / 100;
+                    el.volume = Math.min(1.0, uVol * factor);
+                }
+            });
+            saveVoxPrefs();
+        });
+    }
+
+    const pttBox = document.getElementById('ptt-key-config-box');
+    const pttBtn = document.getElementById('btn-record-ptt-key');
+    const updatePttUI = () => {
+        if (pttBox) pttBox.style.display = (p.inputMode === 'ptt') ? 'block' : 'none';
+        if (pttBtn) pttBtn.textContent = `Tecla: ${(p.pttKey || 'v').toUpperCase()}`;
+    };
+    updatePttUI();
+
+    document.querySelectorAll('#pref-opt-input-mode .opt-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.mode === p.inputMode);
+        card.addEventListener('click', () => {
+            document.querySelectorAll('#pref-opt-input-mode .opt-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            p.inputMode = card.dataset.mode;
+            saveVoxPrefs();
+            updatePttUI();
+            if (p.inputMode === 'ptt') {
+                setMicrophoneMuted(true);
+                showToast(`⌨️ Push-to-Talk ativado! Segure [${(p.pttKey || 'v').toUpperCase()}] para falar.`);
+            } else {
+                setMicrophoneMuted(false);
+                showToast('🎙️ Atividade de Voz automática ativada!');
+            }
+        });
+    });
+
+    let recordingPtt = false;
+    if (pttBtn) {
+        pttBtn.addEventListener('click', () => {
+            recordingPtt = true;
+            pttBtn.textContent = 'Pressione qualquer tecla...';
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (recordingPtt) {
+            e.preventDefault();
+            recordingPtt = false;
+            p.pttKey = e.key.toLowerCase();
+            saveVoxPrefs();
+            updatePttUI();
+            showToast(`⌨️ Tecla Push-to-Talk definida: ${p.pttKey.toUpperCase()}`);
+            return;
+        }
+        if (p.inputMode === 'ptt' && !e.repeat && e.key.toLowerCase() === (p.pttKey || 'v') && document.activeElement?.tagName !== 'INPUT') {
+            if (state.currentVoiceChannel && state.currentVoiceChannel !== 'afk' && state.isMuted) {
+                setMicrophoneMuted(false);
+            }
+        }
+    });
+    document.addEventListener('keyup', (e) => {
+        if (p.inputMode === 'ptt' && e.key.toLowerCase() === (p.pttKey || 'v') && document.activeElement?.tagName !== 'INPUT') {
+            if (state.currentVoiceChannel && !state.isMuted) {
+                setMicrophoneMuted(true);
+            }
+        }
+    });
+
+    const sensSlider = document.getElementById('pref-mic-sensitivity');
+    const sensVal = document.getElementById('pref-mic-sens-val');
+    if (sensSlider) {
+        sensSlider.value = p.micSensitivity ?? 50;
+        if (sensVal) sensVal.textContent = `${sensSlider.value}%`;
+        sensSlider.addEventListener('input', () => {
+            p.micSensitivity = parseInt(sensSlider.value);
+            if (sensVal) sensVal.textContent = `${p.micSensitivity}%`;
+            saveVoxPrefs();
+        });
+    }
+
+    // 4.6 Soundboard (Painel de Efeitos Sonoros sintetizado em Web Audio API)
+    const sbVolSlider = document.getElementById('pref-soundboard-vol');
+    const sbVolVal = document.getElementById('pref-sb-vol-val');
+    if (sbVolSlider) {
+        sbVolSlider.value = p.soundboardVol ?? 80;
+        if (sbVolVal) sbVolVal.textContent = `${sbVolSlider.value}%`;
+        sbVolSlider.addEventListener('input', () => {
+            p.soundboardVol = parseInt(sbVolSlider.value);
+            if (sbVolVal) sbVolVal.textContent = `${p.soundboardVol}%`;
+            saveVoxPrefs();
+        });
+    }
+
+    const playSoundboardFx = (type) => {
+        try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            const ctx = new Ctx();
+            const vol = Math.max(0.05, (p.soundboardVol ?? 80) / 100) * 0.35;
+            const now = ctx.currentTime;
+            const playTone = (freq, start, dur, wave = 'sine', endFreq = null) => {
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
+                osc.type = wave;
+                osc.frequency.setValueAtTime(freq, now + start);
+                if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, now + start + dur);
+                g.gain.setValueAtTime(vol, now + start);
+                g.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
+                osc.connect(g);
+                g.connect(ctx.destination);
+                osc.start(now + start);
+                osc.stop(now + start + dur + 0.02);
+            };
+            if (type === 'fanfare') { playTone(523, 0, 0.14, 'triangle'); playTone(659, 0.13, 0.14, 'triangle'); playTone(784, 0.26, 0.35, 'triangle'); }
+            else if (type === 'alert') { playTone(880, 0, 0.15, 'sawtooth'); playTone(660, 0.16, 0.2, 'sawtooth'); }
+            else if (type === 'coin') { playTone(988, 0, 0.09, 'square'); playTone(1319, 0.09, 0.28, 'square'); }
+            else if (type === 'laser') { playTone(1400, 0, 0.25, 'sawtooth', 180); }
+            else if (type === 'bell') { playTone(1046, 0, 0.6, 'sine'); playTone(2093, 0, 0.4, 'sine'); }
+            else if (type === 'fail') { playTone(380, 0, 0.2, 'sawtooth', 320); playTone(290, 0.22, 0.4, 'sawtooth', 180); }
+        } catch (e) {}
+    };
+
+    document.querySelectorAll('.vox-sb-btn').forEach(btn => {
+        btn.addEventListener('click', () => playSoundboardFx(btn.dataset.sound));
     });
 
     // 5. Tamanho da fonte do chat

@@ -276,14 +276,18 @@
                             <span id="vid-time-duration" style="font-size: 11px; font-family: monospace; color: #94a3b8; min-width: 48px;">00:00</span>
                         </div>
                         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px;">
-                            <div class="vc-left" style="display: flex; align-items: center; gap: 6px;">
-                                <button class="vc-btn" id="btn-vid-play" title="Play / Pausar"><i class="fa-solid fa-play"></i></button>
-                                <button class="vc-btn" id="btn-vid-stop" style="display: none; color: #f23f43;" title="Parar Filme / Série"><i class="fa-solid fa-stop"></i></button>
-                                <button class="vc-btn" id="btn-vid-back10" style="display: none; font-size: 11px; font-weight: 800; gap: 2px; padding: 4px 7px;" title="Voltar 10 segundos"><i class="fa-solid fa-rotate-left"></i> <span>10s</span></button>
-                                <button class="vc-btn" id="btn-vid-fwd10" style="display: none; font-size: 11px; font-weight: 800; gap: 2px; padding: 4px 7px;" title="Avançar 10 segundos"><span>10s</span> <i class="fa-solid fa-rotate-right"></i></button>
-                                <button class="btn-stop-watching" id="btn-vid-next-ep" style="display: none; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #080b11; font-weight: 800; padding: 5px 10px;" title="Próximo Episódio">
+                            <div class="vc-left" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                <button class="vc-btn" id="btn-vid-play" title="Play / Pausar" style="min-width: 34px; width: auto; padding: 4px 8px; background: rgba(255,255,255,0.12);"><i class="fa-solid fa-play"></i></button>
+                                <button class="vc-btn" id="btn-vid-stop" style="display: none; min-width: 34px; width: auto; padding: 4px 8px; background: rgba(242,63,67,0.2); color: #f23f43;" title="Parar Filme / Série"><i class="fa-solid fa-stop"></i></button>
+                                <button class="vc-btn" id="btn-vid-back10" style="display: none; width: auto; font-size: 11px; font-weight: 800; gap: 4px; padding: 5px 10px; background: rgba(255,255,255,0.14); border-radius: 6px;" title="Voltar 10 segundos"><i class="fa-solid fa-rotate-left"></i> <span>-10s</span></button>
+                                <button class="vc-btn" id="btn-vid-fwd10" style="display: none; width: auto; font-size: 11px; font-weight: 800; gap: 4px; padding: 5px 10px; background: rgba(255,255,255,0.14); border-radius: 6px;" title="Avançar 10 segundos"><span>+10s</span> <i class="fa-solid fa-rotate-right"></i></button>
+                                <button class="btn-stop-watching" id="btn-vid-prev-ep" style="display: none; background: rgba(255,255,255,0.16); color: #ffffff; font-weight: 800; padding: 5px 10px; border-radius: 6px;" title="Episódio Anterior">
+                                    <i class="fa-solid fa-backward-step"></i>
+                                    <span>Anterior</span>
+                                </button>
+                                <button class="btn-stop-watching" id="btn-vid-next-ep" style="display: none; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #080b11; font-weight: 800; padding: 5px 12px; border-radius: 6px;" title="Próximo Episódio">
                                     <i class="fa-solid fa-forward-step"></i>
-                                    <span>Próximo Ep.</span>
+                                    <span>Próximo</span>
                                 </button>
                                 <button class="vc-btn" id="btn-vid-vol"><i class="fa-solid fa-volume-high"></i></button>
                                 <input type="range" id="vid-volume-slider" min="0" max="1" step="0.05" value="1">
@@ -564,6 +568,7 @@
                 <div class="settings-category">EXPERIÊNCIA</div>
                 <div class="settings-tab" data-tab="voice"><i class="fa-solid fa-microphone-lines"></i> Voz e vídeo</div>
                 <div class="settings-tab" data-tab="stream"><i class="fa-solid fa-display"></i> Transmissão 60FPS</div>
+                <div class="settings-tab" data-tab="soundboard"><i class="fa-solid fa-music"></i> Painel de efeitos sonoros</div>
                 <div class="settings-tab" data-tab="appearance"><i class="fa-solid fa-palette"></i> Aparência</div>
                 <div class="settings-tab" data-tab="accessibility"><i class="fa-solid fa-universal-access"></i> Acessibilidade</div>
                 <div class="settings-tab" data-tab="keybinds"><i class="fa-solid fa-keyboard"></i> Sistema & Atalhos</div>
@@ -618,6 +623,19 @@
                     </div>
 
                     <div class="form-group">
+                        <label>FOTO DO BANNER DO PERFIL (SALVA NA NUVEM)</label>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <input type="file" id="input-banner-photo" accept="image/*" style="display: none;">
+                            <button type="button" id="btn-upload-banner-photo" style="background: linear-gradient(135deg, #9d4edd, #5865f2); color: #ffffff; border: none; padding: 8px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-image"></i> Escolher Banner
+                            </button>
+                            <button type="button" id="btn-remove-banner-photo" style="display: none; background: #2b2d31; color: #f23f43; border: 1px solid rgba(242,63,67,0.4); padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                                <i class="fa-solid fa-trash"></i> Remover Banner
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         <label>COR DO AVATAR</label>
                         <div class="avatar-color-picker">
                             <div class="color-dot active" data-color="#00f2fe" style="background:#00f2fe"></div>
@@ -655,6 +673,38 @@
                                 <option value="">Dispositivo Padrão do Sistema</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="device-select-grid" style="margin-top: 12px;">
+                        <div class="form-group">
+                            <label>VOLUME DE ENTRADA (MIC): <b id="pref-mic-vol-val">100%</b></label>
+                            <input type="range" id="pref-mic-volume" min="0" max="200" step="5" value="100" style="width:100%;accent-color:#22c55e;cursor:pointer;">
+                        </div>
+                        <div class="form-group">
+                            <label>VOLUME DE SAÍDA (GERAL): <b id="pref-out-vol-val">100%</b></label>
+                            <input type="range" id="pref-out-volume" min="0" max="200" step="5" value="100" style="width:100%;accent-color:#00f2fe;cursor:pointer;">
+                        </div>
+                    </div>
+
+                    <div class="setting-group" style="margin-top: 14px;">
+                        <label>MODO DE ENTRADA DE VOZ</label>
+                        <div class="option-cards" id="pref-opt-input-mode">
+                            <div class="opt-card active" data-mode="vad"><i class="fa-solid fa-wave-square"></i> Atividade de Voz (Automático)</div>
+                            <div class="opt-card" data-mode="ptt"><i class="fa-solid fa-keyboard"></i> Aperte para Falar (Push-to-Talk)</div>
+                        </div>
+                    </div>
+
+                    <div class="setting-group" id="ptt-key-config-box" style="display:none; margin-top: 10px; padding: 10px 12px; background: rgba(88,101,242,0.12); border: 1px solid rgba(88,101,242,0.35); border-radius: 8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:12px;color:#e2e8f5;">Segure a tecla para falar na call:</span>
+                            <button type="button" id="btn-record-ptt-key" style="background:#5865F2;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-family:monospace;font-weight:800;cursor:pointer;">Tecla: V</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-group" style="margin-top: 14px;">
+                        <label>SENSIBILIDADE DO MICROFONE (LIMIAR DE CAPTAÇÃO): <b id="pref-mic-sens-val">Médio (50%)</b></label>
+                        <input type="range" id="pref-mic-sensitivity" min="10" max="95" step="5" value="50" style="width:100%;accent-color:#f59e0b;cursor:pointer;">
+                        <p class="hint">Quanto menor o valor, mais sensível o microfone fica; quanto maior, mais ruído de fundo ele corta.</p>
                     </div>
 
                     <!-- TESTE DE MICROFONE KORD COM BARRA VERDE -->
@@ -783,10 +833,28 @@
                     </div>
                 </div>
 
+                <!-- ABA 5.5: PAINEL DE EFEITOS SONOROS (SOUNDBOARD) -->
+                <div class="settings-page" id="tab-page-soundboard">
+                    <h2>Painel de Efeitos Sonoros (Soundboard)</h2>
+                    <p class="modal-desc">Teste e ajuste o volume dos efeitos sonoros do VOX:</p>
+                    <div class="setting-group" style="margin-top: 14px;">
+                        <label>VOLUME DOS EFEITOS SONOROS: <b id="pref-sb-vol-val">80%</b></label>
+                        <input type="range" id="pref-soundboard-vol" min="0" max="100" step="5" value="80" style="width:100%;accent-color:#a855f7;cursor:pointer;">
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:10px;margin-top:16px;">
+                        <button type="button" class="vox-sb-btn" data-sound="fanfare" style="padding:12px;background:#1c222d;border:1px solid rgba(255,215,0,0.3);border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">🎺 Vitória</button>
+                        <button type="button" class="vox-sb-btn" data-sound="alert" style="padding:12px;background:#1c222d;border:1px solid rgba(242,63,67,0.3);border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">🚨 Alerta</button>
+                        <button type="button" class="vox-sb-btn" data-sound="coin" style="padding:12px;background:#1c222d;border:1px solid rgba(34,197,94,0.3);border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">🪙 Moeda</button>
+                        <button type="button" class="vox-sb-btn" data-sound="laser" style="padding:12px;background:#1c222d;border:1px solid rgba(0,242,254,0.3);border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">⚡ Laser</button>
+                        <button type="button" class="vox-sb-btn" data-sound="bell" style="padding:12px;background:#1c222d;border:1px solid rgba(168,85,247,0.3);border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">🔔 Sino</button>
+                        <button type="button" class="vox-sb-btn" data-sound="fail" style="padding:12px;background:#1c222d;border:1px solid rgba(245,158,11,0.3);border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">📉 Fail</button>
+                    </div>
+                </div>
+
                 <!-- ABA 6: APARÊNCIA -->
                 <div class="settings-page" id="tab-page-appearance">
                     <h2>Aparência</h2>
-                    <p class="modal-desc">Personalize o visual do VOX do seu jeito:</p>
+                    <p class="modal-desc">Personalize cores, tema, zoom e fonte do VOX:</p>
                     <div class="setting-group" style="margin-top: 16px;">
                         <label>TEMA DO VOX</label>
                         <div class="option-cards" id="pref-opt-theme">
@@ -794,9 +862,24 @@
                             <div class="opt-card" data-theme="amoled">🖤 Meia-Noite (AMOLED)</div>
                             <div class="opt-card" data-theme="cyber">💜 Roxo Cyber</div>
                             <div class="opt-card" data-theme="ocean">🌊 Azul Oceano</div>
+                            <div class="opt-card" data-theme="emerald">🌲 Esmeralda Dark</div>
                         </div>
                     </div>
-                    <div class="setting-group" style="margin-top: 16px;">
+                    <div class="setting-group" style="margin-top: 14px;">
+                        <label>COR DE DESTAQUE (ACCENT)</label>
+                        <div class="option-cards" id="pref-opt-accent">
+                            <div class="opt-card active" data-accent="#00f2fe">💎 Ciano VOX</div>
+                            <div class="opt-card" data-accent="#5865F2">💙 Roxo Discord</div>
+                            <div class="opt-card" data-accent="#22c55e">💚 Verde Neon</div>
+                            <div class="opt-card" data-accent="#f59e0b">👑 Dourado</div>
+                            <div class="opt-card" data-accent="#ec4899">🌸 Rosa</div>
+                        </div>
+                    </div>
+                    <div class="setting-group" style="margin-top: 14px;">
+                        <label>ZOOM DA INTERFACE: <b id="pref-zoom-val">100%</b></label>
+                        <input type="range" id="pref-ui-zoom" min="85" max="115" step="5" value="100" style="width:100%;accent-color:#5865F2;cursor:pointer;">
+                    </div>
+                    <div class="setting-group" style="margin-top: 14px;">
                         <label>TAMANHO DA FONTE DO CHAT: <b id="pref-font-size-val">14px</b></label>
                         <input type="range" id="pref-chat-font-size" min="12" max="18" step="1" value="14" style="width:100%;accent-color:#00f2fe;cursor:pointer;">
                     </div>
@@ -972,14 +1055,81 @@
         </div>
     </div>
 
+    <!-- MODAL DE VISUALIZAÇÃO DE PERFIL DE USUÁRIO (ESTILO DISCORD) -->
+    <div id="view-user-profile-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); z-index: 99995; align-items: center; justify-content: center; padding: 16px;">
+        <div id="view-user-profile-card" style="width: 100%; max-width: 440px; background: #111214; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.08); position: relative;">
+            <button id="btn-close-view-profile" title="Fechar" style="position: absolute; top: 10px; right: 10px; z-index: 5; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(0,0,0,0.6); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <!-- Banner do Perfil -->
+            <div id="vup-banner" style="height: 136px; width: 100%; background: linear-gradient(135deg, #00f2fe, #5865f2); background-size: cover; background-position: center; position: relative;"></div>
+
+            <!-- Corpo do Perfil -->
+            <div style="padding: 0 20px 20px 20px; position: relative;">
+                <!-- Avatar circular sobreposto ao banner -->
+                <div style="position: relative; width: 92px; height: 92px; margin-top: -46px; margin-bottom: 12px;">
+                    <div id="vup-avatar" style="width: 92px; height: 92px; border-radius: 50%; border: 6px solid #111214; background: #5865f2; color: #fff; font-size: 36px; font-weight: 800; display: flex; align-items: center; justify-content: center; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">U</div>
+                    <span id="vup-status-dot" style="position: absolute; bottom: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: #23a55a; border: 4px solid #111214;"></span>
+                </div>
+
+                <!-- Nome, Tag e Badges -->
+                <div style="background: #1e1f22; border-radius: 10px; padding: 14px 16px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                        <div>
+                            <h3 id="vup-username" style="margin: 0; font-size: 20px; font-weight: 800; color: #f2f3f5;">Usuário</h3>
+                            <span id="vup-tag" style="font-size: 13px; color: #949ba4; font-weight: 600;">#0000</span>
+                        </div>
+                        <div id="vup-badges" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+                    </div>
+
+                    <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 12px 0;"></div>
+
+                    <!-- Status & Atividade -->
+                    <div style="margin-bottom: 10px;">
+                        <div style="font-size: 11px; font-weight: 800; color: #949ba4; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Status e Atividade</div>
+                        <div id="vup-status-text" style="font-size: 13px; color: #dbdee1; display: flex; align-items: center; gap: 6px;">🟢 Online</div>
+                        <div id="vup-activity-text" style="display: none; font-size: 12.5px; color: #00f2fe; margin-top: 4px; font-weight: 600;"></div>
+                        <div id="vup-voice-text" style="display: none; font-size: 12.5px; color: #23a55a; margin-top: 4px; font-weight: 600;"></div>
+                    </div>
+
+                    <!-- Membro desde -->
+                    <div>
+                        <div style="font-size: 11px; font-weight: 800; color: #949ba4; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Membro do VOX desde</div>
+                        <div id="vup-joined-at" style="font-size: 13px; color: #dbdee1;">—</div>
+                    </div>
+                </div>
+
+                <!-- Ações rápidas -->
+                <div style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
+                    <button type="button" id="vup-btn-mention" style="flex: 1; background: #5865f2; color: #fff; border: none; padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <i class="fa-solid fa-at"></i> Mencionar
+                    </button>
+                    <button type="button" id="vup-btn-watch-stream" style="display: none; flex: 1; background: #23a55a; color: #fff; border: none; padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; align-items: center; justify-content: center; gap: 6px;">
+                        <i class="fa-solid fa-tv"></i> Assistir Live
+                    </button>
+                    <button type="button" id="vup-btn-copy-id" style="background: #2b2d31; color: #dbdee1; border: 1px solid rgba(255,255,255,0.1); padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <i class="fa-solid fa-fingerprint"></i> ID
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MENU DE CONTEXTO KORD (BOTÃO DIREITO NO NOME DO AMIGO) -->
     <div class="kord-context-menu discord-context-menu" id="user-context-menu" style="display: none;">
-        <div class="ctx-header">
+        <div class="ctx-header" id="ctx-header-open-profile" style="cursor: pointer;" title="Clique para ver o perfil">
             <div class="ctx-avatar" id="ctx-user-avatar">A</div>
             <div class="ctx-user-details">
                 <span class="ctx-username" id="ctx-username">Amigo</span>
                 <span class="ctx-tag" id="ctx-tag">#0000</span>
             </div>
+        </div>
+        <div class="ctx-divider"></div>
+
+        <div class="ctx-item" id="ctx-btn-view-profile" style="color: #00f2fe; font-weight: 700;">
+            <i class="fa-solid fa-id-card"></i>
+            <span>Ver Perfil</span>
         </div>
         <div class="ctx-divider"></div>
         
