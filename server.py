@@ -1573,6 +1573,9 @@ async def websocket_handler(request):
                                     pass
                 else:
                     vdata["isVip"] = True
+                    vdata["isTrial"] = False
+                    vdata["hideBadge"] = False
+                    vdata["trialGranted"] = False
                     if is_lifetime or str(duration_val).lower() == "lifetime":
                         vdata["isLifetime"] = True
                         vdata["expiresAt"] = None
@@ -1608,7 +1611,9 @@ async def websocket_handler(request):
                 await broadcast({
                     "type": "vip_update",
                     "userId": target_id,
-                    "isVip": vdata["isVip"]
+                    "isVip": vdata["isVip"],
+                    "isTrial": bool(vdata.get("isTrial", False)),
+                    "hideBadge": bool(vdata.get("hideBadge", False))
                 })
 
                 await broadcast({

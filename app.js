@@ -763,7 +763,11 @@ async function handleServerMessage(data) {
         case 'vip_update':
             if (!state.vips) state.vips = new Map();
             if (data.isVip) {
-                state.vips.set(data.userId, { isVip: true });
+                state.vips.set(data.userId, {
+                    isVip: true,
+                    isTrial: !!data.isTrial,
+                    hideBadge: !!data.hideBadge
+                });
             } else {
                 state.vips.delete(data.userId);
             }
