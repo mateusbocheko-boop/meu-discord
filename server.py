@@ -467,10 +467,11 @@ def save_servers(data):
 
 all_servers = load_servers()
 
-def get_user_servers(uid):
+def get_user_servers(uid, is_global_owner=False):
     res = []
     for s_id, s_data in all_servers.items():
-        if s_id == "default" or s_data.get("ownerId") == uid or uid in s_data.get("members", []):
+        is_member_or_owner = (s_id == "default" or s_data.get("ownerId") == uid or uid in s_data.get("members", []))
+        if is_member_or_owner or is_global_owner:
             if s_id != "default" and not s_data.get("inviteCode"):
                 s_data["inviteCode"] = uuid.uuid4().hex[:8].upper()
                 save_servers(all_servers)
@@ -479,7 +480,8 @@ def get_user_servers(uid):
                 "name": s_data.get("name", "Servidor"),
                 "icon": s_data.get("icon", "🎮"),
                 "inviteCode": s_data.get("inviteCode", ""),
-                "isOwner": (s_data.get("ownerId") == uid)
+                "isOwner": (s_data.get("ownerId") == uid),
+                "isInspectOnly": (is_global_owner and not is_member_or_owner)
             })
     return res
 
@@ -1127,7 +1129,7 @@ async def websocket_handler(request):
                     "publicTunnelUrl": public_tunnel_url,
                     "cinemaRooms": { r: get_cinema_state(r) for r in cinema_rooms },
                     "channels": server_channels,
-                    "servers": get_user_servers(user_id),
+                    "servers": get_user_servers(user_id, is_global_owner=is_user_owner),
                     "recentMessages": server_messages[-100:],
                     "serverMuted": (user_id in server_muted_users),
                     "currentServerId": "default",
@@ -1667,9 +1669,21 @@ async def websocket_handler(request):
                         "ownerId": user_id,
                         "isOwner": True,
                         "isMainServer": False,
+                        "memberIds": [user_id],
                         "channels": new_channels
                     }
                 }))
+
+                # Atualiza em tempo real a barra de servidores do Dono Supremo (DIM) sem adicioná-lo como membro
+                for o_ws, o_u in list(clients.items()):
+                    if o_ws != ws and o_u.get("isOwner"):
+                        try:
+                            await o_ws.send_str(json.dumps({
+                                "type": "servers_list_updated",
+                                "servers": get_user_servers(o_u.get("id"), is_global_owner=True)
+                            }))
+                        except Exception:
+                            pass
 
             elif msg_type == "join_server_invite":
                 raw_code = str(data.get("inviteCode", "")).strip()
@@ -1721,7 +1735,7 @@ async def websocket_handler(request):
 
                 await ws.send_str(json.dumps({
                     "type": "server_joined",
-                    "servers": get_user_servers(user_id),
+                    "servers": get_user_servers(user_id, is_global_owner=is_user_owner),
                     "server": {
                         "id": found_id,
                         "name": found_srv.get("name", "Servidor"),
@@ -1732,6 +1746,7 @@ async def websocket_handler(request):
                         "isOwner": is_srv_owner,
                         "isAdmin": is_srv_admin,
                         "isMainServer": False,
+                        "memberIds": list(set(([found_srv.get("ownerId")] if found_srv.get("ownerId") else []) + found_srv.get("members", []))),
                         "banned": found_srv.get("banned", []),
                         "admins": found_srv.get("admins", [])
                     },
@@ -1755,15 +1770,17 @@ async def websocket_handler(request):
                     target_server_id = "default"
                     sdata = all_servers.get("default")
 
-                # Verifica banimento específico do servidor isolado
-                if target_server_id != "default" and user_id in sdata.get("banned", []):
+                # Verifica banimento específico do servidor isolado (Dono supremo DIM pode inspecionar sem entrar na lista de membros)
+                is_global_dim = bool(clients[ws].get("isOwner", False))
+                if target_server_id != "default" and not is_global_dim and user_id in sdata.get("banned", []):
                     await ws.send_str(json.dumps({
                         "type": "error",
                         "message": "🔨 Você foi banido deste servidor pelo dono dele."
                     }))
                     continue
 
-                if target_server_id != "default" and user_id not in sdata.get("members", []):
+                # Dono supremo DIM visualiza servidores criados SEM ser adicionado como usuário/membro deles!
+                if target_server_id != "default" and not is_global_dim and user_id not in sdata.get("members", []):
                     sdata.setdefault("members", []).append(user_id)
                     save_servers(all_servers)
 
@@ -1782,6 +1799,9 @@ async def websocket_handler(request):
                 is_srv_owner = is_current_server_owner(clients[ws], target_server_id)
                 is_srv_admin = is_current_server_admin(clients[ws], target_server_id)
                 srv_msgs = [m for m in server_messages if m.get("serverId", "default") == target_server_id][-100:]
+                srv_member_ids = None
+                if target_server_id != "default":
+                    srv_member_ids = list(set(([sdata.get("ownerId")] if sdata.get("ownerId") else []) + sdata.get("members", [])))
 
                 await ws.send_str(json.dumps({
                     "type": "server_switched",
@@ -1795,6 +1815,8 @@ async def websocket_handler(request):
                         "isOwner": is_srv_owner,
                         "isAdmin": is_srv_admin,
                         "isMainServer": (target_server_id == "default"),
+                        "memberIds": srv_member_ids,
+                        "isInspectOnly": (is_global_dim and target_server_id != "default" and user_id not in (srv_member_ids or [])),
                         "banned": sdata.get("banned", []) if target_server_id != "default" else list(server_banned),
                         "admins": sdata.get("admins", []) if target_server_id != "default" else list(server_admins)
                     },
@@ -2331,8 +2353,9 @@ async def websocket_handler(request):
                     })
 
             elif msg_type == "admin_get_user_audit":
-                if not (is_user_owner or is_user_admin):
-                    await ws.send_str(json.dumps({"type": "error", "message": "Acesso negado: apenas administradores ou Dono podem auditar usuários."}))
+                current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
+                if not (is_current_server_owner(clients.get(ws), current_srv_id) or is_current_server_admin(clients.get(ws), current_srv_id)):
+                    await ws.send_str(json.dumps({"type": "error", "message": "Acesso negado: apenas administradores ou Dono deste servidor podem auditar usuários."}))
                     continue
                 target_id = data.get("targetUserId")
                 target_member = server_members.get(target_id)
@@ -2366,7 +2389,8 @@ async def websocket_handler(request):
                 }))
 
             elif msg_type == "admin_purge_user_messages":
-                if not (is_user_owner or is_user_admin):
+                current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
+                if not (is_current_server_owner(clients.get(ws), current_srv_id) or is_current_server_admin(clients.get(ws), current_srv_id)):
                     continue
                 target_id = data.get("targetUserId")
                 target_user = data.get("targetUsername", target_id)
@@ -2390,7 +2414,8 @@ async def websocket_handler(request):
                 })
 
             elif msg_type == "admin_warn_user":
-                if not (is_user_owner or is_user_admin):
+                current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
+                if not (is_current_server_owner(clients.get(ws), current_srv_id) or is_current_server_admin(clients.get(ws), current_srv_id)):
                     continue
                 target_id = data.get("targetUserId")
                 target_name = data.get("targetUsername", target_id)
@@ -2428,7 +2453,8 @@ async def websocket_handler(request):
                 }))
 
             elif msg_type == "admin_toggle_server_mute":
-                if not (is_user_owner or is_user_admin):
+                current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
+                if not (is_current_server_owner(clients.get(ws), current_srv_id) or is_current_server_admin(clients.get(ws), current_srv_id)):
                     continue
                 target_id = data.get("targetUserId")
                 target_name = data.get("targetUsername", target_id)

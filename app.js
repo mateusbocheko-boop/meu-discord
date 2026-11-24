@@ -799,6 +799,13 @@ async function handleServerMessage(data) {
             }
             break;
 
+        case 'servers_list_updated':
+            if (Array.isArray(data.servers)) {
+                state.userServers = data.servers;
+                renderUserServers();
+            }
+            break;
+
         case 'server_joined':
             if (Array.isArray(data.servers)) {
                 state.userServers = data.servers;
@@ -806,6 +813,9 @@ async function handleServerMessage(data) {
             if (data.server) {
                 state.currentServerId = data.server.id;
                 state.isCurrentServerOwner = !!data.server.isOwner;
+                state.isCurrentServerAdmin = !!data.server.isAdmin;
+                state.currentServerOwnerId = data.server.ownerId || null;
+                state.currentServerMemberIds = Array.isArray(data.server.memberIds) ? new Set(data.server.memberIds) : null;
                 state.bannedUsers = data.server.banned || [];
                 if (state.currentVoiceChannel) {
                     leaveVoiceChannel(false);
@@ -832,6 +842,7 @@ async function handleServerMessage(data) {
                     }
                 }
                 renderUserServers();
+                renderMembersSidebar();
                 updateOwnerUI();
                 showToast(`🎉 Você entrou no servidor "${escapeHtml(data.server.name)}" pelo convite!`);
             }
@@ -841,6 +852,11 @@ async function handleServerMessage(data) {
             if (data.server) {
                 state.currentServerId = data.server.id;
                 state.isCurrentServerOwner = !!data.server.isOwner;
+                state.isCurrentServerAdmin = !!data.server.isAdmin;
+                state.currentServerOwnerId = data.server.ownerId || null;
+                state.currentServerMemberIds = (data.server.id !== 'default' && Array.isArray(data.server.memberIds))
+                    ? new Set(data.server.memberIds)
+                    : null;
                 state.bannedUsers = data.server.banned || [];
                 if (state.currentVoiceChannel) {
                     leaveVoiceChannel(false);
@@ -859,7 +875,7 @@ async function handleServerMessage(data) {
                     }
                     renderChannels();
                 }
-                const chatBox = document.getElementById('chat-messages');
+                const chatBox = document.getElementById('messages-list') || document.getElementById('chat-messages');
                 if (chatBox) {
                     chatBox.innerHTML = '';
                     if (Array.isArray(data.messages)) {
@@ -867,8 +883,10 @@ async function handleServerMessage(data) {
                     }
                 }
                 renderUserServers();
+                renderMembersSidebar();
                 updateOwnerUI();
-                showToast(`🔄 Você entrou no servidor "${escapeHtml(data.server.name)}"${data.server.isOwner && data.server.id !== 'default' ? ' (Você é o Dono 👑)' : ''}`);
+                const inspectSuffix = data.server.isInspectOnly ? ' (Modo Inspetor — invisível)' : (data.server.isOwner && data.server.id !== 'default' ? ' (Você é o Dono 👑)' : '');
+                showToast(`🔄 Você entrou no servidor "${escapeHtml(data.server.name)}"${inspectSuffix}`);
             }
             break;
 
@@ -2590,18 +2608,20 @@ function openUserContextMenu(e, userId) {
     const isTargetOwner = (user && user.isOwner) || (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (user?.userTag?.includes('4095'));
     const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin));
 
-    // Opção exclusiva do Dono: Dar ou Remover VIP (30 Dias)
-    
-    // Opção exclusiva de Moderação: Dossiê & Auditoria do Usuário (ADM / Dono)
+    const isCurrentOwner = hasCurrentServerOwnerPowers();
+    const isCurrentAdmin = (state.currentServerId && state.currentServerId !== 'default') ? !!state.isCurrentServerAdmin : !!state.isAdmin;
+
+    // Opção de Moderação: Dossiê & Auditoria do Usuário (Dono ou ADM do servidor atual)
     const auditBtn = document.getElementById('ctx-btn-user-audit');
     if (auditBtn) {
-        if ((state.isOwner || state.isAdmin) && !isSelf) {
+        if ((isCurrentOwner || isCurrentAdmin) && !isSelf) {
             auditBtn.style.display = 'flex';
         } else {
             auditBtn.style.display = 'none';
         }
     }
 
+    // EXCLUSIVO DO DONO SUPREMO (DIM): Dar ou Remover VIP — Donos de servidores particulares NÃO têm esse poder e NÃO ganham VIP!
     const toggleVipBtn = document.getElementById('ctx-btn-toggle-vip');
     if (toggleVipBtn) {
         if (state.isOwner && !isSelf) {
@@ -2625,10 +2645,10 @@ function openUserContextMenu(e, userId) {
         }
     }
 
-    // Opção exclusiva do Dono: Dar ou Remover cargo de ADM
+    // Opção do Dono do servidor atual: Dar ou Remover cargo de ADM neste servidor
     const toggleAdminBtn = document.getElementById('ctx-btn-toggle-admin');
     if (toggleAdminBtn) {
-        if (state.isOwner && !isSelf && !isTargetOwner) {
+        if (isCurrentOwner && !isSelf && !isTargetOwner) {
             toggleAdminBtn.style.display = 'flex';
             const icon = document.getElementById('ctx-admin-icon');
             const text = document.getElementById('ctx-admin-role-text');
@@ -2648,8 +2668,8 @@ function openUserContextMenu(e, userId) {
         }
     }
 
-    // Opções de moderação (visíveis para Dono E Administradores, exceto contra o Dono)
-    const canModerate = (state.isOwner || state.isAdmin) && !isSelf && !isTargetOwner;
+    // Opções de moderação (visíveis para Dono E Administradores do servidor atual, exceto contra o Dono supremo)
+    const canModerate = (isCurrentOwner || isCurrentAdmin) && !isSelf && !isTargetOwner;
     const adminItems = document.querySelectorAll('.admin-only');
     adminItems.forEach(el => {
         el.style.display = canModerate ? 'flex' : 'none';
@@ -3599,30 +3619,43 @@ function renderMembersSidebar() {
         });
     }
 
-    // 3. GARANTIA ABSOLUTA: O usuário atual SEMPRE está no mapa de membros
+    // 3. GARANTIA ABSOLUTA: O usuário atual está no mapa de membros (EXCETO quando Dono Supremo DIM está inspecionando servidor particular de outra pessoa)
+    const isCustomServer = state.currentServerId && state.currentServerId !== 'default';
+    const isInspectingPrivate = isCustomServer && state.currentServerMemberIds && !state.currentServerMemberIds.has(state.userId);
     const currentName = state.username || 'DIM';
     const isMeDim = currentName.trim().toUpperCase() === 'DIM' || currentName.trim().toUpperCase().startsWith('DIM') || (state.userTag && state.userTag.includes('4095')) || state.isOwner;
     
-    if (!uniqueMap.has(state.userId)) {
-        uniqueMap.set(state.userId, {
-            id: state.userId,
-            username: currentName,
-            avatar: state.avatarColor || '#5865F2',
-            userTag: state.userTag || (isMeDim ? '#4095' : '#6060'),
-            status: state.userStatus || 'online',
-            activity: state.userActivity || null,
-            isMaster: isMeDim,
-            isOwner: isMeDim || state.isOwner
-        });
-    } else {
-        const myEntry = uniqueMap.get(state.userId);
-        myEntry.username = currentName;
-        myEntry.userTag = state.userTag || myEntry.userTag;
-        myEntry.status = state.userStatus || myEntry.status;
-        myEntry.activity = state.userActivity || myEntry.activity;
-        if (isMeDim) {
-            myEntry.isMaster = true;
-            myEntry.isOwner = true;
+    if (!isInspectingPrivate) {
+        if (!uniqueMap.has(state.userId)) {
+            uniqueMap.set(state.userId, {
+                id: state.userId,
+                username: currentName,
+                avatar: state.avatarColor || '#5865F2',
+                userTag: state.userTag || (isMeDim ? '#4095' : '#6060'),
+                status: state.userStatus || 'online',
+                activity: state.userActivity || null,
+                isMaster: isMeDim,
+                isOwner: isMeDim || state.isOwner
+            });
+        } else {
+            const myEntry = uniqueMap.get(state.userId);
+            myEntry.username = currentName;
+            myEntry.userTag = state.userTag || myEntry.userTag;
+            myEntry.status = state.userStatus || myEntry.status;
+            myEntry.activity = state.userActivity || myEntry.activity;
+            if (isMeDim) {
+                myEntry.isMaster = true;
+                myEntry.isOwner = true;
+            }
+        }
+    }
+
+    // 4. ISOLAMENTO DE MEMBROS POR SERVIDOR: Em servidores particulares, mostra APENAS usuários daquele servidor!
+    if (isCustomServer && state.currentServerMemberIds) {
+        for (const uid of Array.from(uniqueMap.keys())) {
+            if (!state.currentServerMemberIds.has(uid)) {
+                uniqueMap.delete(uid);
+            }
         }
     }
 
