@@ -786,6 +786,7 @@ async function handleServerMessage(data) {
             break;
 
         case 'vip_required':
+            stopCinemaPlayback();
             openVipModal();
             if (state.currentVoiceChannel === data.channelId) {
                 leaveVoiceChannel(false);
@@ -5270,6 +5271,13 @@ function fallbackMpegts(tsUrl, video) {
 }
 
 function playCinemaStream(cinema) {
+    // Bloqueio estrito: usuários sem VIP nunca reproduzem filmes, séries ou canais IPTV — abre o QR Code PIX!
+    if (!state.isVip && !state.isOwner) {
+        stopCinemaPlayback();
+        openVipModal();
+        showToast('👑 Conteúdo exclusivo VIP! Escaneie o QR Code Pix para liberar Filmes, Séries e TV Ao Vivo.', 6000);
+        return;
+    }
     const stage = document.getElementById('video-stage');
     const video = document.getElementById('stage-video');
     if (!stage || !video || !cinema) return;
@@ -5550,6 +5558,13 @@ function renderIptvStreams(streams) {
             if (isSeries) {
                 openSeriesEpisodes(stream);
             } else {
+                // Permite explorar todo o catálogo, mas ao dar play sem VIP abre o QR Code de ativação e NÃO roda!
+                if (!state.isVip && !state.isOwner) {
+                    closeIptvModal();
+                    openVipModal();
+                    showToast('👑 Ative seu Passe VIP pelo QR Code Pix para assistir Filmes, Séries e TV Ao Vivo!', 6000);
+                    return;
+                }
                 const targetRoom = document.getElementById('iptv-select-target-room').value;
                 const cinemaObj = {
                     streamId: stream.stream_id,
@@ -5661,6 +5676,13 @@ async function openSeriesEpisodes(series) {
                     <button class="iptv-stream-btn"><i class="fa-solid fa-play"></i> Assistir</button>
                 `;
                 epCard.onclick = () => {
+                    // Permite ver temporadas e episódios, mas ao dar play sem VIP abre o QR Code e NÃO roda!
+                    if (!state.isVip && !state.isOwner) {
+                        closeIptvModal();
+                        openVipModal();
+                        showToast('👑 Ative seu Passe VIP pelo QR Code Pix para assistir Séries, Filmes e TV Ao Vivo!', 6000);
+                        return;
+                    }
                     const targetRoom = document.getElementById('iptv-select-target-room').value;
                     const fullEpName = `${seriesName} • T${sNum} ${epTitle}`;
                     state.currentSeriesPlaylist = flatPlaylist;
