@@ -95,6 +95,132 @@ clients = {}  # ws -> { id, username, avatar, voiceChannel, isMuted, isDeafened,
 public_tunnel_url = None
 cloudflared_proc = None
 
+# --- BACKUP AUTOMÁTICO NA NUVEM (GITHUB GIST PRIVADO) ---
+# Mantém usuários, logins, VIPs, servidores, canais, ADMs, banidos e mensagens salvos entre atualizações do Render!
+import threading
+import urllib.request
+import urllib.error
+
+VOX_GIST_TOKEN = os.environ.get("VOX_GIST_TOKEN", "").strip()
+VOX_GIST_ID = os.environ.get("VOX_GIST_ID", "").strip()
+CLOUD_BACKUP_FILENAME = "vox_cloud_backup.json"
+CLOUD_BACKUP_FILES = [
+    "members.json", "vips.json", "servers.json", "channels.json",
+    "banned.json", "owners.json", "admins.json", "messages.json",
+    "audit_logs.json", "warnings.json", "muted_users.json"
+]
+_cloud_sync_timer = None
+_cloud_sync_lock = threading.Lock()
+_cloud_restoring = False
+
+def _gist_api_request(method, path, payload=None):
+    if not VOX_GIST_TOKEN:
+        return None
+    url = f"https://api.github.com{path}"
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={
+            "Authorization": f"token {VOX_GIST_TOKEN}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "VOX-Cloud-Sync/1.0",
+            "Content-Type": "application/json"
+        }
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+def restore_from_github_gist():
+    global VOX_GIST_ID, _cloud_restoring
+    if not VOX_GIST_TOKEN:
+        print("[CloudSync] VOX_GIST_TOKEN não configurado; usando apenas armazenamento local.")
+        return
+    _cloud_restoring = True
+    try:
+        gist_data = None
+        if VOX_GIST_ID:
+            gist_data = _gist_api_request("GET", f"/gists/{VOX_GIST_ID}")
+        else:
+            # Procura automaticamente um Gist privado existente chamado vox_cloud_backup.json
+            gists = _gist_api_request("GET", "/gists?per_page=30") or []
+            for g in gists:
+                if CLOUD_BACKUP_FILENAME in (g.get("files") or {}):
+                    VOX_GIST_ID = g.get("id", "")
+                    gist_data = _gist_api_request("GET", f"/gists/{VOX_GIST_ID}")
+                    break
+        if gist_data:
+            file_info = (gist_data.get("files") or {}).get(CLOUD_BACKUP_FILENAME)
+            if file_info:
+                content = file_info.get("content")
+                if file_info.get("truncated") and file_info.get("raw_url"):
+                    req = urllib.request.Request(file_info["raw_url"], headers={"Authorization": f"token {VOX_GIST_TOKEN}", "User-Agent": "VOX-Cloud-Sync/1.0"})
+                    with urllib.request.urlopen(req, timeout=15) as r:
+                        content = r.read().decode("utf-8")
+                if content:
+                    bundle = json.loads(content)
+                    restored_count = 0
+                    for fname, fdata in bundle.items():
+                        if fname in CLOUD_BACKUP_FILES:
+                            with open(APP_DIR / fname, "w", encoding="utf-8") as f:
+                                json.dump(fdata, f, ensure_ascii=False, indent=2)
+                            restored_count += 1
+                    print(f"[CloudSync] Restaurados {restored_count} arquivos do Gist privado ({VOX_GIST_ID}) com sucesso!")
+        else:
+            print("[CloudSync] Nenhum backup anterior encontrado no Gist ainda; será criado no primeiro salvamento.")
+    except Exception as e:
+        print(f"[CloudSync] Aviso ao restaurar backup do GitHub Gist: {e}")
+    finally:
+        _cloud_restoring = False
+
+def _push_cloud_backup_now():
+    global VOX_GIST_ID
+    if not VOX_GIST_TOKEN or _cloud_restoring:
+        return
+    try:
+        bundle = {}
+        for fname in CLOUD_BACKUP_FILES:
+            fpath = APP_DIR / fname
+            if fpath.exists():
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        bundle[fname] = json.load(f)
+                except Exception:
+                    pass
+        payload_files = {
+            CLOUD_BACKUP_FILENAME: {
+                "content": json.dumps(bundle, ensure_ascii=False)
+            }
+        }
+        if VOX_GIST_ID:
+            _gist_api_request("PATCH", f"/gists/{VOX_GIST_ID}", {"files": payload_files})
+        else:
+            created = _gist_api_request("POST", "/gists", {
+                "description": "VOX Cloud Backup (Privado - Automático)",
+                "public": False,
+                "files": payload_files
+            })
+            if created and created.get("id"):
+                VOX_GIST_ID = created["id"]
+                print(f"[CloudSync] Novo Gist privado criado automaticamente: {VOX_GIST_ID}")
+    except Exception as e:
+        print(f"[CloudSync] Erro ao enviar backup para o GitHub Gist: {e}")
+
+def schedule_cloud_backup():
+    global _cloud_sync_timer
+    if not VOX_GIST_TOKEN or _cloud_restoring:
+        return
+    with _cloud_sync_lock:
+        if _cloud_sync_timer is not None:
+            _cloud_sync_timer.cancel()
+        _cloud_sync_timer = threading.Timer(3.0, _push_cloud_backup_now)
+        _cloud_sync_timer.daemon = True
+        _cloud_sync_timer.start()
+
+# Restaura dados salvos na nuvem ANTES de carregar os JSONs locais
+restore_from_github_gist()
+
 # Membros Cadastrados Permanentes (Integrantes do Servidor)
 MEMBERS_FILE = APP_DIR / "members.json"
 CHANNELS_FILE = APP_DIR / "channels.json"
@@ -114,6 +240,7 @@ def save_members(members):
     try:
         with open(MEMBERS_FILE, "w", encoding="utf-8") as f:
             json.dump(members, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception:
         pass
 
@@ -151,6 +278,7 @@ def save_channels(data):
     try:
         with open(CHANNELS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception as e:
         print(f"Erro ao salvar canais: {e}")
 
@@ -176,6 +304,7 @@ def save_json_data(file_path, data):
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception as e:
         print(f"[VOX] Erro ao salvar {file_path}: {e}")
 
@@ -229,6 +358,7 @@ def save_vips(data):
     try:
         with open(VIPS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception as e:
         print(f"Erro ao salvar VIPs: {e}")
 
@@ -278,6 +408,7 @@ def save_servers(data):
     try:
         with open(SERVERS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception as e:
         print(f"Erro ao salvar servidores: {e}")
 
@@ -309,6 +440,7 @@ def save_banned(data):
     try:
         with open(BANNED_FILE, "w", encoding="utf-8") as f:
             json.dump(list(data), f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception as e:
         print(f"Erro ao salvar banidos: {e}")
 
@@ -327,6 +459,7 @@ def save_owners(data):
     try:
         with open(OWNERS_FILE, "w", encoding="utf-8") as f:
             json.dump(list(data), f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception as e:
         print(f"Erro ao salvar donos: {e}")
 
@@ -347,6 +480,7 @@ def save_admins(data):
     try:
         with open(ADMINS_FILE, "w", encoding="utf-8") as f:
             json.dump(list(data), f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
     except Exception as e:
         print(f"Erro ao salvar administradores: {e}")
 
