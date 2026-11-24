@@ -3509,6 +3509,7 @@ function leaveVoiceChannel(notifyServer = true) {
     }
 
     renderVoiceUsers();
+    closeIptvModal();
     showToast('Desconectado da sala de voz.');
 }
 
@@ -3539,6 +3540,7 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
     }
     if (!chLower.includes('cinema-')) {
         stopCinemaPlayback();
+        closeIptvModal();
     }
 
     const oldChannel = state.currentVoiceChannel;
@@ -3584,8 +3586,15 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
         btnStreamToggle.style.display = (newChannel && newChannel.startsWith('cinema-')) ? 'none' : 'flex';
     }
 
-    // Verifica se a sala de cinema já possui transmissão ativa
+    // Verifica se a sala de cinema já possui transmissão ativa; se estiver vazia, já abre o catálogo IPTV na hora!
     checkRoomCinemaStream(newChannel);
+    if (isVipRoom && !(state.cinemaRooms && state.cinemaRooms[newChannel])) {
+        setTimeout(() => {
+            if (state.currentVoiceChannel === newChannel && !(state.cinemaRooms && state.cinemaRooms[newChannel])) {
+                openIptvModal();
+            }
+        }, 120);
+    }
 
     const statusPanel = document.getElementById('voice-status-panel');
     if (statusPanel) statusPanel.style.display = 'flex';
