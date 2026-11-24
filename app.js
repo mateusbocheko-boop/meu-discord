@@ -4030,7 +4030,7 @@ function renderMembersSidebar() {
             : (liveUser?.bannerUrl || member.bannerUrl || '');
         if (memberBannerUrl) {
             row.classList.add('has-banner');
-            row.style.backgroundImage = `linear-gradient(90deg, rgba(14,19,31,0.80) 0%, rgba(14,19,31,0.45) 60%, rgba(14,19,31,0.30) 100%), url("${memberBannerUrl}")`;
+            row.style.backgroundImage = `linear-gradient(90deg, rgba(12,15,24,0.68) 0%, rgba(12,15,24,0.34) 55%, rgba(12,15,24,0.18) 100%), url("${memberBannerUrl}")`;
         }
         const nameDisplay = isMe ? `${escapeHtml(member.username)} (Você)` : escapeHtml(member.username);
         const avatarLetter = (member.username || 'U')[0].toUpperCase();
