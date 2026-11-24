@@ -1458,7 +1458,7 @@ async def websocket_handler(request):
             elif msg_type == "cinema_sync":
                 room = data.get("room")
                 cinema = cinema_rooms.get(room)
-                if cinema and cinema.get("startedById") == user_id:
+                if cinema and (cinema.get("startedById") == user_id or clients.get(ws, {}).get("isOwner")):
                     cinema["currentTime"] = float(data.get("currentTime", 0.0))
                     cinema["isPlaying"] = bool(data.get("isPlaying", True))
                     cinema["updatedAt"] = time.time()

@@ -4187,28 +4187,133 @@ function setupEventListeners() {
         vid.ondblclick = () => toggleVideoFullscreen();
     }
 
-    // Play/Pause do Vídeo - APENAS O DONO PODE PAUSAR
-    on('btn-vid-play', 'click', () => {
-        if (!vid) return;
+    // Play/Pause, Stop, -10s, +10s, Barra Temporal e Próximo Episódio (Filmes e Séries)
+    const formatMediaTime = (sec) => {
+        if (!isFinite(sec) || sec < 0) return '00:00';
+        const s = Math.floor(sec % 60);
+        const m = Math.floor((sec / 60) % 60);
+        const h = Math.floor(sec / 3600);
+        const pad = n => String(n).padStart(2, '0');
+        return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+    };
+
+    const canControlCurrentCinema = () => {
         const currentRoom = state.currentVoiceChannel;
         const cinema = (currentRoom && state.cinemaRooms) ? state.cinemaRooms[currentRoom] : null;
-        const isOwner = cinema && (cinema.startedById === state.userId);
+        if (!cinema) return false;
+        return cinema.startedById === state.userId || state.isOwner;
+    };
 
-        if (!isOwner) {
-            showToast('🔒 Apenas quem iniciou o filme pode pausar ou mexer no tempo.');
+    const syncCinemaNow = () => {
+        if (!vid || !state.currentVoiceChannel) return;
+        sendWs({
+            type: 'cinema_sync',
+            room: state.currentVoiceChannel,
+            currentTime: vid.currentTime || 0,
+            isPlaying: !vid.paused
+        });
+    };
+
+    on('btn-vid-play', 'click', () => {
+        if (!vid) return;
+        if (!canControlCurrentCinema()) {
+            showToast('🔒 Apenas quem iniciou o filme/série pode pausar ou mexer no tempo.');
             return;
         }
-
         const btnPlay = document.getElementById('btn-vid-play');
         if (vid.paused) {
             vid.play().then(() => {
                 if (btnPlay) btnPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+                syncCinemaNow();
             }).catch(() => {});
         } else {
             vid.pause();
             if (btnPlay) btnPlay.innerHTML = '<i class="fa-solid fa-play"></i>';
+            syncCinemaNow();
         }
     });
+
+    on('btn-vid-stop', 'click', () => {
+        if (!canControlCurrentCinema()) {
+            showToast('🔒 Apenas quem iniciou o filme/série pode parar a transmissão.');
+            return;
+        }
+        stopCinemaStream();
+    });
+
+    on('btn-vid-back10', 'click', () => {
+        if (!vid) return;
+        if (!canControlCurrentCinema()) {
+            showToast('🔒 Apenas quem iniciou o filme/série pode voltar o tempo.');
+            return;
+        }
+        vid.currentTime = Math.max(0, (vid.currentTime || 0) - 10);
+        syncCinemaNow();
+    });
+
+    on('btn-vid-fwd10', 'click', () => {
+        if (!vid) return;
+        if (!canControlCurrentCinema()) {
+            showToast('🔒 Apenas quem iniciou o filme/série pode avançar o tempo.');
+            return;
+        }
+        const maxDur = isFinite(vid.duration) ? vid.duration : (vid.currentTime || 0) + 10;
+        vid.currentTime = Math.min(maxDur, (vid.currentTime || 0) + 10);
+        syncCinemaNow();
+    });
+
+    on('btn-vid-next-ep', 'click', () => {
+        if (!canControlCurrentCinema()) {
+            showToast('🔒 Apenas quem iniciou a série pode passar para o próximo episódio.');
+            return;
+        }
+        if (typeof playNextSeriesEpisode === 'function') {
+            playNextSeriesEpisode();
+        }
+    });
+
+    const seekSlider = document.getElementById('vid-seek-slider');
+    let isSeekingSlider = false;
+    if (seekSlider && vid) {
+        seekSlider.addEventListener('mousedown', () => { isSeekingSlider = true; });
+        seekSlider.addEventListener('touchstart', () => { isSeekingSlider = true; }, { passive: true });
+        seekSlider.addEventListener('input', () => {
+            if (!canControlCurrentCinema()) return;
+            if (isFinite(vid.duration) && vid.duration > 0) {
+                const targetTime = (parseFloat(seekSlider.value) / 100) * vid.duration;
+                const curEl = document.getElementById('vid-time-current');
+                if (curEl) curEl.textContent = formatMediaTime(targetTime);
+            }
+        });
+        seekSlider.addEventListener('change', () => {
+            isSeekingSlider = false;
+            if (!canControlCurrentCinema()) {
+                showToast('🔒 Apenas quem iniciou o filme/série pode mexer na barra temporal.');
+                return;
+            }
+            if (isFinite(vid.duration) && vid.duration > 0) {
+                vid.currentTime = (parseFloat(seekSlider.value) / 100) * vid.duration;
+                syncCinemaNow();
+            }
+        });
+        vid.addEventListener('timeupdate', () => {
+            const curEl = document.getElementById('vid-time-current');
+            const durEl = document.getElementById('vid-time-duration');
+            if (curEl) curEl.textContent = formatMediaTime(vid.currentTime || 0);
+            if (isFinite(vid.duration) && vid.duration > 0) {
+                if (durEl) durEl.textContent = formatMediaTime(vid.duration);
+                if (!isSeekingSlider) {
+                    seekSlider.value = ((vid.currentTime / vid.duration) * 100).toFixed(2);
+                }
+            }
+        });
+        vid.addEventListener('loadedmetadata', () => {
+            const durEl = document.getElementById('vid-time-duration');
+            if (durEl && isFinite(vid.duration) && vid.duration > 0) {
+                durEl.textContent = formatMediaTime(vid.duration);
+            }
+        });
+    }
 
     on('btn-big-play', 'click', () => {
         if (!vid) return;
@@ -5190,9 +5295,32 @@ function playCinemaStream(cinema) {
     document.getElementById('hud-res').textContent = '1080p FHD';
     document.getElementById('hud-fps').textContent = '60 FPS';
 
+    const isVodOrSeries = (cinema.streamType === 'vod' || cinema.streamType === 'series');
+    const canCtrl = isOwner || state.isOwner;
     const btnPlay = document.getElementById('btn-vid-play');
-    if (btnPlay) {
-        btnPlay.style.display = isOwner ? 'flex' : 'none';
+    if (btnPlay) btnPlay.style.display = (canCtrl && isVodOrSeries) ? 'inline-flex' : (canCtrl ? 'flex' : 'none');
+
+    const progressWrap = document.getElementById('cinema-progress-wrap');
+    if (progressWrap) progressWrap.style.display = isVodOrSeries ? 'flex' : 'none';
+
+    const seekEl = document.getElementById('vid-seek-slider');
+    if (seekEl) seekEl.disabled = !canCtrl;
+
+    ['btn-vid-stop', 'btn-vid-back10', 'btn-vid-fwd10'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = (canCtrl && isVodOrSeries) ? 'inline-flex' : 'none';
+    });
+
+    const nextEpBtn = document.getElementById('btn-vid-next-ep');
+    if (nextEpBtn) {
+        const hasNextEp = (
+            cinema.streamType === 'series' &&
+            canCtrl &&
+            Array.isArray(state.currentSeriesPlaylist) &&
+            state.currentSeriesIndex >= 0 &&
+            state.currentSeriesIndex < state.currentSeriesPlaylist.length - 1
+        );
+        nextEpBtn.style.display = hasNextEp ? 'inline-flex' : 'none';
     }
     const lockBadge = document.getElementById('hud-sync-lock-badge');
     if (lockBadge) {
@@ -5493,6 +5621,22 @@ async function openSeriesEpisodes(series) {
         }
 
         grid.innerHTML = '';
+        // Monta playlist ordenada de todos os episódios da série para o botão "Próximo Episódio"
+        const flatPlaylist = [];
+        seasons.forEach(sNum => {
+            (episodes[sNum] || []).forEach(ep => {
+                const epTitle = ep.title || `Episódio ${ep.episode_num}`;
+                const icon = ep.info?.movie_image || series.cover || '';
+                flatPlaylist.push({
+                    streamId: ep.id,
+                    streamName: `${seriesName} • T${sNum} ${epTitle}`,
+                    ext: ep.container_extension || 'mp4',
+                    poster: icon
+                });
+            });
+        });
+
+        let flatIdxCounter = 0;
         seasons.forEach(sNum => {
             const seasonTitle = document.createElement('div');
             seasonTitle.style.gridColumn = '1 / -1';
@@ -5506,6 +5650,7 @@ async function openSeriesEpisodes(series) {
 
             const epList = episodes[sNum] || [];
             epList.forEach(ep => {
+                const myFlatIdx = flatIdxCounter++;
                 const epCard = document.createElement('div');
                 epCard.className = 'iptv-stream-card';
                 const epTitle = ep.title || `Episódio ${ep.episode_num}`;
@@ -5518,6 +5663,8 @@ async function openSeriesEpisodes(series) {
                 epCard.onclick = () => {
                     const targetRoom = document.getElementById('iptv-select-target-room').value;
                     const fullEpName = `${seriesName} • T${sNum} ${epTitle}`;
+                    state.currentSeriesPlaylist = flatPlaylist;
+                    state.currentSeriesIndex = myFlatIdx;
                     const cinemaObj = {
                         streamId: ep.id,
                         streamName: fullEpName,
@@ -5554,6 +5701,48 @@ async function openSeriesEpisodes(series) {
     } catch (e) {
         grid.innerHTML = '<div class="iptv-placeholder">Erro ao carregar episódios da série.</div>';
     }
+}
+
+function playNextSeriesEpisode() {
+    if (!Array.isArray(state.currentSeriesPlaylist) || state.currentSeriesIndex < 0) {
+        showToast('ℹ️ Nenhum próximo episódio na fila.');
+        return;
+    }
+    const nextIdx = state.currentSeriesIndex + 1;
+    if (nextIdx >= state.currentSeriesPlaylist.length) {
+        showToast('🏁 Você já está no último episódio desta série!');
+        return;
+    }
+    const nextEp = state.currentSeriesPlaylist[nextIdx];
+    const targetRoom = state.currentVoiceChannel;
+    if (!targetRoom || !targetRoom.includes('cinema-')) return;
+
+    state.currentSeriesIndex = nextIdx;
+    const cinemaObj = {
+        streamId: nextEp.streamId,
+        streamName: nextEp.streamName,
+        streamType: 'series',
+        ext: nextEp.ext || 'mp4',
+        poster: nextEp.poster || '',
+        startedBy: state.username,
+        startedById: state.userId,
+        currentTime: 0,
+        isPlaying: true
+    };
+    if (!state.cinemaRooms) state.cinemaRooms = {};
+    state.cinemaRooms[targetRoom] = cinemaObj;
+
+    sendWs({
+        type: 'cinema_play',
+        room: targetRoom,
+        streamId: nextEp.streamId,
+        streamName: nextEp.streamName,
+        streamType: 'series',
+        ext: nextEp.ext || 'mp4',
+        poster: nextEp.poster || ''
+    });
+    playCinemaStream(cinemaObj);
+    showToast(`⏭️ Próximo episódio: <b>${escapeHtml(nextEp.streamName)}</b>`);
 }
 
 function createFallbackIcon() {
