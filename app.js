@@ -269,12 +269,12 @@ function renderChannels() {
         const canDelVoice = hasCurrentServerOwnerPowers() && ch.id !== 'geral';
         const isCinemaVip = ch.id.startsWith('cinema-') || ch.type === 'cinema' || ch.isVip;
         const vipTagHtml = isCinemaVip
-            ? `<span class="cinema-vip-badge" title="Sala Exclusiva VIP" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;margin-left:auto;margin-right:4px;display:inline-flex;align-items:center;gap:2px;flex-shrink:0;"><i class="fa-solid fa-crown" style="font-size:8px;color:#000;"></i> VIP</span>`
+            ? `<span class="cinema-vip-badge" title="Sala Exclusiva VIP" style="background:linear-gradient(135deg,#ffd700,#f59e0b);color:#000;font-size:9px;font-weight:900;padding:2px 6px;border-radius:4px;margin-left:auto;margin-right:4px;display:inline-flex;align-items:center;gap:3px;flex-shrink:0;box-shadow:0 0 8px rgba(255,215,0,0.45);"><i class="fa-solid fa-crown" style="font-size:9px;color:#000;"></i> VIP</span>`
             : '';
         vItem.innerHTML = `
-            <div class="voice-header">
-                <i class="fa-solid ${iconClass}"></i>
-                <span>${escapeHtml(ch.name.replace(/^[\ufffd\?🔊🎮🎬🍿⚽🏆☕💤🎞️👑\s]+/g, '').trim() || ch.name)}</span>
+            <div class="voice-header" style="display:flex;align-items:center;gap:6px;width:100%;">
+                <i class="fa-solid ${iconClass}"${isCinemaVip ? ' style="color:#ffd700;flex-shrink:0;"' : ' style="flex-shrink:0;"'}></i>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(ch.name.replace(/^[\ufffd\?🔊🎮🎬🍿⚽🏆☕💤🎞️👑\s]+/g, '').trim() || ch.name)}</span>
                 ${vipTagHtml}
                 <span class="live-pill" id="live-tag-${ch.id}" style="display: none;">AO VIVO</span>
                 ${canDelVoice ? `<button class="btn-del-channel" title="Excluir Sala"><i class="fa-solid fa-xmark"></i></button>` : ''}
@@ -3583,7 +3583,7 @@ function renderMembersSidebar() {
         const isMe = (member.id === state.userId);
         const liveUser = state.users ? state.users.get(member.id) : null;
         const userStatus = isMe ? (state.userStatus || 'online') : (liveUser?.status || member.status || 'online');
-        const userActivity = isMe ? (state.userActivity || null) : (liveUser?.activity || member.activity || null);
+        const userActivity = isMe ? (state.userActivity || liveUser?.activity || member.activity || null) : (liveUser?.activity || member.activity || null);
 
         // Se o usuário estiver invisível e não for eu mesmo, aparece offline para os outros
         let isOnline = isMe ? (state.userStatus !== 'invisible' && state.userStatus !== 'offline') : ((state.onlineUserIds && state.onlineUserIds.has(member.id)) || (state.users && state.users.has(member.id)));
@@ -3657,9 +3657,9 @@ function renderMembersSidebar() {
                            userActivity.type === 'listening' ? 'Ouvindo' :
                            'Jogando';
             const iconColor = userActivity.type === 'watching' ? '#a855f7' : '#22c55e';
-            activityHtml = `<div class="member-activity-sub" title="${escapeHtml(userActivity.name)}">
-                <i class="${icon}" style="color:${iconColor};font-size:10px;"></i>
-                <span>${prefix} <strong style="color:#ffffff;">${escapeHtml(userActivity.name)}</strong></span>
+            activityHtml = `<div class="member-activity-sub" title="${escapeHtml(userActivity.name)}" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#b5bac1;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                <i class="${icon}" style="color:${iconColor};font-size:10px;flex-shrink:0;"></i>
+                <span style="overflow:hidden;text-overflow:ellipsis;">${prefix} <strong style="color:#ffffff;">${escapeHtml(userActivity.name)}</strong></span>
             </div>`;
         }
 
@@ -5667,7 +5667,12 @@ function closeVipModal() {
 // =========================================================================
 
 state.userStatus = 'online';
-state.userActivity = null;
+state.userActivity = (() => {
+    try {
+        const saved = localStorage.getItem('vox_user_activity');
+        return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+})();
 state.activeAuditUserId = null;
 state.currentAuditData = null;
 
@@ -5760,6 +5765,7 @@ function initVoxStatusAndActivity() {
             const type = activePill ? activePill.getAttribute('data-type') : 'playing';
 
             state.userActivity = { type: type, name: name };
+            try { localStorage.setItem('vox_user_activity', JSON.stringify(state.userActivity)); } catch (e) {}
             sendWs({ type: 'set_activity', activity: state.userActivity });
 
             const actLabel = document.getElementById('current-activity-label');
@@ -5817,6 +5823,7 @@ function setUserStatus(status) {
 
 function clearUserActivity() {
     state.userActivity = null;
+    try { localStorage.removeItem('vox_user_activity'); } catch (e) {}
     sendWs({ type: 'set_activity', activity: null });
     const actLabel = document.getElementById('current-activity-label');
     if (actLabel) actLabel.textContent = 'Nenhuma atividade';
