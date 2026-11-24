@@ -570,6 +570,11 @@ def sanitize_global_owners():
             print(f"[SanitizeOwners] Removido dono indevido de server_owners: {uid}")
 
     for uid, rec in list(server_members.items()):
+        if uid in server_banned:
+            server_members.pop(uid, None)
+            members_changed = True
+            print(f"[SanitizeOwners] Removido usuário banido de server_members: {uid}")
+            continue
         if isinstance(rec, dict) and (rec.get("isOwner") or rec.get("isMaster")):
             if not _is_dim_record(uid, rec):
                 rec["isOwner"] = False
@@ -2469,7 +2474,15 @@ async def websocket_handler(request):
                                 srv_obj["members"].remove(target_id)
                             if target_id in srv_obj.get("admins", []):
                                 srv_obj["admins"].remove(target_id)
+                            mp = srv_obj.get("memberProfiles")
+                            if isinstance(mp, dict) and target_id in mp:
+                                mp.pop(target_id, None)
                             save_servers(all_servers)
+                            await broadcast_to_server(current_srv_id, {
+                                "type": "member_removed",
+                                "serverId": current_srv_id,
+                                "userId": target_id
+                            })
                         for target_ws, u in list(clients.items()):
                             if u.get("id") == target_id and u.get("currentServerId") == current_srv_id:
                                 u["currentServerId"] = "default"
@@ -2507,7 +2520,7 @@ async def websocket_handler(request):
                             try:
                                 await target_ws.send_str(json.dumps({
                                     "type": "force_disconnect",
-                                    "reason": "Você foi desconectado pelo Dono do Servidor."
+                                    "reason": "Você foi expulso pelo Dono do Servidor."
                                 }))
                                 await target_ws.close()
                             except Exception:
@@ -2520,6 +2533,16 @@ async def websocket_handler(request):
                             })
                             await check_empty_cinema_rooms()
                             break
+
+                    # Remove o expulso da lista de membros do servidor principal também!
+                    if target_id in server_members:
+                        server_members.pop(target_id, None)
+                        save_members(server_members)
+                    await broadcast({
+                        "type": "member_removed",
+                        "serverId": "default",
+                        "userId": target_id
+                    })
 
                 elif msg_type == "admin_ban_user":
                     target_id = data.get("targetUserId")
@@ -2570,6 +2593,11 @@ async def websocket_handler(request):
                                     srv_banned.append(target_id)
                                 if target_id in srv_obj.get("members", []):
                                     srv_obj["members"].remove(target_id)
+                                if target_id in srv_obj.get("admins", []):
+                                    srv_obj["admins"].remove(target_id)
+                                mp = srv_obj.get("memberProfiles")
+                                if isinstance(mp, dict) and target_id in mp:
+                                    mp.pop(target_id, None)
                                 save_servers(all_servers)
                                 for target_ws, u in list(clients.items()):
                                     if u.get("id") == target_id and u.get("currentServerId") == current_srv_id:
@@ -2611,21 +2639,29 @@ async def websocket_handler(request):
                                 })
                             continue
 
+                        removed_ids = {target_id}
                         server_banned.add(target_id)
                         if target_id in server_admins:
                             server_admins.discard(target_id)
                             save_admins(server_admins)
                         if target_id in server_members:
-                            server_members[target_id]["isAdmin"] = False
-                            server_members[target_id]["isOwner"] = False
-                            save_members(server_members)
-                        for m_id, m in server_members.items():
+                            server_members.pop(target_id, None)
+                        for m_id, m in list(server_members.items()):
                             if m.get("username", "").strip().lower() == str(banned_name).strip().lower():
                                 server_banned.add(m_id)
+                                removed_ids.add(m_id)
+                                server_members.pop(m_id, None)
                                 if m_id in server_admins:
                                     server_admins.discard(m_id)
                                     save_admins(server_admins)
+                        save_members(server_members)
                         save_banned(server_banned)
+                        for rid in removed_ids:
+                            await broadcast({
+                                "type": "member_removed",
+                                "serverId": "default",
+                                "userId": rid
+                            })
 
                         for target_ws, u in list(clients.items()):
                             match_u = (u.get("id") == target_id or u.get("username", "").strip().lower() == str(banned_name).strip().lower())

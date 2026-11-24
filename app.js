@@ -1446,6 +1446,20 @@ async function handleServerMessage(data) {
             renderVoiceUsers();
             break;
 
+        case 'member_removed':
+            if (data.userId) {
+                removeStream(data.userId);
+                closePeerConnection(data.userId);
+                state.users.delete(data.userId);
+                state.onlineUserIds.delete(data.userId);
+                if (state.serverMembers) state.serverMembers.delete(data.userId);
+                if (state.serverAdmins) state.serverAdmins.delete(data.userId);
+                if (state.currentServerAdmins) state.currentServerAdmins.delete(data.userId);
+            }
+            renderVoiceUsers();
+            renderMembersSidebar();
+            break;
+
         case 'user_banned':
             if (data.bannedList) {
                 state.bannedUsers = data.bannedList;
@@ -1455,6 +1469,9 @@ async function handleServerMessage(data) {
                 closePeerConnection(data.userId);
                 state.users.delete(data.userId);
                 state.onlineUserIds.delete(data.userId);
+                if (state.serverMembers) state.serverMembers.delete(data.userId);
+                if (state.serverAdmins) state.serverAdmins.delete(data.userId);
+                if (state.currentServerAdmins) state.currentServerAdmins.delete(data.userId);
             }
             renderVoiceUsers();
             renderMembersSidebar();
