@@ -17,8 +17,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VOX</title>
-    <link rel="manifest" href="/manifest.json?v=vox4">
-    <meta name="theme-color" content="#a855f7">
+    <link rel="manifest" href="/manifest.json?v=vox5">
+    <meta name="theme-color" content="#000000" id="meta-theme-color">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -848,8 +848,29 @@
                 <!-- ABA 6: APARÊNCIA -->
                 <div class="settings-page" id="tab-page-appearance">
                     <h2>Aparência</h2>
-                    <p class="modal-desc">Personalize cores, tema, zoom e fonte do VOX:</p>
-                    <div class="setting-group" style="margin-top: 16px;">
+                    <p class="modal-desc">Personalize cores da barra superior, modo tudo preto (Dark OLED), tema, zoom e fonte do VOX:</p>
+
+                    <div class="setting-checkbox" style="margin-top: 14px; background: #000000; border: 1px solid rgba(255,255,255,0.16); padding: 12px 14px; border-radius: 8px;">
+                        <label class="switch-label">
+                            <input type="checkbox" id="pref-full-dark-oled">
+                            <span><b>🖤 Ativar Modo Dark Total (Tudo Preto)</b> — deixa a barra superior, laterais e chat 100% pretos</span>
+                        </label>
+                    </div>
+
+                    <div class="setting-group" style="margin-top: 14px;">
+                        <label>COR DA BARRA SUPERIOR / JANELA DO APP (ESCOLHA A COR QUE QUISER)</label>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;">
+                            <input type="color" id="pref-custom-topbar-color" value="#000000" title="Escolher qualquer cor" style="width:44px;height:36px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;background:#000;cursor:pointer;padding:2px;">
+                            <button type="button" class="btn-preset-topbar" data-color="#000000" style="background:#000000;color:#fff;border:1px solid rgba(255,255,255,0.25);padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">⬛ Preto</button>
+                            <button type="button" class="btn-preset-topbar" data-color="#a855f7" style="background:#a855f7;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">💜 Roxo</button>
+                            <button type="button" class="btn-preset-topbar" data-color="#0284c7" style="background:#0284c7;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">💙 Azul</button>
+                            <button type="button" class="btn-preset-topbar" data-color="#16a34a" style="background:#16a34a;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">💚 Verde</button>
+                            <button type="button" class="btn-preset-topbar" data-color="#dc2626" style="background:#dc2626;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">❤️ Vermelho</button>
+                            <button type="button" class="btn-preset-topbar" data-color="#ca8a04" style="background:#ca8a04;color:#000;border:none;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">👑 Dourado</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-group" style="margin-top: 14px;">
                         <label>TEMA DO VOX</label>
                         <div class="option-cards" id="pref-opt-theme">
                             <div class="opt-card active" data-theme="default">🌌 VOX Escuro</div>

@@ -2777,12 +2777,20 @@ function openUserContextMenu(e, userId) {
     const watchBtn = document.getElementById('ctx-btn-watch-stream');
     watchBtn.style.display = state.activeStreams.has(userId) ? 'flex' : 'none';
 
-    // Identifica se o alvo é o Dono supremo do servidor
-    const isTargetOwner = (user && user.isOwner) || (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (user?.userTag?.includes('4095'));
-    const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin));
+    // Identifica se o alvo é o Dono supremo (Mestre DIM#4095) ou Dono do servidor particular atual
+    const isCustomSrvCtx = !!(state.currentServerId && state.currentServerId !== 'default');
+    const isTargetMaster = (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (String(user?.userTag || '').includes('4095'));
+    const isTargetPrivateOwner = isCustomSrvCtx && state.currentServerOwnerId && (userId === state.currentServerOwnerId);
+    // Somente o Mestre DIM#4095 é intocável; em servidor particular, o dono particular só é protegido de ADMs (não do Mestre DIM)
+    const isTargetProtected = isTargetMaster || (isTargetPrivateOwner && !state.isOwner);
+    const isTargetAdmin = !isTargetMaster && (
+        isCustomSrvCtx
+            ? (state.currentServerAdmins && state.currentServerAdmins.has(userId))
+            : ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin))
+    );
 
-    const isCurrentOwner = hasCurrentServerOwnerPowers();
-    const isCurrentAdmin = (state.currentServerId && state.currentServerId !== 'default') ? !!state.isCurrentServerAdmin : !!state.isAdmin;
+    const isCurrentOwner = hasCurrentServerOwnerPowers() || !!state.isOwner;
+    const isCurrentAdmin = isCustomSrvCtx ? !!state.isCurrentServerAdmin : !!state.isAdmin;
 
     // Opção de Moderação: Dossiê & Auditoria do Usuário (Dono ou ADM do servidor atual)
     const auditBtn = document.getElementById('ctx-btn-user-audit');
@@ -2818,10 +2826,10 @@ function openUserContextMenu(e, userId) {
         }
     }
 
-    // Opção do Dono do servidor atual: Dar ou Remover cargo de ADM neste servidor
+    // Opção do Dono do servidor atual (ou Mestre DIM): Dar ou Remover cargo de ADM neste servidor
     const toggleAdminBtn = document.getElementById('ctx-btn-toggle-admin');
     if (toggleAdminBtn) {
-        if (isCurrentOwner && !isSelf && !isTargetOwner) {
+        if (isCurrentOwner && !isSelf && !isTargetProtected) {
             toggleAdminBtn.style.display = 'flex';
             const icon = document.getElementById('ctx-admin-icon');
             const text = document.getElementById('ctx-admin-role-text');
@@ -2841,8 +2849,8 @@ function openUserContextMenu(e, userId) {
         }
     }
 
-    // Opções de moderação (visíveis para Dono E Administradores do servidor atual, exceto contra o Dono supremo)
-    const canModerate = (isCurrentOwner || isCurrentAdmin) && !isSelf && !isTargetOwner;
+    // Opções de moderação: Dono/Mestre pode moderar TODOS (inclusive ADMs!); ADMs só moderam não-ADMs e não-Dono
+    const canModerate = !isSelf && !isTargetProtected && (isCurrentOwner || (isCurrentAdmin && !isTargetAdmin));
     const adminItems = document.querySelectorAll('.admin-only');
     adminItems.forEach(el => {
         el.style.display = canModerate ? 'flex' : 'none';
@@ -2854,15 +2862,18 @@ function openUserContextMenu(e, userId) {
         stopStreamBtn.style.display = (canModerate && isStreaming) ? 'flex' : 'none';
     }
 
-    // Posiciona menu na tela sem vazar das bordas
+    // Posiciona menu na tela usando altura/largura REAL para nunca cortar os botões de moderação
+    menu.style.maxHeight = 'calc(100vh - 20px)';
+    menu.style.overflowY = 'auto';
     menu.style.display = 'flex';
-    const menuWidth = 230;
-    const menuHeight = 280;
+    const rect = menu.getBoundingClientRect();
+    const menuWidth = rect.width || 240;
+    const menuHeight = rect.height || 460;
     let x = e.clientX;
     let y = e.clientY;
 
-    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
-    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
+    if (x + menuWidth > window.innerWidth - 10) x = window.innerWidth - menuWidth - 10;
+    if (y + menuHeight > window.innerHeight - 10) y = window.innerHeight - menuHeight - 10;
 
     menu.style.left = `${Math.max(10, x)}px`;
     menu.style.top = `${Math.max(10, y)}px`;
@@ -7117,8 +7128,27 @@ function applyVoxVisualPrefs() {
         document.head.appendChild(styleEl);
     }
 
+    // Atualiza cor da barra superior do App PWA (<meta name="theme-color">)
+    const effectiveTopbar = p.fullDarkOled ? '#000000' : (p.topbarColor || '#000000');
+    let metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (!metaTheme) {
+        metaTheme = document.createElement('meta');
+        metaTheme.name = 'theme-color';
+        document.head.appendChild(metaTheme);
+    }
+    metaTheme.setAttribute('content', effectiveTopbar);
+
     let themeCss = '';
-    if (p.theme === 'amoled') {
+    if (p.fullDarkOled) {
+        themeCss = `
+            body, .app-layout, .main-stage-area, .chat-container, .chat-area, .chat-header,
+            .channels-sidebar, .members-sidebar, .user-footer, .servers-rail, .servers-nav,
+            .server-header, .settings-modal-box, .settings-sidebar, .settings-content {
+                background-color: #000000 !important;
+                background-image: none !important;
+            }
+        `;
+    } else if (p.theme === 'amoled') {
         themeCss = `
             body, .main-stage-area, .chat-container { background-color: #000000 !important; }
             .channels-sidebar, .members-sidebar, .user-footer, .servers-rail { background-color: #06070a !important; }
@@ -7142,6 +7172,9 @@ function applyVoxVisualPrefs() {
             .servers-rail { background-color: #020a07 !important; }
         `;
     }
+    const topbarAccentCss = (!p.fullDarkOled && p.topbarColor && p.topbarColor !== '#000000')
+        ? `.chat-header, .server-header { border-top: 2px solid ${p.topbarColor} !important; }`
+        : '';
 
     const accentCss = p.accent && p.accent !== '#00f2fe'
         ? `:root { --kord-accent: ${p.accent}; } .opt-card.active, .settings-tab.active { border-color: ${p.accent} !important; }`
@@ -7153,6 +7186,7 @@ function applyVoxVisualPrefs() {
 
     styleEl.textContent = `
         ${themeCss}
+        ${topbarAccentCss}
         ${accentCss}
         ${zoomCss}
         .chat-text { font-size: ${p.chatFontSize || 14}px !important; }
@@ -7241,6 +7275,40 @@ function initVoxDiscordSettings() {
     bindChk('pref-high-contrast', 'highContrast');
     bindChk('pref-enable-keybinds', 'enableKeybinds');
     bindChk('pref-dev-mode', 'devMode');
+
+    bindChk('pref-full-dark-oled', 'fullDarkOled', (val) => {
+        const picker = document.getElementById('pref-custom-topbar-color');
+        if (val && picker) picker.value = '#000000';
+        showToast(val ? '🖤 Modo Dark Total (Tudo Preto) ativado!' : '🎨 Modo Dark Total desativado.');
+    });
+
+    const topbarPicker = document.getElementById('pref-custom-topbar-color');
+    if (topbarPicker) {
+        topbarPicker.value = p.fullDarkOled ? '#000000' : (p.topbarColor || '#000000');
+        topbarPicker.addEventListener('input', () => {
+            p.topbarColor = topbarPicker.value;
+            if (p.topbarColor !== '#000000' && p.fullDarkOled) {
+                p.fullDarkOled = false;
+                const chk = document.getElementById('pref-full-dark-oled');
+                if (chk) chk.checked = false;
+            }
+            saveVoxPrefs();
+        });
+    }
+    document.querySelectorAll('.btn-preset-topbar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const col = btn.dataset.color || '#000000';
+            p.topbarColor = col;
+            if (topbarPicker) topbarPicker.value = col;
+            if (col !== '#000000' && p.fullDarkOled) {
+                p.fullDarkOled = false;
+                const chk = document.getElementById('pref-full-dark-oled');
+                if (chk) chk.checked = false;
+            }
+            saveVoxPrefs();
+            showToast(`🎨 Cor da barra superior alterada para ${col}!`);
+        });
+    });
 
     // 4. Temas, Cor de Destaque e Zoom (Aparência PRO)
     document.querySelectorAll('#pref-opt-theme .opt-card').forEach(card => {

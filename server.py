@@ -610,9 +610,12 @@ async def broadcast_to_server(server_id, message, exclude_ws=None):
 def is_current_server_owner(ws_client, server_id=None):
     if not ws_client:
         return False
+    # Mestre global (DIM#4095) tem poder supremo de Dono em qualquer servidor
+    if bool(ws_client.get("isOwner")):
+        return True
     sid = server_id or ws_client.get("currentServerId", "default")
     if sid == "default":
-        return bool(ws_client.get("isOwner"))
+        return False
     srv = all_servers.get(sid)
     return bool(srv and srv.get("ownerId") == ws_client.get("id"))
 
@@ -2296,8 +2299,11 @@ async def websocket_handler(request):
 
                     if current_srv_id != "default":
                         srv_obj = all_servers.get(current_srv_id)
-                        if srv_obj and target_id in srv_obj.get("members", []) and target_id != srv_obj.get("ownerId"):
-                            srv_obj["members"].remove(target_id)
+                        if srv_obj and target_id != srv_obj.get("ownerId"):
+                            if target_id in srv_obj.get("members", []):
+                                srv_obj["members"].remove(target_id)
+                            if target_id in srv_obj.get("admins", []):
+                                srv_obj["admins"].remove(target_id)
                             save_servers(all_servers)
                         for target_ws, u in list(clients.items()):
                             if u.get("id") == target_id and u.get("currentServerId") == current_srv_id:
@@ -2441,9 +2447,19 @@ async def websocket_handler(request):
                             continue
 
                         server_banned.add(target_id)
+                        if target_id in server_admins:
+                            server_admins.discard(target_id)
+                            save_admins(server_admins)
+                        if target_id in server_members:
+                            server_members[target_id]["isAdmin"] = False
+                            server_members[target_id]["isOwner"] = False
+                            save_members(server_members)
                         for m_id, m in server_members.items():
                             if m.get("username", "").strip().lower() == str(banned_name).strip().lower():
                                 server_banned.add(m_id)
+                                if m_id in server_admins:
+                                    server_admins.discard(m_id)
+                                    save_admins(server_admins)
                         save_banned(server_banned)
 
                         for target_ws, u in list(clients.items()):
