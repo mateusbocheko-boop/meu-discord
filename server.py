@@ -1140,7 +1140,7 @@ async def websocket_handler(request):
                     "trialGranted": trial_granted,
                     "admins": list(server_admins),
                     "banned": list(server_banned),
-                    "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "hideBadge": bool(v.get("hideBadge", False)), "expiresAt": v.get("expiresAt"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
+                    "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "hideBadge": bool(v.get("hideBadge", False)), "expiresAt": v.get("expiresAt"), "durationDays": v.get("durationDays"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
                 # Notifica todos os participantes em tempo real
@@ -1579,15 +1579,18 @@ async def websocket_handler(request):
                     if is_lifetime or str(duration_val).lower() == "lifetime":
                         vdata["isLifetime"] = True
                         vdata["expiresAt"] = None
-                        action_msg = f"👑 O usuário <b>{target_name}</b> recebeu Passe VIP VITALÍCIO do Dono (Nunca Expira)!"
+                        vdata["durationDays"] = None
+                        action_msg = f"💎 O usuário <b>{target_name}</b> recebeu Passe VIP <b>DIAMANTE (Vitalício)</b> do Dono!"
                     else:
                         vdata["isLifetime"] = False
                         try:
                             days = max(1, int(duration_val))
                         except Exception:
                             days = 30
+                        vdata["durationDays"] = days
                         vdata["expiresAt"] = time.time() + (days * 86400)
-                        action_msg = f"⭐ O usuário <b>{target_name}</b> recebeu {days} Dias de Acesso [VIP] do Dono!"
+                        tier_label = "OURO" if days >= 60 else ("PRATA" if days >= 30 else "BRONZE")
+                        action_msg = f"👑 O usuário <b>{target_name}</b> recebeu {days} Dias de Acesso <b>[VIP {tier_label}]</b> do Dono!"
 
                 server_vips[target_id] = vdata
                 save_vips(server_vips)
@@ -1613,7 +1616,10 @@ async def websocket_handler(request):
                     "userId": target_id,
                     "isVip": vdata["isVip"],
                     "isTrial": bool(vdata.get("isTrial", False)),
-                    "hideBadge": bool(vdata.get("hideBadge", False))
+                    "hideBadge": bool(vdata.get("hideBadge", False)),
+                    "isLifetime": bool(vdata.get("isLifetime", False)),
+                    "durationDays": vdata.get("durationDays"),
+                    "expiresAt": vdata.get("expiresAt")
                 })
 
                 await broadcast({

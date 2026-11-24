@@ -7,6 +7,39 @@ try { localStorage.removeItem('discord_is_owner'); } catch (e) {}
 // SISTEMA DO DONO DO SERVIDOR (OWNER POWERS) 👑
 // ==========================================================================
 
+function getVipBadgeHtml(userId, fallbackData = null) {
+    const sVip = state.vips ? state.vips.get(userId) : null;
+    const isVip = !!(sVip?.isVip || fallbackData?.isVip);
+    if (!isVip) return '';
+
+    const isTrial = !!(sVip?.isTrial || fallbackData?.isTrial);
+    const hideBadge = !!(sVip?.hideBadge);
+    if (isTrial && hideBadge) return ''; // Trial 15D sem selo visível
+
+    const isLifetime = !!(sVip?.isLifetime || fallbackData?.isLifetime);
+    if (isLifetime) {
+        return `<span class="badge-vip badge-vip-diamond" title="VIP Diamante (Vitalício)" style="background:linear-gradient(135deg,#38bdf8,#818cf8);color:#04101f;font-size:9.5px;font-weight:900;padding:2px 6px;border-radius:4px;margin-left:5px;display:inline-flex;align-items:center;gap:3px;box-shadow:0 0 8px rgba(56,189,248,0.55);"><i class="fa-solid fa-gem" style="font-size:9px;color:#04101f;"></i> DIAMANTE</span>`;
+    }
+
+    let days = (sVip && typeof sVip.durationDays === 'number') ? sVip.durationDays : null;
+    if (days === null) {
+        const exp = sVip?.expiresAt || fallbackData?.expiresAt;
+        if (exp) {
+            days = Math.max(0, Math.ceil((exp - (Date.now() / 1000)) / 86400));
+        } else {
+            days = 30;
+        }
+    }
+
+    if (days >= 60) {
+        return `<span class="badge-vip badge-vip-gold" title="VIP Ouro (${days} dias)" style="background:linear-gradient(135deg,#ffd700,#f59e0b);color:#1a1000;font-size:9.5px;font-weight:900;padding:2px 6px;border-radius:4px;margin-left:5px;display:inline-flex;align-items:center;gap:3px;box-shadow:0 0 8px rgba(255,215,0,0.5);"><i class="fa-solid fa-crown" style="font-size:9px;color:#1a1000;"></i> OURO</span>`;
+    }
+    if (days >= 30) {
+        return `<span class="badge-vip badge-vip-silver" title="VIP Prata (${days} dias)" style="background:linear-gradient(135deg,#f1f5f9,#94a3b8);color:#0f172a;font-size:9.5px;font-weight:900;padding:2px 6px;border-radius:4px;margin-left:5px;display:inline-flex;align-items:center;gap:3px;box-shadow:0 0 8px rgba(203,213,225,0.45);"><i class="fa-solid fa-crown" style="font-size:9px;color:#0f172a;"></i> PRATA</span>`;
+    }
+    return `<span class="badge-vip badge-vip-bronze" title="VIP Bronze (${days} dias)" style="background:linear-gradient(135deg,#e09145,#9a5018);color:#ffffff;font-size:9.5px;font-weight:900;padding:2px 6px;border-radius:4px;margin-left:5px;display:inline-flex;align-items:center;gap:3px;box-shadow:0 0 6px rgba(205,127,50,0.5);"><i class="fa-solid fa-crown" style="font-size:9px;color:#ffffff;"></i> BRONZE</span>`;
+}
+
 function isUserAllowedOwner() {
     if (state.isOwner) return true;
     const myName = (state.username || '').trim().toLowerCase();
@@ -766,7 +799,10 @@ async function handleServerMessage(data) {
                 state.vips.set(data.userId, {
                     isVip: true,
                     isTrial: !!data.isTrial,
-                    hideBadge: !!data.hideBadge
+                    hideBadge: !!data.hideBadge,
+                    isLifetime: !!data.isLifetime,
+                    durationDays: data.durationDays ?? null,
+                    expiresAt: data.expiresAt ?? null
                 });
             } else {
                 state.vips.delete(data.userId);
@@ -3344,16 +3380,7 @@ function renderChatMessage(data) {
             <div style="display:flex;align-items:center;gap:6px;">
                 <span class="chat-author" style="cursor:pointer;">${escapeHtml(data.username)}</span>
                 ${roleBadge}
-                ${(() => {
-    const sVip = state.vips ? state.vips.get(data.senderId) : null;
-    const isVip = data.isVip || (state.vips && state.vips.has(data.senderId));
-    if (!isVip || isAuthorOwner) return '';
-    if (data.isTrial || sVip?.isTrial) {
-        if (sVip?.hideBadge) return ''; // Trial sem badge visível (15D)
-        return '<span class="badge-vip-trial" title="VIP Degustação (15 Dias)"><i class="fa-solid fa-clock"></i> VIP 15D</span>';
-    }
-    return '<span class="badge-vip" title="Membro VIP"><i class="fa-solid fa-crown"></i> VIP</span>';
-})()}
+                ${isAuthorOwner ? '' : getVipBadgeHtml(data.senderId, data)}
                 <span class="chat-time">${time}</span>
             </div>
             <div class="chat-text">${escapeHtml(data.text)}</div>
@@ -3719,14 +3746,8 @@ function renderMembersSidebar() {
         const hideBadge = !isMemberMestre && (vipEntry?.hideBadge || false);
 
         let vipBadge = '';
-        if (isMemberMestre) {
-            // Mestre dos Magos tem badge própria
-        } else if (hasVipPass) {
-            if (isTrialVip && !hideBadge) {
-                vipBadge = '<span class="badge-vip-trial" title="VIP Degustação (15 Dias - Novo Integrante)"><i class="fa-solid fa-clock"></i> VIP 15D</span>';
-            } else if (!isTrialVip) {
-                vipBadge = '<span class="badge-vip" title="Membro VIP Oficial"><i class="fa-solid fa-crown"></i> VIP</span>';
-            }
+        if (!isMemberMestre && hasVipPass) {
+            vipBadge = getVipBadgeHtml(member.id, member);
         }
 
         // Classe do ponto de status (online, dnd, idle, offline)
