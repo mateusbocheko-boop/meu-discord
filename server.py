@@ -1167,12 +1167,12 @@ async def websocket_handler(request):
                 clean_name = username.strip().upper()
                 user_tag = data.get("userTag") or data.get("tag") or ""
                 
-                # Tag fixo: DIM é SEMPRE #4095
+                # Tag fixo: DIM é SEMPRE #4095 (e o ÚNICO Dono Supremo global!)
                 if clean_name == "DIM" or clean_name.startswith("DIM") or "4095" in str(user_tag):
                     user_tag = "#4095"
                     is_user_owner = True
                 else:
-                    is_user_owner = (user_id in server_admins)
+                    is_user_owner = False
                 
                 if not user_tag:
                     # Gera tag numérico fixo baseado no ID do usuário
