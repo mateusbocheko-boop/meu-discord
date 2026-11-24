@@ -1064,21 +1064,29 @@ async function handleServerMessage(data) {
             break;
 
         case 'role_update':
-            if (!state.serverAdmins) state.serverAdmins = new Set();
-            if (data.admins) {
-                state.serverAdmins = new Set(data.admins);
-            } else if (data.isAdmin) {
-                state.serverAdmins.add(data.userId);
+            if (data.serverId && data.serverId !== 'default') {
+                if (!state.currentServerAdmins) state.currentServerAdmins = new Set();
+                if (data.admins) state.currentServerAdmins = new Set(data.admins);
+                else if (data.isAdmin) state.currentServerAdmins.add(data.userId);
+                else state.currentServerAdmins.delete(data.userId);
+                if (data.userId === state.userId) state.isCurrentServerAdmin = !!data.isAdmin;
             } else {
-                state.serverAdmins.delete(data.userId);
-            }
-            if (data.userId === state.userId) {
-                state.isAdmin = !!data.isAdmin;
+                if (!state.serverAdmins) state.serverAdmins = new Set();
+                if (data.admins) {
+                    state.serverAdmins = new Set(data.admins);
+                } else if (data.isAdmin) {
+                    state.serverAdmins.add(data.userId);
+                } else {
+                    state.serverAdmins.delete(data.userId);
+                }
+                if (data.userId === state.userId) {
+                    state.isAdmin = !!data.isAdmin;
+                }
             }
             const rUser = state.users.get(data.userId);
-            if (rUser) rUser.isAdmin = !!data.isAdmin;
+            if (rUser) { rUser.isAdmin = !!data.isAdmin; if (data.userId !== state.userId || !state.isOwner) rUser.isOwner = false; }
             const rMember = state.serverMembers.get(data.userId);
-            if (rMember) rMember.isAdmin = !!data.isAdmin;
+            if (rMember) { rMember.isAdmin = !!data.isAdmin; rMember.isOwner = false; }
             renderVoiceUsers();
             renderMembersSidebar();
             break;
@@ -2994,12 +3002,12 @@ function openUserProfileModal(userId) {
     const tagEl = document.getElementById('vup-tag');
     if (tagEl) tagEl.textContent = tag;
 
-    // Badges (MESTRE, ADM, VIP)
+    // Badges (MESTRE exclusivo de DIM#4095, ADM, VIP)
     const badgesEl = document.getElementById('vup-badges');
     if (badgesEl) {
         const badges = [];
-        const isTargetOwner = (user && user.isOwner) || (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (String(tag).includes('4095'));
-        const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (user && user.isAdmin));
+        const isTargetOwner = (name.toLowerCase() === 'dim') || (name.toLowerCase().startsWith('dim')) || (String(tag).includes('4095'));
+        const isTargetAdmin = !isTargetOwner && ((state.serverAdmins && state.serverAdmins.has(userId)) || (state.currentServerAdmins && state.currentServerAdmins.has(userId)) || (user && user.isAdmin));
         const vipEntry = state.vips ? state.vips.get(userId) : null;
         if (isTargetOwner) {
             badges.push(`<span style="background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;font-size:10px;font-weight:900;padding:3px 8px;border-radius:999px;">👑 MESTRE</span>`);
@@ -4147,7 +4155,7 @@ function renderMembersSidebar() {
         const isMemberAdmin = !isMemberMestre && (
             isCustomServer
                 ? (state.currentServerAdmins && state.currentServerAdmins.has(member.id))
-                : (member.isAdmin || (state.serverAdmins && state.serverAdmins.has(member.id)) || member.isOwner)
+                : (member.isAdmin || (state.serverAdmins && state.serverAdmins.has(member.id)))
         );
         const vipEntryForCat = state.vips ? state.vips.get(member.id) : null;
         const hasVisibleVip = !!(vipEntryForCat?.isVip && !(vipEntryForCat?.isTrial && vipEntryForCat?.hideBadge));
@@ -5509,11 +5517,8 @@ function setupEventListeners() {
     if (btnToggleMembers) {
         btnToggleMembers.onclick = (e) => {
             e.stopPropagation();
-            const isOpen = membersSidebar && membersSidebar.classList.contains('mobile-open');
-            closeMobileDrawers();
-            if (!isOpen && membersSidebar) {
-                membersSidebar.classList.add('mobile-open');
-                if (mobileBackdrop) mobileBackdrop.style.display = 'block';
+            if (typeof openFriendsModal === 'function') {
+                openFriendsModal('all');
             }
         };
     }

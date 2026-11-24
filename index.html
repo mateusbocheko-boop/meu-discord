@@ -41,10 +41,6 @@
             <div class="kord-logo-badge active" title="VOX Oficial" id="btn-server-default" style="background:#090814;border:1px solid rgba(168,85,247,0.5);padding:0;overflow:hidden;">
                 <img src="/icon-192.png?v=vox4" alt="VOX" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;" />
             </div>
-            <div class="server-pill" id="btn-open-friends" title="Amigos & Pesquisar Usuários (Nome#Tag)" style="position:relative;color:#22c55e;">
-                <i class="fa-solid fa-user-group"></i>
-                <span id="friends-pending-badge" style="display:none;position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#f23f43;color:#fff;font-size:10px;font-weight:900;align-items:center;justify-content:center;border:2px solid #090a0d;">0</span>
-            </div>
             <div class="kord-sep"></div>
             <!-- Lista dinâmica de servidores do usuário -->
             <div id="user-servers-rail" style="display:flex;flex-direction:column;gap:6px;align-items:center;"></div>
@@ -208,8 +204,9 @@
                         <i class="fa-solid fa-circle-down"></i>
                         <span>Baixar App</span>
                     </button>
-                    <button class="header-btn" id="btn-toggle-members" title="Ver Integrantes Online/Offline">
+                    <button class="header-btn" id="btn-toggle-members" title="Amigos & Pesquisar Usuários (Nome#Tag)" style="position:relative;">
                         <i class="fa-solid fa-users"></i>
+                        <span id="friends-pending-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:#f23f43;color:#fff;font-size:10px;font-weight:900;align-items:center;justify-content:center;border:2px solid #090a0d;">0</span>
                     </button>
                     <button class="header-btn" id="btn-toggle-stage" title="Alternar Palco de Vídeo">
                         <i class="fa-solid fa-expand"></i>
