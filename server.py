@@ -1472,7 +1472,19 @@ async def websocket_handler(request):
                 target_id = data.get("targetUserId")
                 new_channel = data.get("channelId")
                 moved_username = None
+                current_srv_id = clients.get(ws, {}).get("currentServerId", "default")
                 mover_is_master = bool(clients.get(ws, {}).get("isOwner", False))
+                mover_is_srv_owner = is_current_server_owner(clients.get(ws), current_srv_id)
+                mover_is_srv_admin = is_current_server_admin(clients.get(ws), current_srv_id)
+
+                # APENAS Dono/Mestre e ADMs podem mover outros usuários entre salas!
+                if target_id != user_id and not (mover_is_master or mover_is_srv_owner or mover_is_srv_admin):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "🚫 Acesso negado! Apenas o Dono e Administradores podem mover usuários entre salas."
+                    }))
+                    continue
+
                 is_target_vip_room = bool(new_channel and ("cinema" in str(new_channel).lower() or "vip" in str(new_channel).lower()))
 
                 target_ws_found = None

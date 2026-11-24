@@ -2905,6 +2905,13 @@ function openUserContextMenu(e, userId) {
     const isCurrentOwner = hasCurrentServerOwnerPowers() || !!state.isOwner;
     const isCurrentAdmin = isCustomSrvCtx ? !!state.isCurrentServerAdmin : !!state.isAdmin;
 
+    // Mover Usuário para outra sala / AFK: APENAS para Dono/Mestre e ADMs!
+    const canMoveUser = (isCurrentOwner || isCurrentAdmin) && (!isTargetProtected || isSelf);
+    const moveItemEl = document.getElementById('ctx-item-move');
+    if (moveItemEl) moveItemEl.style.display = canMoveUser ? 'flex' : 'none';
+    const afkMoveBtn = document.getElementById('ctx-btn-disconnect-voice');
+    if (afkMoveBtn) afkMoveBtn.style.display = canMoveUser ? 'flex' : 'none';
+
     // Opção de Moderação: Dossiê & Auditoria do Usuário (Dono ou ADM do servidor atual)
     const auditBtn = document.getElementById('ctx-btn-user-audit');
     if (auditBtn) {
