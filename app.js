@@ -1246,12 +1246,20 @@ async function handleServerMessage(data) {
             renderMembersSidebar();
 
             if (data.isNewMember) {
-                showToast(`🎉 <b>Novo Integrante Cadastrado!</b><br><b>${escapeHtml(data.user.username)}</b> entrou pelo link!`, 7000);
-                addSystemChatMessage(`🎉 <b>${escapeHtml(data.user.username)}</b> acabou de se cadastrar e entrou no servidor! Dêem as boas-vindas!`);
-                playNotificationSound();
-            } else {
-                showToast(`🔔 <b>${escapeHtml(data.user.username)}</b> conectou no servidor.`);
-                addSystemChatMessage(`${data.user.username} entrou no servidor.`);
+                const safeNewName = escapeHtml(data.user.username);
+                const funnyWelcomes = [
+                    `🎉 Olha quem caiu de paraquedas no VOX: <b>${safeNewName}</b>! Esconde a comida que chegou visita! 🍕`,
+                    `🚀 <b>${safeNewName}</b> acabou de spawnar no servidor! Alguém avisa que aqui não tem saída? 😂`,
+                    `🔥 Um selvagem <b>${safeNewName}</b> apareceu! Dêem as boas-vindas ao novo integrante! ⚡`,
+                    `😎 Alerta geral: <b>${safeNewName}</b> criou conta no VOX! Agora a resenha ficou completa! 🎉`,
+                    `🍿 <b>${safeNewName}</b> chegou chegando! Já pega a pipoca que o Cinema VIP tá te esperando! 🎬`,
+                    `🎮 <b>${safeNewName}</b> entrou no servidor trazendo lag zero e muita gameplay! Bem-vindo(a)! 👑`,
+                    `🛸 A nave pousou e deixou <b>${safeNewName}</b> aqui no VOX! Recebam bem o novato! ✨`,
+                    `💥 Segura o servidor que <b>${safeNewName}</b> acabou de se cadastrar! Seja muito bem-vindo(a)! 🎉`
+                ];
+                const chosenMsg = funnyWelcomes[Math.floor(Math.random() * funnyWelcomes.length)];
+                showToast(`🎉 <b>Novo Integrante no VOX!</b><br><b>${safeNewName}</b> acabou de criar conta!`, 7000);
+                addSystemChatMessage(chosenMsg);
                 playNotificationSound();
             }
 
@@ -1292,7 +1300,6 @@ async function handleServerMessage(data) {
             closePeerConnection(data.userId);
             renderVoiceUsers();
             renderMembersSidebar();
-            addSystemChatMessage(`${data.username} saiu e está offline.`);
             break;
 
         case 'voice_state_update':
