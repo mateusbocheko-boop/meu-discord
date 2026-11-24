@@ -548,6 +548,41 @@ def save_owners(data):
 
 server_owners = load_owners()
 
+# FAXINA AUTOMÁTICA DE DONO SUPREMO: Apenas DIM#4095 pode ser Dono global!
+def sanitize_global_owners():
+    owners_changed = False
+    members_changed = False
+    def _is_dim_record(uid, rec):
+        if uid == "user_sb3noka":
+            return False
+        if not isinstance(rec, dict):
+            return False
+        uname = str(rec.get("username") or "").strip().upper()
+        utag = str(rec.get("userTag") or "")
+        return uname == "DIM" or uname.startswith("DIM") or ("4095" in utag)
+
+    for uid in list(server_owners):
+        rec = server_members.get(uid)
+        if not _is_dim_record(uid, rec):
+            server_owners.discard(uid)
+            owners_changed = True
+            print(f"[SanitizeOwners] Removido dono indevido de server_owners: {uid}")
+
+    for uid, rec in list(server_members.items()):
+        if isinstance(rec, dict) and (rec.get("isOwner") or rec.get("isMaster")):
+            if not _is_dim_record(uid, rec):
+                rec["isOwner"] = False
+                rec.pop("isMaster", None)
+                members_changed = True
+                print(f"[SanitizeOwners] Limpado isOwner/isMaster indevido em server_members: {uid} ({rec.get('username')})")
+
+    if owners_changed:
+        save_owners(server_owners)
+    if members_changed:
+        save_members(server_members)
+
+sanitize_global_owners()
+
 ADMINS_FILE = APP_DIR / "admins.json"
 
 def load_admins():
