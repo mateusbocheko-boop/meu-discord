@@ -50,11 +50,13 @@ IPTV_DNS = os.environ.get("IPTV_DNS", "http://acessoza.sbs")
 IPTV_USER = os.environ.get("IPTV_USER", "9780108843")
 IPTV_PASS = os.environ.get("IPTV_PASS", "8335606215")
 
-# Estado das 3 Salas de Cinema (Com Sincronização em Tempo Real)
+# Estado das 5 Salas de Cinema (Com Sincronização em Tempo Real)
 cinema_rooms = {
     "cinema-1": None,  # { streamId, streamName, streamType, ext, poster, startedBy, startedById, currentTime, isPlaying, updatedAt }
     "cinema-2": None,
-    "cinema-3": None
+    "cinema-3": None,
+    "cinema-4": None,
+    "cinema-5": None
 }
 
 def get_cinema_state(room):
@@ -248,10 +250,36 @@ def save_members(members):
 server_members = load_members()
 
 def load_channels():
+    required_cinemas = [
+        {"id": "cinema-1", "name": "Cinema 1 • Filmes", "type": "cinema", "icon": "fa-film", "isVip": True},
+        {"id": "cinema-2", "name": "Cinema 2 • Séries", "type": "cinema", "icon": "fa-tv", "isVip": True},
+        {"id": "cinema-3", "name": "Cinema 3 • Futebol & TV", "type": "cinema", "icon": "fa-futbol", "isVip": True},
+        {"id": "cinema-4", "name": "Cinema 4 • Lançamentos", "type": "cinema", "icon": "fa-clapperboard", "isVip": True},
+        {"id": "cinema-5", "name": "Cinema 5 • VIP Extra", "type": "cinema", "icon": "fa-crown", "isVip": True}
+    ]
     if CHANNELS_FILE.exists():
         try:
             with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                loaded = json.load(f)
+            # Garante 5 salas de cinema VIP sempre abaixo do AFK
+            voice_list = loaded.get("voice", [])
+            non_cinemas = [c for c in voice_list if not (str(c.get("id", "")).startswith("cinema-") or c.get("type") == "cinema")]
+            existing_cinemas = {c["id"]: c for c in voice_list if (str(c.get("id", "")).startswith("cinema-") or c.get("type") == "cinema")}
+            ordered_cinemas = []
+            for req_c in required_cinemas:
+                c_obj = existing_cinemas.pop(req_c["id"], req_c)
+                c_obj["isVip"] = True
+                c_obj["type"] = "cinema"
+                ordered_cinemas.append(c_obj)
+            for extra_c in existing_cinemas.values():
+                extra_c["isVip"] = True
+                ordered_cinemas.append(extra_c)
+            # Garante AFK no final das salas normais, com cinemas logo abaixo
+            afk_list = [c for c in non_cinemas if c.get("id") == "afk"]
+            other_voice = [c for c in non_cinemas if c.get("id") != "afk"]
+            loaded["voice"] = other_voice + afk_list + ordered_cinemas
+            save_channels(loaded)
+            return loaded
         except Exception:
             pass
     default_ch = {
@@ -264,12 +292,10 @@ def load_channels():
         "voice": [
             {"id": "geral", "name": "Geral", "type": "voice", "icon": "fa-volume-high"},
             {"id": "jogos-60fps", "name": "Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
-            {"id": "cinema-1", "name": "Cinema 1 • Filmes", "type": "cinema", "icon": "fa-film"},
-            {"id": "cinema-2", "name": "Cinema 2 • Séries", "type": "cinema", "icon": "fa-tv"},
-            {"id": "cinema-3", "name": "Cinema 3 • Futebol & TV", "type": "cinema", "icon": "fa-futbol"},
             {"id": "competitivo", "name": "Competitivo / Ranked", "type": "voice", "icon": "fa-trophy"},
             {"id": "bate-papo", "name": "Bate-papo & Chill", "type": "voice", "icon": "fa-mug-hot"},
-            {"id": "afk", "name": "AFK / Ausente", "type": "voice", "icon": "fa-bed"}
+            {"id": "afk", "name": "AFK / Ausente", "type": "voice", "icon": "fa-bed"},
+            *required_cinemas
         ]
     }
     save_channels(default_ch)

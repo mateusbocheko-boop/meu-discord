@@ -218,12 +218,14 @@ function renderChannels() {
     const voiceChannels = state.channels?.voice || [
         { id: 'geral', name: '🔊 Geral', type: 'voice', icon: 'fa-volume-high' },
         { id: 'jogos-60fps', name: '🎮 Jogos 60FPS', type: 'voice', icon: 'fa-gamepad' },
-        { id: 'cinema-1', name: '🎬 Cinema 1 • Filmes', type: 'cinema', icon: 'fa-film' },
-        { id: 'cinema-2', name: '🍿 Cinema 2 • Séries', type: 'cinema', icon: 'fa-tv' },
-        { id: 'cinema-3', name: '⚽ Cinema 3 • Futebol & TV', type: 'cinema', icon: 'fa-futbol' },
         { id: 'competitivo', name: '🏆 Competitivo / Ranked', type: 'voice', icon: 'fa-trophy' },
         { id: 'bate-papo', name: '☕ Bate-papo & Chill', type: 'voice', icon: 'fa-mug-hot' },
-        { id: 'afk', name: '💤 AFK / Ausente', type: 'voice', icon: 'fa-bed' }
+        { id: 'afk', name: '💤 AFK / Ausente', type: 'voice', icon: 'fa-bed' },
+        { id: 'cinema-1', name: '🎬 Cinema 1 • Filmes', type: 'cinema', icon: 'fa-film', isVip: true },
+        { id: 'cinema-2', name: '🍿 Cinema 2 • Séries', type: 'cinema', icon: 'fa-tv', isVip: true },
+        { id: 'cinema-3', name: '⚽ Cinema 3 • Futebol & TV', type: 'cinema', icon: 'fa-futbol', isVip: true },
+        { id: 'cinema-4', name: '🎞️ Cinema 4 • Lançamentos', type: 'cinema', icon: 'fa-clapperboard', isVip: true },
+        { id: 'cinema-5', name: '👑 Cinema 5 • VIP Extra', type: 'cinema', icon: 'fa-crown', isVip: true }
     ];
 
     // Renderiza Canais de Texto
@@ -265,10 +267,15 @@ function renderChannels() {
         const iconClass = ch.icon || (ch.id.startsWith('cinema-') ? 'fa-film text-green' : 'fa-volume-high');
         
         const canDelVoice = hasCurrentServerOwnerPowers() && ch.id !== 'geral';
+        const isCinemaVip = ch.id.startsWith('cinema-') || ch.type === 'cinema' || ch.isVip;
+        const vipTagHtml = isCinemaVip
+            ? `<span class="cinema-vip-badge" title="Sala Exclusiva VIP" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;margin-left:auto;margin-right:4px;display:inline-flex;align-items:center;gap:2px;flex-shrink:0;"><i class="fa-solid fa-crown" style="font-size:8px;color:#000;"></i> VIP</span>`
+            : '';
         vItem.innerHTML = `
             <div class="voice-header">
                 <i class="fa-solid ${iconClass}"></i>
-                <span>${escapeHtml(ch.name.replace(/^[\ufffd\?🔊🎮🎬🍿⚽🏆☕💤\s]+/g, '').trim() || ch.name)}</span>
+                <span>${escapeHtml(ch.name.replace(/^[\ufffd\?🔊🎮🎬🍿⚽🏆☕💤🎞️👑\s]+/g, '').trim() || ch.name)}</span>
+                ${vipTagHtml}
                 <span class="live-pill" id="live-tag-${ch.id}" style="display: none;">AO VIVO</span>
                 ${canDelVoice ? `<button class="btn-del-channel" title="Excluir Sala"><i class="fa-solid fa-xmark"></i></button>` : ''}
             </div>
@@ -476,7 +483,7 @@ const state = {
     micTestInterval: null,
 
     // Estado do IPTV e das 3 Salas de Cinema
-    cinemaRooms: { 'cinema-1': null, 'cinema-2': null, 'cinema-3': null },
+    cinemaRooms: { 'cinema-1': null, 'cinema-2': null, 'cinema-3': null, 'cinema-4': null, 'cinema-5': null },
     hlsInstance: null,
     mpegtsInstance: null,
     currentIptvType: 'live',
@@ -2703,7 +2710,7 @@ function applyUserVolume(userId) {
 // --- RENDERIZAÇÃO DOS USUÁRIOS NAS SALAS DE VOZ ---
 function renderVoiceUsers() {
     const dynamicChannels = (state.channels?.voice || []).map(c => c.id);
-    const defaultChannels = ['geral', 'jogos-60fps', 'cinema-1', 'cinema-2', 'cinema-3', 'competitivo', 'bate-papo', 'afk'];
+    const defaultChannels = ['geral', 'jogos-60fps', 'competitivo', 'bate-papo', 'afk', 'cinema-1', 'cinema-2', 'cinema-3', 'cinema-4', 'cinema-5'];
     const channels = Array.from(new Set([...defaultChannels, ...dynamicChannels]));
 
     channels.forEach(ch => {
@@ -2886,9 +2893,11 @@ function moveUserToChannel(userId, newChannel) {
     const voiceChannelNames = {
         'geral': '🔊 Geral',
         'jogos-60fps': '🎮 Jogos 60FPS',
-        'cinema-1': '🎬 Cinema 1 • Filmes',
-        'cinema-2': '🍿 Cinema 2 • Séries',
-        'cinema-3': '⚽ Cinema 3 • Futebol & TV',
+        'cinema-1': '👑 Cinema 1 • Filmes (VIP)',
+        'cinema-2': '👑 Cinema 2 • Séries (VIP)',
+        'cinema-3': '👑 Cinema 3 • Futebol & TV (VIP)',
+        'cinema-4': '👑 Cinema 4 • Lançamentos (VIP)',
+        'cinema-5': '👑 Cinema 5 • VIP Extra',
         'competitivo': '🏆 Competitivo / Ranked',
         'bate-papo': '☕ Bate-papo & Chill',
         'afk': '💤 AFK / Ausente'
@@ -2997,9 +3006,11 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
     const chNames = {
         'geral': '🔊 Geral',
         'jogos-60fps': '🎮 Jogos 60FPS',
-        'cinema-1': '🎬 Cinema 1 • Filmes',
-        'cinema-2': '🍿 Cinema 2 • Séries',
-        'cinema-3': '⚽ Cinema 3 • Futebol & TV',
+        'cinema-1': '👑 Cinema 1 • Filmes (VIP)',
+        'cinema-2': '👑 Cinema 2 • Séries (VIP)',
+        'cinema-3': '👑 Cinema 3 • Futebol & TV (VIP)',
+        'cinema-4': '👑 Cinema 4 • Lançamentos (VIP)',
+        'cinema-5': '👑 Cinema 5 • VIP Extra',
         'competitivo': '🏆 Competitivo / Ranked',
         'bate-papo': '☕ Bate-papo & Chill',
         'afk': '💤 AFK / Ausente'
