@@ -41,6 +41,10 @@
             <div class="kord-logo-badge active" title="VOX Oficial" id="btn-server-default" style="background:#090814;border:1px solid rgba(168,85,247,0.5);padding:0;overflow:hidden;">
                 <img src="/icon-192.png?v=vox4" alt="VOX" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;" />
             </div>
+            <div class="server-pill" id="btn-open-dms" title="Mensagens Diretas (Privado)" style="position:relative;color:#00f2fe;">
+                <i class="fa-solid fa-comment-dots"></i>
+                <span id="dm-unread-badge" style="display:none;position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#f23f43;color:#fff;font-size:10px;font-weight:900;align-items:center;justify-content:center;border:2px solid #090a0d;">0</span>
+            </div>
             <div class="kord-sep"></div>
             <!-- Lista dinâmica de servidores do usuário -->
             <div id="user-servers-rail" style="display:flex;flex-direction:column;gap:6px;align-items:center;"></div>
@@ -1054,6 +1058,57 @@
         </div>
     </div>
 
+    <!-- MODAL DE MENSAGENS DIRETAS (DM PRIVADA 1-PARA-1) -->
+    <div id="dm-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); z-index: 99992; align-items: center; justify-content: center; padding: 16px;">
+        <div style="width: 100%; max-width: 920px; height: 82vh; max-height: 700px; background: #111214; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 24px 64px rgba(0,0,0,0.8); display: flex; overflow: hidden;">
+            <!-- Coluna Esquerda: Lista de Conversas Privadas -->
+            <div style="width: 270px; background: #18191d; border-right: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; flex-shrink: 0;">
+                <div style="padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14.5px; color: #fff;">
+                        <i class="fa-solid fa-comment-dots" style="color: #00f2fe;"></i> Mensagens Diretas
+                    </div>
+                    <span style="font-size: 10px; color: #949ba4; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;">🔒 Privado</span>
+                </div>
+                <div style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <select id="dm-quick-new-select" style="width: 100%; background: #111214; color: #dbdee1; border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; padding: 7px 9px; font-size: 12px; outline: none; cursor: pointer;">
+                        <option value="">➕ Iniciar nova conversa com...</option>
+                    </select>
+                </div>
+                <div id="dm-conversations-list" style="flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px;"></div>
+            </div>
+
+            <!-- Coluna Direita: Chat Privado Ativo -->
+            <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; background: #111214;">
+                <!-- Header da conversa -->
+                <div style="padding: 12px 18px; background: #16171b; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div id="dm-active-header" style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                        <div style="font-size: 14px; font-weight: 700; color: #949ba4;">Selecione uma conversa à esquerda</div>
+                    </div>
+                    <button type="button" id="btn-close-dm-modal" style="background: transparent; border: none; color: #949ba4; font-size: 18px; cursor: pointer; padding: 4px 8px;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <!-- Mensagens -->
+                <div id="dm-messages-container" style="flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="margin: auto; text-align: center; color: #80848e; max-width: 340px;">
+                        <i class="fa-solid fa-lock" style="font-size: 32px; color: #00f2fe; margin-bottom: 10px; display: block;"></i>
+                        <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 6px;">Mensagens Diretas Privadas</div>
+                        <div style="font-size: 12.5px; line-height: 1.5;">Escolha alguém na lista ou clique com o botão direito em qualquer usuário para iniciar um chat privado. Apenas vocês dois têm acesso às mensagens.</div>
+                    </div>
+                </div>
+
+                <!-- Input de envio -->
+                <div id="dm-input-bar" style="display: none; padding: 12px 16px; background: #16171b; border-top: 1px solid rgba(255,255,255,0.08); gap: 8px; align-items: center;">
+                    <input type="text" id="dm-message-input" placeholder="Escreva uma mensagem privada..." maxlength="1000" style="flex: 1; background: #1e1f22; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 13.5px; outline: none;">
+                    <button type="button" id="btn-send-dm" style="background: linear-gradient(135deg, #00f2fe, #4facfe); color: #080b11; border: none; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 800; cursor: pointer;">
+                        <i class="fa-solid fa-paper-plane"></i> Enviar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL DE AMIGOS & PESQUISAR USUÁRIOS (NOME#TAG) -->
     <div id="friends-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(6px); z-index: 99990; align-items: center; justify-content: center; padding: 16px;">
         <div style="width: 100%; max-width: 680px; max-height: 84vh; background: #111214; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 24px 64px rgba(0,0,0,0.75); display: flex; flex-direction: column; overflow: hidden;">
@@ -1154,8 +1209,14 @@
 
                 <!-- Ações rápidas -->
                 <div style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
+                    <button type="button" id="vup-btn-send-dm" style="flex: 1; background: #00b8d4; color: #080b11; border: none; padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <i class="fa-solid fa-comment-dots"></i> Mensagem
+                    </button>
                     <button type="button" id="vup-btn-add-friend" style="flex: 1; background: #23a55a; color: #fff; border: none; padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
                         <i class="fa-solid fa-user-plus"></i> <span id="vup-add-friend-label">Adicionar Amigo</span>
+                    </button>
+                    <button type="button" id="vup-btn-gift-vip" style="flex: 1; background: linear-gradient(135deg, #ffd700, #ff8c00); color: #080b11; border: none; padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <i class="fa-solid fa-gift"></i> Doar VIP
                     </button>
                     <button type="button" id="vup-btn-mention" style="flex: 1; background: #5865f2; color: #fff; border: none; padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
                         <i class="fa-solid fa-at"></i> Mencionar
@@ -1185,6 +1246,10 @@
         <div class="ctx-item" id="ctx-btn-view-profile" style="color: #00f2fe; font-weight: 700;">
             <i class="fa-solid fa-id-card"></i>
             <span>Ver Perfil</span>
+        </div>
+        <div class="ctx-item" id="ctx-btn-send-dm" style="color: #38bdf8; font-weight: 700;">
+            <i class="fa-solid fa-comment-dots"></i>
+            <span>Mensagem Direta</span>
         </div>
         <div class="ctx-item" id="ctx-btn-add-friend" style="color: #22c55e; font-weight: 700;">
             <i class="fa-solid fa-user-plus" id="ctx-add-friend-icon"></i>
@@ -1438,9 +1503,28 @@
                 </p>
 
                 <!-- CARD DO VALOR -->
-                <div style="display: inline-block; background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.35); padding: 4px 14px; border-radius: 20px; margin-bottom: 14px;">
+                <div style="display: inline-block; background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.35); padding: 4px 14px; border-radius: 20px; margin-bottom: 12px;">
                     <span style="font-size: 20px; font-weight: 900; color: #ffd700;">R$ 9,90</span>
                     <span style="font-size: 12px; font-weight: 600; color: #949ba4;">/ mês</span>
+                </div>
+
+                <!-- ESCOLHER: PARA MIM OU DOAR PARA AMIGO -->
+                <div style="display: flex; gap: 6px; margin-bottom: 12px; background: #14171f; padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                    <button type="button" id="btn-vip-mode-self" style="flex: 1; background: #ffd700; color: #080b11; border: none; padding: 8px 10px; border-radius: 6px; font-size: 12.5px; font-weight: 800; cursor: pointer;">
+                        <i class="fa-solid fa-user"></i> Para Mim
+                    </button>
+                    <button type="button" id="btn-vip-mode-gift" style="flex: 1; background: transparent; color: #b5bac1; border: none; padding: 8px 10px; border-radius: 6px; font-size: 12.5px; font-weight: 800; cursor: pointer;">
+                        <i class="fa-solid fa-gift"></i> Doar para Amigo
+                    </button>
+                </div>
+
+                <div id="vip-gift-target-box" style="display: none; text-align: left; background: rgba(255, 215, 0, 0.08); border: 1px solid rgba(255, 215, 0, 0.35); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;">
+                    <label style="display: block; font-size: 10.5px; font-weight: 800; color: #ffd700; text-transform: uppercase; margin-bottom: 6px;">
+                        <i class="fa-solid fa-gift"></i> Nick e #número do amigo que vai receber o VIP:
+                    </label>
+                    <input type="text" id="input-vip-gift-target" list="vip-gift-users-datalist" placeholder="Ex: Pacheco#3820" style="width: 100%; box-sizing: border-box; background: #080b11; border: 1px solid rgba(255,215,0,0.4); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 13px; font-weight: 700; outline: none;">
+                    <datalist id="vip-gift-users-datalist"></datalist>
+                    <div id="vip-gift-preview" style="font-size: 11px; color: #dbdee1; margin-top: 6px;"></div>
                 </div>
 
                 <!-- ÁREA PRINCIPAL: QR CODE PIX DINÂMICO -->

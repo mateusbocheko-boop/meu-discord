@@ -111,7 +111,7 @@ CLOUD_BACKUP_FILES = [
     "members.json", "vips.json", "servers.json", "channels.json",
     "banned.json", "owners.json", "admins.json", "messages.json",
     "audit_logs.json", "warnings.json", "muted_users.json", "trial_claims.json",
-    "friends.json"
+    "friends.json", "dms.json"
 ]
 _cloud_sync_timer = None
 _cloud_sync_lock = threading.Lock()
@@ -671,6 +671,64 @@ async def push_friends_update(uid, notify_msg=None):
                     "friendsData": payload,
                     "notify": notify_msg
                 }))
+            except Exception:
+                pass
+
+# --- SISTEMA DE MENSAGENS DIRETAS (DM PRIVADA 1-PARA-1 NA NUVEM) ---
+DMS_FILE = APP_DIR / "dms.json"
+
+def load_dms():
+    if DMS_FILE.exists():
+        try:
+            with open(DMS_FILE, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if isinstance(d, dict):
+                    return d
+        except Exception:
+            pass
+    return {}
+
+def save_dms(data):
+    try:
+        with open(DMS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        schedule_cloud_backup()
+    except Exception as e:
+        print(f"Erro ao salvar DMs: {e}")
+
+server_dms = load_dms()
+
+def get_dm_key(uid1, uid2):
+    return "::".join(sorted([str(uid1), str(uid2)]))
+
+def get_user_dm_conversations(uid):
+    convs = []
+    for key, msgs in server_dms.items():
+        parts = key.split("::")
+        if len(parts) != 2 or uid not in parts:
+            continue
+        if not isinstance(msgs, list) or len(msgs) == 0:
+            continue
+        other_id = parts[0] if parts[1] == uid else parts[1]
+        last_msg = msgs[-1]
+        unread = sum(1 for m in msgs if m.get("toId") == uid and uid not in (m.get("readBy") or []))
+        prof = _build_friend_profile(other_id)
+        convs.append({
+            "otherUser": prof,
+            "lastText": last_msg.get("text", ""),
+            "lastTimestamp": last_msg.get("timestamp", ""),
+            "lastCreatedAt": last_msg.get("createdAt", 0),
+            "unreadCount": unread
+        })
+    convs.sort(key=lambda c: c.get("lastCreatedAt", 0), reverse=True)
+    return convs
+
+async def send_to_user_id(uid, payload_dict):
+    raw = json.dumps(payload_dict)
+    for c_ws, u in list(clients.items()):
+        if u.get("id") == uid:
+            try:
+                await c_ws.send_str(raw)
             except Exception:
                 pass
 
@@ -1289,6 +1347,7 @@ async def websocket_handler(request):
                     "admins": list(server_admins),
                     "banned": list(server_banned),
                     "friendsData": get_user_friends_payload(user_id),
+                    "dmConversations": get_user_dm_conversations(user_id),
                     "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "hideBadge": bool(v.get("hideBadge", False)), "expiresAt": v.get("expiresAt"), "durationDays": v.get("durationDays"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
@@ -3023,6 +3082,72 @@ async def websocket_handler(request):
                     save_friends(server_friends)
                     await push_friends_update(user_id, "Amigo removido da sua lista.")
                     await push_friends_update(target_id)
+
+            elif msg_type == "dm_get_history":
+                other_id = str(data.get("otherUserId") or "").strip()
+                if not other_id or other_id == user_id:
+                    continue
+                key = get_dm_key(user_id, other_id)
+                msgs = server_dms.get(key, [])
+                # Marca mensagens recebidas como lidas apenas para este usuário
+                marked = False
+                for m in msgs:
+                    if m.get("toId") == user_id:
+                        rb = m.setdefault("readBy", [])
+                        if user_id not in rb:
+                            rb.append(user_id)
+                            marked = True
+                if marked:
+                    save_dms(server_dms)
+                await ws.send_str(json.dumps({
+                    "type": "dm_history",
+                    "otherUser": _build_friend_profile(other_id),
+                    "messages": msgs[-100:]
+                }))
+                await ws.send_str(json.dumps({
+                    "type": "dm_conversations_updated",
+                    "conversations": get_user_dm_conversations(user_id)
+                }))
+
+            elif msg_type == "dm_send":
+                to_id = str(data.get("toUserId") or "").strip()
+                text = str(data.get("text") or "").strip()[:1000]
+                if not to_id or to_id == user_id or not text:
+                    continue
+                key = get_dm_key(user_id, to_id)
+                sender_u = clients.get(ws, {})
+                msg_obj = {
+                    "id": f"dm_{int(time.time()*1000)}_{user_id[-4:]}",
+                    "fromId": user_id,
+                    "toId": to_id,
+                    "fromName": sender_u.get("username", "Usuário"),
+                    "avatar": sender_u.get("avatar", "#5865F2"),
+                    "avatarUrl": sender_u.get("avatarUrl", ""),
+                    "text": text,
+                    "timestamp": now_brt("%H:%M"),
+                    "createdAt": time.time(),
+                    "readBy": [user_id]
+                }
+                conv_list = server_dms.setdefault(key, [])
+                conv_list.append(msg_obj)
+                if len(conv_list) > 150:
+                    server_dms[key] = conv_list[-150:]
+                save_dms(server_dms)
+
+                # Entrega PRIVADA exclusivamente aos dois participantes (nunca broadcast!)
+                await send_to_user_id(user_id, {
+                    "type": "dm_message",
+                    "otherUserId": to_id,
+                    "message": msg_obj,
+                    "conversations": get_user_dm_conversations(user_id)
+                })
+                await send_to_user_id(to_id, {
+                    "type": "dm_message",
+                    "otherUserId": user_id,
+                    "message": msg_obj,
+                    "conversations": get_user_dm_conversations(to_id),
+                    "notifyFrom": sender_u.get("username", "Usuário")
+                })
 
     finally:
         if ws in clients:

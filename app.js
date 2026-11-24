@@ -846,6 +846,10 @@ async function handleServerMessage(data) {
                 state.friendsData = data.friendsData;
                 if (typeof renderFriendsUI === 'function') renderFriendsUI();
             }
+            if (data.dmConversations) {
+                state.dmConversations = data.dmConversations;
+                if (typeof renderDmSidebarAndBadge === 'function') renderDmSidebarAndBadge();
+            }
             if (data.onlineIds) {
                 state.onlineUserIds = new Set(data.onlineIds);
                 // Remove transmissões fantasma de usuários que não estão mais online/transmitindo após reinício do servidor
@@ -1204,6 +1208,27 @@ async function handleServerMessage(data) {
         case 'friend_search_results':
             if (typeof renderFriendSearchResults === 'function') {
                 renderFriendSearchResults(data.results || []);
+            }
+            break;
+
+        case 'dm_history':
+            if (typeof handleDmHistory === 'function') {
+                handleDmHistory(data.otherUser, data.messages || []);
+            }
+            break;
+
+        case 'dm_conversations_updated':
+            state.dmConversations = data.conversations || [];
+            if (typeof renderDmSidebarAndBadge === 'function') renderDmSidebarAndBadge();
+            break;
+
+        case 'dm_message':
+            if (data.conversations) {
+                state.dmConversations = data.conversations;
+                if (typeof renderDmSidebarAndBadge === 'function') renderDmSidebarAndBadge();
+            }
+            if (typeof handleIncomingDmMessage === 'function') {
+                handleIncomingDmMessage(data.otherUserId, data.message, data.notifyFrom);
             }
             break;
 
@@ -2809,7 +2834,9 @@ function openUserContextMenu(e, userId) {
     const watchBtn = document.getElementById('ctx-btn-watch-stream');
     watchBtn.style.display = state.activeStreams.has(userId) ? 'flex' : 'none';
 
-    // Botão de Adicionar Amigo no menu de contexto
+    // Botão de Mensagem Direta e Adicionar Amigo no menu de contexto
+    const ctxDmBtn = document.getElementById('ctx-btn-send-dm');
+    if (ctxDmBtn) ctxDmBtn.style.display = isSelf ? 'none' : 'flex';
     const ctxFriendBtn = document.getElementById('ctx-btn-add-friend');
     if (ctxFriendBtn) {
         if (isSelf) {
@@ -3063,8 +3090,18 @@ function openUserProfileModal(userId) {
     // Botões de ação
     modal.dataset.userId = userId;
     modal.dataset.username = name;
+    modal.dataset.usertag = tag;
     const watchBtn = document.getElementById('vup-btn-watch-stream');
     if (watchBtn) watchBtn.style.display = state.activeStreams.has(userId) ? 'inline-flex' : 'none';
+
+    const vupGiftBtn = document.getElementById('vup-btn-gift-vip');
+    if (vupGiftBtn) {
+        vupGiftBtn.style.display = isSelf ? 'none' : 'inline-flex';
+    }
+    const vupDmBtn = document.getElementById('vup-btn-send-dm');
+    if (vupDmBtn) {
+        vupDmBtn.style.display = isSelf ? 'none' : 'inline-flex';
+    }
 
     const vupFriendBtn = document.getElementById('vup-btn-add-friend');
     const vupFriendLbl = document.getElementById('vup-add-friend-label');
@@ -6667,17 +6704,96 @@ function renderVoxPixQrCode() {
     container.innerHTML = `<img src="${fallbackUrl}" style="width:155px;height:155px;display:block;border-radius:4px;" alt="QR Code PIX R$ 9,90">`;
 }
 
-function openVipModal() {
+let vipPurchaseMode = 'self';
+
+function updateVipModalMessage() {
+    const myName = (state.username || document.getElementById('my-username')?.textContent || 'Usuario').trim();
+    const rawTag = (state.userTag || document.getElementById('my-tag')?.textContent || '#6060').trim();
+    const myTag = rawTag ? (rawTag.startsWith('#') ? rawTag : `#${rawTag}`) : '';
+    const myId = state.userId ? ` (ID: ${state.userId})` : '';
+    const giftInp = document.getElementById('input-vip-gift-target');
+    const giftVal = giftInp ? giftInp.value.trim() : '';
+    const previewEl = document.getElementById('vip-gift-preview');
+    const waBtn = document.getElementById('btn-whatsapp-vip');
+
+    let msgText = '';
+    if (vipPurchaseMode === 'gift') {
+        const dest = giftVal || '(informar Nick#Tag do amigo)';
+        if (previewEl) {
+            previewEl.innerHTML = giftVal
+                ? `🎁 Presenteando VIP para: <b style="color:#ffd700;">${escapeHtml(giftVal)}</b>`
+                : `Digite o <b>Nick#número</b> do amigo acima para incluir no comprovante.`;
+        }
+        msgText = `Ola DIM! Quero DOAR um Passe VIP no VOX para meu amigo: ${dest}!\nComprado por: ${myName}${myTag}${myId}.\nJa fiz o PIX de R$ 9,90 e estou enviando o comprovante para voce ativar o VIP dele!`;
+        if (waBtn) {
+            const sp = waBtn.querySelector('span');
+            if (sp) sp.textContent = '🎁 Enviar Comprovante da Doação no WhatsApp';
+        }
+    } else {
+        msgText = `Ola DIM! Quero ativar meu Passe VIP no VOX para liberar Filmes, Series e TV Ao Vivo!\nMeu usuario no VOX e: ${myName}${myTag}${myId}.\nJa fiz o PIX de R$ 9,90 e estou enviando o comprovante agora!`;
+        if (waBtn) {
+            const sp = waBtn.querySelector('span');
+            if (sp) sp.textContent = 'Já Paguei! Enviar Comprovante no WhatsApp';
+        }
+    }
+    if (waBtn) {
+        waBtn.href = `https://wa.me/5544997479416?text=${encodeURIComponent(msgText)}`;
+    }
+}
+
+function setVipPurchaseMode(mode) {
+    vipPurchaseMode = (mode === 'gift') ? 'gift' : 'self';
+    const btnSelf = document.getElementById('btn-vip-mode-self');
+    const btnGift = document.getElementById('btn-vip-mode-gift');
+    const giftBox = document.getElementById('vip-gift-target-box');
+
+    if (btnSelf) {
+        btnSelf.style.background = vipPurchaseMode === 'self' ? '#ffd700' : 'transparent';
+        btnSelf.style.color = vipPurchaseMode === 'self' ? '#080b11' : '#b5bac1';
+    }
+    if (btnGift) {
+        btnGift.style.background = vipPurchaseMode === 'gift' ? 'linear-gradient(135deg, #ffd700, #ff8c00)' : 'transparent';
+        btnGift.style.color = vipPurchaseMode === 'gift' ? '#080b11' : '#b5bac1';
+    }
+    if (giftBox) {
+        giftBox.style.display = vipPurchaseMode === 'gift' ? 'block' : 'none';
+    }
+    updateVipModalMessage();
+}
+
+function populateVipGiftDatalist() {
+    const dl = document.getElementById('vip-gift-users-datalist');
+    if (!dl) return;
+    const seen = new Set();
+    const opts = [];
+    const addEntry = (u) => {
+        if (!u || !u.username || u.id === state.userId) return;
+        const tag = u.userTag ? (String(u.userTag).startsWith('#') ? u.userTag : `#${u.userTag}`) : '#6060';
+        const val = `${u.username}${tag}`;
+        if (!seen.has(val)) {
+            seen.add(val);
+            opts.push(`<option value="${escapeHtml(val)}"></option>`);
+        }
+    };
+    ((state.friendsData && state.friendsData.friends) || []).forEach(addEntry);
+    if (state.serverMembers) state.serverMembers.forEach(addEntry);
+    if (state.users) state.users.forEach(addEntry);
+    dl.innerHTML = opts.join('');
+}
+
+function openVipModal(opts = {}) {
     const modal = document.getElementById('vip-modal');
     if (modal) {
         modal.style.display = 'flex';
         renderVoxPixQrCode();
-        // Personaliza a mensagem do WhatsApp com o nome do usuário atual
-        const myName = state.currentUser || 'Membro do VOX';
-        const msg = encodeURIComponent(`Olá DIM! 🔥 Quero ativar meu Passe VIP no VOX para liberar Filmes, Séries e TV Ao Vivo! 🍿 Meu usuário no VOX é: ${myName}. Já fiz o PIX de R$ 9,90 ou vou te mandar o comprovante agora!`);
-        const waBtn = document.getElementById('btn-whatsapp-vip');
-        if (waBtn) {
-            waBtn.href = `https://wa.me/5544997479416?text=${msg}`;
+        populateVipGiftDatalist();
+        const giftInp = document.getElementById('input-vip-gift-target');
+        if (opts && opts.giftTarget) {
+            if (giftInp) giftInp.value = opts.giftTarget;
+            setVipPurchaseMode('gift');
+        } else {
+            if (giftInp) giftInp.value = '';
+            setVipPurchaseMode('self');
         }
     }
 }
@@ -7781,6 +7897,7 @@ function renderFriendsUI() {
         } else {
             const sorted = [...friends].sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
             listEl.innerHTML = sorted.map(f => _renderFriendRowHTML(f, `
+                <button type="button" onclick="closeFriendsModal(); openDmModal('${escapeHtml(f.id)}');" style="background:#00b8d4;color:#080b11;border:none;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;" title="Mensagem Direta"><i class="fa-solid fa-comment-dots"></i></button>
                 <button type="button" onclick="closeFriendsModal(); openUserProfileModal('${escapeHtml(f.id)}');" style="background:#2b2d31;color:#fff;border:1px solid rgba(255,255,255,0.12);padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;" title="Ver Perfil"><i class="fa-solid fa-id-card"></i></button>
                 <button type="button" onclick="handleFriendActionClick('${escapeHtml(f.id)}');" style="background:rgba(242,63,67,0.15);color:#f23f43;border:1px solid rgba(242,63,67,0.35);padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;" title="Remover Amigo"><i class="fa-solid fa-user-minus"></i></button>
             `)).join('');
@@ -7930,10 +8047,275 @@ function initVoxFriendsSystem() {
             }
         });
     }
+    const vupGiftBtn = document.getElementById('vup-btn-gift-vip');
+    if (vupGiftBtn) {
+        vupGiftBtn.addEventListener('click', () => {
+            const m = document.getElementById('view-user-profile-modal');
+            const uname = m?.dataset?.username || '';
+            const utag = m?.dataset?.usertag || '';
+            const fullTag = utag ? (utag.startsWith('#') ? utag : `#${utag}`) : '';
+            closeUserProfileModal();
+            openVipModal({ giftTarget: `${uname}${fullTag}` });
+        });
+    }
+    const btnVipSelf = document.getElementById('btn-vip-mode-self');
+    const btnVipGift = document.getElementById('btn-vip-mode-gift');
+    const vipGiftInp = document.getElementById('input-vip-gift-target');
+    if (btnVipSelf) btnVipSelf.addEventListener('click', () => setVipPurchaseMode('self'));
+    if (btnVipGift) btnVipGift.addEventListener('click', () => {
+        setVipPurchaseMode('gift');
+        if (vipGiftInp) setTimeout(() => vipGiftInp.focus(), 50);
+    });
+    if (vipGiftInp) vipGiftInp.addEventListener('input', updateVipModalMessage);
 }
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initVoxFriendsSystem);
 } else {
     initVoxFriendsSystem();
+}
+
+
+// ============================================================================
+// SISTEMA DE MENSAGENS DIRETAS PRIVADAS (DM 1-PARA-1)
+// ============================================================================
+state.activeDmUserId = null;
+state.dmMessagesMap = new Map();
+
+function renderDmSidebarAndBadge() {
+    const convs = state.dmConversations || [];
+    const totalUnread = convs.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+    const badge = document.getElementById('dm-unread-badge');
+    if (badge) {
+        if (totalUnread > 0) {
+            badge.textContent = totalUnread > 99 ? '99+' : String(totalUnread);
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    const listEl = document.getElementById('dm-conversations-list');
+    if (!listEl) return;
+    if (convs.length === 0) {
+        listEl.innerHTML = `<div style="padding:20px 10px; text-align:center; color:#80848e; font-size:12px;">Nenhuma conversa privada ainda.<br>Use o menu acima para iniciar uma DM!</div>`;
+        return;
+    }
+    listEl.innerHTML = convs.map(c => {
+        const u = c.otherUser || {};
+        const active = (state.activeDmUserId === u.id);
+        const avStyle = u.avatarUrl
+            ? `background-image:url('${u.avatarUrl}');background-size:cover;background-position:center;`
+            : `background:${u.avatar || '#5865F2'};`;
+        const avTxt = u.avatarUrl ? '' : escapeHtml((u.username || 'U')[0].toUpperCase());
+        const dotColor = u.online ? '#23a55a' : '#80848e';
+        const unreadHtml = c.unreadCount > 0
+            ? `<span style="background:#f23f43;color:#fff;font-size:10px;font-weight:900;min-width:18px;height:18px;padding:0 5px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;">${c.unreadCount}</span>`
+            : '';
+        return `
+            <div onclick="selectDmConversation('${escapeHtml(u.id)}')" style="cursor:pointer; padding:8px 10px; border-radius:8px; background:${active ? 'rgba(0,242,254,0.14)' : 'transparent'}; border:1px solid ${active ? 'rgba(0,242,254,0.35)' : 'transparent'}; display:flex; align-items:center; gap:10px; transition:background 0.15s;">
+                <div style="position:relative; width:36px; height:36px; flex-shrink:0;">
+                    <div style="width:36px; height:36px; border-radius:50%; ${avStyle} color:#fff; font-weight:800; font-size:14px; display:flex; align-items:center; justify-content:center;">${avTxt}</div>
+                    <span style="position:absolute; bottom:-1px; right:-1px; width:11px; height:11px; border-radius:50%; background:${dotColor}; border:2px solid #18191d;"></span>
+                </div>
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                        <span style="font-size:13px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(u.username || 'Usuário')}</span>
+                        <span style="font-size:10px; color:#80848e; flex-shrink:0;">${escapeHtml(c.lastTimestamp || '')}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:2px;">
+                        <span style="font-size:11.5px; color:#949ba4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(c.lastText || '')}</span>
+                        ${unreadHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function populateDmQuickNewSelect() {
+    const sel = document.getElementById('dm-quick-new-select');
+    if (!sel) return;
+    const seen = new Set();
+    const list = [];
+    const addU = (u) => {
+        if (!u || !u.id || u.id === state.userId || seen.has(u.id)) return;
+        seen.add(u.id);
+        const tag = u.userTag ? (String(u.userTag).startsWith('#') ? u.userTag : `#${u.userTag}`) : '';
+        list.push({ id: u.id, label: `${u.username || 'Usuário'}${tag}` });
+    };
+    ((state.friendsData && state.friendsData.friends) || []).forEach(addU);
+    if (state.users) state.users.forEach(addU);
+    if (state.serverMembers) state.serverMembers.forEach(addU);
+    list.sort((a, b) => a.label.localeCompare(b.label));
+    sel.innerHTML = `<option value="">➕ Iniciar nova conversa com...</option>` +
+        list.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join('');
+}
+
+function renderDmMessages(messages, otherUser) {
+    const headerEl = document.getElementById('dm-active-header');
+    const boxEl = document.getElementById('dm-messages-container');
+    const barEl = document.getElementById('dm-input-bar');
+
+    if (otherUser && headerEl) {
+        const avStyle = otherUser.avatarUrl
+            ? `background-image:url('${otherUser.avatarUrl}');background-size:cover;background-position:center;`
+            : `background:${otherUser.avatar || '#5865F2'};`;
+        const avTxt = otherUser.avatarUrl ? '' : escapeHtml((otherUser.username || 'U')[0].toUpperCase());
+        const tag = otherUser.userTag ? (String(otherUser.userTag).startsWith('#') ? otherUser.userTag : `#${otherUser.userTag}`) : '';
+        headerEl.innerHTML = `
+            <div style="width:32px; height:32px; border-radius:50%; ${avStyle} color:#fff; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${avTxt}</div>
+            <div style="min-width:0;">
+                <div style="font-size:14px; font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    ${escapeHtml(otherUser.username || 'Usuário')} <span style="font-size:11.5px; color:#949ba4; font-weight:600;">${escapeHtml(tag)}</span>
+                </div>
+                <div style="font-size:11px; color:${otherUser.online ? '#23a55a' : '#80848e'};">🔒 Chat privado • ${otherUser.online ? 'Online agora' : 'Offline'}</div>
+            </div>
+        `;
+    }
+    if (barEl) barEl.style.display = 'flex';
+    if (!boxEl) return;
+
+    if (!messages || messages.length === 0) {
+        boxEl.innerHTML = `<div style="margin:auto; text-align:center; color:#80848e; font-size:13px;">🔒 Início da sua conversa privada com <b>${escapeHtml(otherUser?.username || 'este usuário')}</b>.<br>Apenas vocês dois podem ver estas mensagens.</div>`;
+        return;
+    }
+
+    boxEl.innerHTML = messages.map(m => {
+        const isMine = (m.fromId === state.userId);
+        return `
+            <div style="display:flex; flex-direction:column; align-items:${isMine ? 'flex-end' : 'flex-start'};">
+                <div style="max-width:78%; background:${isMine ? 'linear-gradient(135deg, #0077b6, #0096c7)' : '#1e1f22'}; color:#fff; padding:9px 13px; border-radius:${isMine ? '12px 12px 2px 12px' : '12px 12px 12px 2px'}; border:1px solid rgba(255,255,255,0.08); word-break:break-word;">
+                    <div style="font-size:13.5px; line-height:1.45;">${escapeHtml(m.text || '')}</div>
+                    <div style="font-size:10px; color:${isMine ? 'rgba(255,255,255,0.75)' : '#80848e'}; text-align:right; margin-top:4px;">${escapeHtml(m.timestamp || '')}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    boxEl.scrollTop = boxEl.scrollHeight;
+}
+
+function selectDmConversation(otherUserId) {
+    if (!otherUserId || otherUserId === state.userId) return;
+    state.activeDmUserId = otherUserId;
+    renderDmSidebarAndBadge();
+    sendWs({ type: 'dm_get_history', otherUserId });
+    const inp = document.getElementById('dm-message-input');
+    if (inp) setTimeout(() => inp.focus(), 60);
+}
+
+function handleDmHistory(otherUser, messages) {
+    if (!otherUser) return;
+    state.dmMessagesMap.set(otherUser.id, messages);
+    if (state.activeDmUserId === otherUser.id) {
+        renderDmMessages(messages, otherUser);
+    }
+}
+
+function handleIncomingDmMessage(otherUserId, msgObj, notifyFrom) {
+    if (!otherUserId || !msgObj) return;
+    const list = state.dmMessagesMap.get(otherUserId) || [];
+    if (!list.some(m => m.id === msgObj.id)) {
+        list.push(msgObj);
+        state.dmMessagesMap.set(otherUserId, list);
+    }
+    const modalOpen = document.getElementById('dm-modal')?.style.display === 'flex';
+    if (modalOpen && state.activeDmUserId === otherUserId) {
+        const conv = (state.dmConversations || []).find(c => c.otherUser?.id === otherUserId);
+        renderDmMessages(list, conv ? conv.otherUser : { id: otherUserId, username: msgObj.fromName });
+        // Marca como lida imediatamente se já estou com a conversa aberta
+        if (msgObj.fromId !== state.userId) {
+            sendWs({ type: 'dm_get_history', otherUserId });
+        }
+    } else if (notifyFrom && msgObj.fromId !== state.userId) {
+        showToast(`💬 Nova mensagem privada de <b>${escapeHtml(notifyFrom)}</b>: "${escapeHtml((msgObj.text || '').slice(0, 48))}"`, 6000);
+        if (typeof playNotificationSound === 'function') playNotificationSound();
+    }
+}
+
+function sendActiveDmMessage() {
+    const inp = document.getElementById('dm-message-input');
+    if (!inp || !state.activeDmUserId) return;
+    const text = inp.value.trim();
+    if (!text) return;
+    sendWs({
+        type: 'dm_send',
+        toUserId: state.activeDmUserId,
+        text
+    });
+    inp.value = '';
+    inp.focus();
+}
+
+function openDmModal(targetUserId = null) {
+    const modal = document.getElementById('dm-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    populateDmQuickNewSelect();
+    renderDmSidebarAndBadge();
+    if (targetUserId && targetUserId !== state.userId) {
+        selectDmConversation(targetUserId);
+    } else if (state.activeDmUserId) {
+        selectDmConversation(state.activeDmUserId);
+    }
+}
+
+function closeDmModal() {
+    const modal = document.getElementById('dm-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function initVoxDmSystem() {
+    const openBtn = document.getElementById('btn-open-dms');
+    if (openBtn) openBtn.addEventListener('click', () => openDmModal());
+    const closeBtn = document.getElementById('btn-close-dm-modal');
+    if (closeBtn) closeBtn.addEventListener('click', closeDmModal);
+    const modal = document.getElementById('dm-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeDmModal();
+        });
+    }
+    const sel = document.getElementById('dm-quick-new-select');
+    if (sel) {
+        sel.addEventListener('change', () => {
+            if (sel.value) {
+                selectDmConversation(sel.value);
+                sel.value = '';
+            }
+        });
+    }
+    const sendBtn = document.getElementById('btn-send-dm');
+    if (sendBtn) sendBtn.addEventListener('click', sendActiveDmMessage);
+    const inp = document.getElementById('dm-message-input');
+    if (inp) {
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendActiveDmMessage();
+            }
+        });
+    }
+    const ctxDmBtn = document.getElementById('ctx-btn-send-dm');
+    if (ctxDmBtn) {
+        ctxDmBtn.addEventListener('click', () => {
+            const uid = state.activeContextUserId;
+            closeUserContextMenu();
+            if (uid) openDmModal(uid);
+        });
+    }
+    const vupDmBtn = document.getElementById('vup-btn-send-dm');
+    if (vupDmBtn) {
+        vupDmBtn.addEventListener('click', () => {
+            const uid = document.getElementById('view-user-profile-modal')?.dataset?.userId;
+            closeUserProfileModal();
+            if (uid) openDmModal(uid);
+        });
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVoxDmSystem);
+} else {
+    initVoxDmSystem();
 }
