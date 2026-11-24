@@ -1379,24 +1379,41 @@ body, html {
    DISCORD USER SETTINGS MODAL (CONFIGURAÇÕES DO USUÁRIO & VOZ)
    ========================================================================== */
 .settings-modal-box {
-    width: 900px;
-    height: 620px;
+    width: 94vw;
+    max-width: 1180px;
+    height: 88vh;
+    max-height: 840px;
     background-color: #141b2a;
-    border-radius: 8px;
+    border-radius: 12px;
     display: flex;
     overflow: hidden;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.72);
     position: relative;
 }
 
 .settings-sidebar {
-    width: 240px;
+    width: 265px;
     background-color: #0e131f;
-    padding: 40px 16px 20px 24px;
+    padding: 28px 16px 24px 20px;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border-right: 1px solid rgba(0, 0, 0, 0.2);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    overflow-y: auto;
+}
+
+.member-row.has-banner {
+    background-size: cover !important;
+    background-position: center !important;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.member-row.has-banner:hover {
+    filter: brightness(1.12);
 }
 
 .settings-category {

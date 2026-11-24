@@ -4025,6 +4025,13 @@ function renderMembersSidebar() {
         row.setAttribute('data-user-id', member.id);
         row.style.cursor = 'pointer';
         row.oncontextmenu = (e) => openUserContextMenu(e, member.id);
+        const memberBannerUrl = isMe
+            ? (state.bannerUrl || liveUser?.bannerUrl || member.bannerUrl || '')
+            : (liveUser?.bannerUrl || member.bannerUrl || '');
+        if (memberBannerUrl) {
+            row.classList.add('has-banner');
+            row.style.backgroundImage = `linear-gradient(90deg, rgba(14,19,31,0.80) 0%, rgba(14,19,31,0.45) 60%, rgba(14,19,31,0.30) 100%), url("${memberBannerUrl}")`;
+        }
         const nameDisplay = isMe ? `${escapeHtml(member.username)} (Você)` : escapeHtml(member.username);
         const avatarLetter = (member.username || 'U')[0].toUpperCase();
         const color = member.avatar || '#5865F2';
@@ -4969,6 +4976,7 @@ function setupEventListeners() {
                         avatarUrl: state.avatarUrl || '',
                         bannerUrl: state.bannerUrl
                     });
+                    renderMembersSidebar();
                     showToast('🖼️ Banner do perfil atualizado e salvo na nuvem!');
                 };
                 img.src = ev.target.result;
@@ -4988,6 +4996,7 @@ function setupEventListeners() {
             avatarUrl: state.avatarUrl || '',
             bannerUrl: ''
         });
+        renderMembersSidebar();
         showToast('🗑️ Banner do perfil removido.');
     });
     on('btn-toggle-mic-test', 'click', toggleMicTest);
