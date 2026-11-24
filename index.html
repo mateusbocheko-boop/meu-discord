@@ -581,6 +581,19 @@
                     </div>
 
                     <div class="form-group">
+                        <label>FOTO DE PERFIL (SALVA NA NUVEM)</label>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <input type="file" id="input-avatar-photo" accept="image/*" style="display: none;">
+                            <button type="button" id="btn-upload-avatar-photo" style="background: linear-gradient(135deg, #00f2fe, #4facfe); color: #080b11; border: none; padding: 8px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-camera"></i> Escolher Foto
+                            </button>
+                            <button type="button" id="btn-remove-avatar-photo" style="display: none; background: #2b2d31; color: #f23f43; border: 1px solid rgba(242,63,67,0.4); padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                                <i class="fa-solid fa-trash"></i> Remover Foto
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         <label>COR DO AVATAR</label>
                         <div class="avatar-color-picker">
                             <div class="color-dot active" data-color="#00f2fe" style="background:#00f2fe"></div>

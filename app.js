@@ -7,6 +7,34 @@ try { localStorage.removeItem('discord_is_owner'); } catch (e) {}
 // SISTEMA DO DONO DO SERVIDOR (OWNER POWERS) 👑
 // ==========================================================================
 
+function getUserAvatarUrl(userId, fallbackObj = null) {
+    if (userId === state.userId && state.avatarUrl) return state.avatarUrl;
+    const u = state.users ? state.users.get(userId) : null;
+    if (u && u.avatarUrl) return u.avatarUrl;
+    const m = state.serverMembers ? state.serverMembers.get(userId) : null;
+    if (m && m.avatarUrl) return m.avatarUrl;
+    if (fallbackObj && fallbackObj.avatarUrl) return fallbackObj.avatarUrl;
+    return '';
+}
+
+function renderAvatarInnerHtml(name, avatarUrl) {
+    if (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.startsWith('data:image/')) {
+        return `<img src="${avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">`;
+    }
+    return ((name || 'U')[0] || 'U').toUpperCase();
+}
+
+function applyAvatarToElement(el, name, color, avatarUrl) {
+    if (!el) return;
+    el.style.backgroundColor = color || '#5865F2';
+    el.style.overflow = 'hidden';
+    if (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.startsWith('data:image/')) {
+        el.innerHTML = `<img src="${avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">`;
+    } else {
+        el.textContent = ((name || 'U')[0] || 'U').toUpperCase();
+    }
+}
+
 function getVipBadgeHtml(userId, fallbackData = null) {
     const sVip = state.vips ? state.vips.get(userId) : null;
     const isVip = !!(sVip?.isVip || fallbackData?.isVip);
@@ -90,14 +118,65 @@ function updateOwnerUI() {
     const iptvBtn = document.getElementById('btn-open-iptv');
     if (iptvBtn) iptvBtn.style.display = '';
 
+    // Botão do Dono do servidor particular para trocar a foto do servidor (salva na nuvem)
+    let srvPhotoBtn = document.getElementById('btn-server-change-photo');
+    let srvPhotoInput = document.getElementById('input-server-change-photo');
+    const brandHeader = document.querySelector('.kord-brand-header') || document.querySelector('.kord-brand-title')?.parentElement;
+    if (!srvPhotoBtn && brandHeader) {
+        srvPhotoInput = document.createElement('input');
+        srvPhotoInput.type = 'file';
+        srvPhotoInput.id = 'input-server-change-photo';
+        srvPhotoInput.accept = 'image/*';
+        srvPhotoInput.style.display = 'none';
+        srvPhotoInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file || !state.currentServerId || state.currentServerId === 'default') return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const size = 128;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    const minDim = Math.min(img.width, img.height);
+                    const sx = (img.width - minDim) / 2;
+                    const sy = (img.height - minDim) / 2;
+                    ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+                    const iconUrl = canvas.toDataURL('image/jpeg', 0.82);
+                    sendWs({ type: 'update_server_icon', serverId: state.currentServerId, iconUrl });
+                    showToast('📷 Foto do servidor atualizada e salva na nuvem!');
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+            srvPhotoInput.value = '';
+        });
+        document.body.appendChild(srvPhotoInput);
+
+        srvPhotoBtn = document.createElement('button');
+        srvPhotoBtn.id = 'btn-server-change-photo';
+        srvPhotoBtn.title = 'Alterar foto do servidor';
+        srvPhotoBtn.style.cssText = 'display:none;background:#5865F2;color:#fff;border:none;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;margin-left:auto;align-items:center;gap:4px;';
+        srvPhotoBtn.innerHTML = '<i class="fa-solid fa-camera"></i>';
+        srvPhotoBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (srvPhotoInput) srvPhotoInput.click();
+        };
+        brandHeader.appendChild(srvPhotoBtn);
+    }
+    if (srvPhotoBtn) {
+        srvPhotoBtn.style.display = (isCustomSrv && (hasCurrentServerOwnerPowers() || state.isOwner)) ? 'inline-flex' : 'none';
+    }
+
     // Botão exclusivo do Mestre (DIM) para excluir qualquer servidor particular criado
     let delSrvBtn = document.getElementById('btn-master-delete-server');
-    const brandHeader = document.querySelector('.kord-brand-header') || document.querySelector('.kord-brand-title')?.parentElement;
     if (!delSrvBtn && brandHeader) {
         delSrvBtn = document.createElement('button');
         delSrvBtn.id = 'btn-master-delete-server';
         delSrvBtn.title = 'Excluir este servidor permanentemente (Exclusivo do Mestre)';
-        delSrvBtn.style.cssText = 'display:none;background:#da373c;color:#fff;border:none;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;margin-left:auto;align-items:center;gap:4px;';
+        delSrvBtn.style.cssText = 'display:none;background:#da373c;color:#fff;border:none;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px;align-items:center;gap:4px;';
         delSrvBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
         delSrvBtn.onclick = (e) => {
             e.stopPropagation();
@@ -680,6 +759,7 @@ function computeVoxDeviceFingerprint() {
             id: state.userId,
             username: state.username,
             avatar: state.avatarColor,
+            avatarUrl: state.avatarUrl || (() => { try { return localStorage.getItem('vox_avatar_url') || ''; } catch (e) { return ''; } })(),
             userTag: state.userTag,
             tag: state.userTag,
             voiceChannel: state.currentVoiceChannel || null,
@@ -750,6 +830,12 @@ async function handleServerMessage(data) {
             if (data.members) {
                 state.serverMembers.clear();
                 data.members.forEach(m => state.serverMembers.set(m.id, m));
+                const meMem = state.serverMembers.get(state.userId);
+                if (meMem && meMem.avatarUrl && !state.avatarUrl) {
+                    state.avatarUrl = meMem.avatarUrl;
+                    try { localStorage.setItem('vox_avatar_url', state.avatarUrl); } catch (e) {}
+                    updateMyProfileUI();
+                }
             }
             if (data.onlineIds) {
                 state.onlineUserIds = new Set(data.onlineIds);
@@ -3010,8 +3096,9 @@ function createVoiceUserRow(userId, username, avatarColor, isStreaming, isSelf) 
         roleIcon = '<i class="fa-solid fa-shield-halved text-green" style="font-size:10px;margin-left:5px;" title="Administrador"></i>';
     }
 
+    const avUrl = getUserAvatarUrl(userId);
     row.innerHTML = `
-        <div class="voice-user-avatar${isSpeaking ? ' speaking' : ''}" style="background:${color}">${initial}</div>
+        <div class="voice-user-avatar${isSpeaking ? ' speaking' : ''}" style="background:${color};overflow:hidden;">${renderAvatarInnerHtml(safeName, avUrl)}</div>
         <span>${escapeHtml(safeName)}${isSelf ? ' (Você)' : ''}</span>
         ${roleIcon}
         <span class="voice-speaking-dot${isSpeaking ? ' active' : ''}"></span>
@@ -3264,8 +3351,9 @@ function updateSettingsPreview() {
     document.getElementById('settings-preview-name').textContent = inputVal;
     document.getElementById('settings-preview-tag').textContent = state.userTag;
     const av = document.getElementById('settings-preview-avatar');
-    av.textContent = inputVal[0].toUpperCase();
-    av.style.backgroundColor = state.avatarColor;
+    applyAvatarToElement(av, inputVal, state.avatarColor, state.avatarUrl);
+    const remBtn = document.getElementById('btn-remove-avatar-photo');
+    if (remBtn) remBtn.style.display = state.avatarUrl ? 'inline-flex' : 'none';
 }
 
 function saveUserProfile() {
@@ -3283,11 +3371,16 @@ function saveUserProfile() {
     localStorage.setItem('vox_user_tag', state.userTag);
     localStorage.setItem('dc_tag', state.userTag);
     localStorage.setItem('dc_avatar', state.avatarColor);
+    try {
+        if (state.avatarUrl) localStorage.setItem('vox_avatar_url', state.avatarUrl);
+        else localStorage.removeItem('vox_avatar_url');
+    } catch (e) {}
 
     const profileObj = {
         userId: state.userId,
         username: state.username,
         avatarColor: state.avatarColor,
+        avatarUrl: state.avatarUrl || '',
         userTag: state.userTag
     };
     localStorage.setItem('kord_user_profile', JSON.stringify(profileObj));
@@ -3296,20 +3389,21 @@ function saveUserProfile() {
     // Atualiza UI própria
     document.getElementById('my-username').textContent = state.username;
     const myAv = document.getElementById('my-avatar');
-    myAv.textContent = state.username[0].toUpperCase();
-    myAv.style.backgroundColor = state.avatarColor;
+    applyAvatarToElement(myAv, state.username, state.avatarColor, state.avatarUrl);
 
     // Notifica o servidor e todos os amigos conectados
     sendWs({
         type: 'update_profile',
         username: state.username,
-        avatar: state.avatarColor
+        avatar: state.avatarColor,
+        avatarUrl: state.avatarUrl || ''
     });
 
     renderVoiceUsers();
+    renderMembersSidebar();
     renderStreamTabs();
     closeUserSettingsModal();
-    showToast(`✅ Perfil atualizado! Seu nome agora é <b>${escapeHtml(state.username)}</b>.`);
+    showToast(`✅ Perfil atualizado e salvo na nuvem!`);
 }
 
 // Dispositivos de Áudio (Microfone e Fone)
@@ -3420,8 +3514,9 @@ function renderChatMessage(data) {
         roleBadge = '<span class="badge-role-adm"><i class="fa-solid fa-shield-halved"></i> ADM</span>';
     }
 
+    const msgAvUrl = getUserAvatarUrl(data.senderId, data);
     row.innerHTML = `
-        <div class="chat-avatar" style="background:${data.avatar}">${data.username[0].toUpperCase()}</div>
+        <div class="chat-avatar" style="background:${data.avatar};overflow:hidden;">${renderAvatarInnerHtml(data.username, msgAvUrl)}</div>
         <div class="chat-content">
             <div style="display:flex;align-items:center;gap:6px;">
                 <span class="chat-author" style="cursor:pointer;">${escapeHtml(data.username)}</span>
@@ -3849,9 +3944,10 @@ function renderMembersSidebar() {
             </div>`;
         }
 
+        const memAvUrl = getUserAvatarUrl(member.id, member);
         row.innerHTML = `
             <div class="member-avatar-wrap">
-                <div class="member-avatar" style="background-color: ${color};">${avatarLetter}</div>
+                <div class="member-avatar" style="background-color: ${color};overflow:hidden;">${renderAvatarInnerHtml(member.username, memAvUrl)}</div>
                 <div class="member-status-dot ${dotClass}"></div>
             </div>
             <div class="member-info-col" style="display:flex;flex-direction:column;min-width:0;flex:1;">
@@ -3948,15 +4044,15 @@ function checkRegistration() {
 }
 
 function updateMyProfileUI() {
+    if (!state.avatarUrl) {
+        try { state.avatarUrl = localStorage.getItem('vox_avatar_url') || ''; } catch (e) {}
+    }
     const un = document.getElementById('my-username');
     const tag = document.getElementById('my-tag');
     const av = document.getElementById('my-avatar');
     if (un) un.textContent = state.username;
     if (tag) tag.textContent = state.userTag;
-    if (av) {
-        av.textContent = (state.username || 'U')[0].toUpperCase();
-        av.style.backgroundColor = state.avatarColor || '#5865F2';
-    }
+    applyAvatarToElement(av, state.username, state.avatarColor || '#5865F2', state.avatarUrl);
     updateOwnerUI();
 }
 
@@ -4560,6 +4656,64 @@ function setupEventListeners() {
     });
 
     on('btn-save-profile', 'click', saveUserProfile);
+
+    // Upload e compressão automática de Foto de Perfil (128x128 JPEG ~8KB salva na nuvem)
+    const photoInput = document.getElementById('input-avatar-photo');
+    on('btn-upload-avatar-photo', 'click', () => {
+        if (photoInput) photoInput.click();
+    });
+    if (photoInput) {
+        photoInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const size = 128;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    const minDim = Math.min(img.width, img.height);
+                    const sx = (img.width - minDim) / 2;
+                    const sy = (img.height - minDim) / 2;
+                    ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+                    state.avatarUrl = canvas.toDataURL('image/jpeg', 0.82);
+                    try { localStorage.setItem('vox_avatar_url', state.avatarUrl); } catch (err) {}
+                    updateSettingsPreview();
+                    updateMyProfileUI();
+                    sendWs({
+                        type: 'update_profile',
+                        username: state.username,
+                        avatar: state.avatarColor,
+                        avatarUrl: state.avatarUrl
+                    });
+                    renderMembersSidebar();
+                    renderVoiceUsers();
+                    showToast('📷 Foto de perfil atualizada e salva na nuvem!');
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+            photoInput.value = '';
+        });
+    }
+    on('btn-remove-avatar-photo', 'click', () => {
+        state.avatarUrl = '';
+        try { localStorage.removeItem('vox_avatar_url'); } catch (e) {}
+        updateSettingsPreview();
+        updateMyProfileUI();
+        sendWs({
+            type: 'update_profile',
+            username: state.username,
+            avatar: state.avatarColor,
+            avatarUrl: ''
+        });
+        renderMembersSidebar();
+        renderVoiceUsers();
+        showToast('🗑️ Foto de perfil removida.');
+    });
     on('btn-toggle-mic-test', 'click', toggleMicTest);
 
     on('select-audio-input', 'change', (e) => {
@@ -5936,7 +6090,12 @@ function renderUserServers() {
             const pill = document.createElement('div');
             pill.className = `server-pill user-server-item ${state.currentServerId === srv.id ? 'active' : ''}`;
             pill.title = state.isOwner ? `${srv.name} (Botão direito para excluir)` : srv.name;
-            pill.innerHTML = `<span>${escapeHtml(srv.icon || '🎮')}</span>`;
+            pill.style.overflow = 'hidden';
+            if (srv.iconUrl && srv.iconUrl.startsWith('data:image/')) {
+                pill.innerHTML = `<img src="${srv.iconUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;">`;
+            } else {
+                pill.innerHTML = `<span>${escapeHtml(srv.icon || '🎮')}</span>`;
+            }
             pill.onclick = () => switchServer(srv.id);
             pill.oncontextmenu = (e) => {
                 if (!state.isOwner) return;

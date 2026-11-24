@@ -485,6 +485,7 @@ def get_user_servers(uid, is_global_owner=False):
                 "id": s_id,
                 "name": s_data.get("name", "Servidor"),
                 "icon": s_data.get("icon", "🎮"),
+                "iconUrl": s_data.get("iconUrl", ""),
                 "inviteCode": s_data.get("inviteCode", ""),
                 "isOwner": (s_data.get("ownerId") == uid),
                 "isInspectOnly": (is_global_owner and not is_member_or_owner)
@@ -1001,10 +1002,17 @@ async def websocket_handler(request):
                 if reconn_server_id not in all_servers:
                     reconn_server_id = "default"
 
+                raw_av_url = str(data.get("avatarUrl") or "").strip()
+                if raw_av_url and (not raw_av_url.startswith("data:image/") or len(raw_av_url) > 60000):
+                    raw_av_url = ""
+                saved_av_url = server_members.get(user_id, {}).get("avatarUrl", "")
+                final_av_url = raw_av_url if raw_av_url else saved_av_url
+
                 clients[ws] = {
                     "id": user_id,
                     "username": username,
                     "avatar": avatar,
+                    "avatarUrl": final_av_url,
                     "voiceChannel": reconn_voice,
                     "isMuted": bool(data.get("isMuted", False)) or (reconn_voice == "afk"),
                     "isDeafened": bool(data.get("isDeafened", False)),
@@ -1114,6 +1122,7 @@ async def websocket_handler(request):
                     "id": user_id,
                     "username": username,
                     "avatar": avatar,
+                    "avatarUrl": clients[ws].get("avatarUrl", ""),
                     "userTag": user_tag,
                     "joinedAt": server_members.get(user_id, {}).get("joinedAt", int(time.time())),
                     "isOwner": is_user_owner,
@@ -1339,10 +1348,26 @@ async def websocket_handler(request):
                 if ws in clients:
                     clients[ws]["username"] = data.get("username", clients[ws]["username"])
                     clients[ws]["avatar"] = data.get("avatar", clients[ws]["avatar"])
+                    if "avatarUrl" in data:
+                        new_av_url = str(data.get("avatarUrl") or "").strip()
+                        if new_av_url == "" or (new_av_url.startswith("data:image/") and len(new_av_url) <= 60000):
+                            clients[ws]["avatarUrl"] = new_av_url
                     if user_id in server_members:
                         server_members[user_id]["username"] = clients[ws]["username"]
                         server_members[user_id]["avatar"] = clients[ws]["avatar"]
+                        server_members[user_id]["avatarUrl"] = clients[ws].get("avatarUrl", "")
                         save_members(server_members)
+                    # Atualiza foto/nome nos perfis salvos dos servidores particulares também
+                    srv_changed = False
+                    for s_obj in all_servers.values():
+                        mp = s_obj.get("memberProfiles")
+                        if isinstance(mp, dict) and user_id in mp:
+                            mp[user_id]["username"] = clients[ws]["username"]
+                            mp[user_id]["avatar"] = clients[ws]["avatar"]
+                            mp[user_id]["avatarUrl"] = clients[ws].get("avatarUrl", "")
+                            srv_changed = True
+                    if srv_changed:
+                        save_servers(all_servers)
                     await broadcast({
                         "type": "user_updated",
                         "user": clients[ws],
@@ -1459,6 +1484,7 @@ async def websocket_handler(request):
                         "senderId": user_id,
                         "username": clients[ws]["username"],
                         "avatar": clients[ws]["avatar"],
+                        "avatarUrl": clients[ws].get("avatarUrl", ""),
                         "text": msg_text,
                         "timestamp": msg_ts,
                         "createdAt": time.time(),
@@ -1478,6 +1504,7 @@ async def websocket_handler(request):
                         "senderId": user_id,
                         "username": clients[ws]["username"],
                         "avatar": clients[ws]["avatar"],
+                        "avatarUrl": clients[ws].get("avatarUrl", ""),
                         "text": msg_text,
                         "timestamp": msg_ts,
                         "channelId": msg_channel,
@@ -1927,6 +1954,29 @@ async def websocket_handler(request):
                     },
                     "messages": srv_msgs
                 }))
+
+            elif msg_type == "update_server_icon":
+                target_srv_id = data.get("serverId") or clients.get(ws, {}).get("currentServerId", "default")
+                if target_srv_id == "default" or target_srv_id not in all_servers:
+                    continue
+                if not is_current_server_owner(clients.get(ws), target_srv_id) and not clients.get(ws, {}).get("isOwner"):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "🚫 Apenas o Dono deste servidor pode alterar a foto dele!"
+                    }))
+                    continue
+                new_icon_url = str(data.get("iconUrl") or "").strip()
+                if new_icon_url == "" or (new_icon_url.startswith("data:image/") and len(new_icon_url) <= 60000):
+                    all_servers[target_srv_id]["iconUrl"] = new_icon_url
+                    save_servers(all_servers)
+                    for c_ws, c_u in list(clients.items()):
+                        try:
+                            await c_ws.send_str(json.dumps({
+                                "type": "servers_list_updated",
+                                "servers": get_user_servers(c_u.get("id"), is_global_owner=bool(c_u.get("isOwner", False)))
+                            }))
+                        except Exception:
+                            pass
 
             elif msg_type == "admin_delete_server":
                 # EXCLUSIVO DO MESTRE DOS MAGOS (DIM): pode excluir qualquer servidor particular criado
