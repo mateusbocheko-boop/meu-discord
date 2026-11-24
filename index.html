@@ -634,15 +634,41 @@
                 <!-- ABA 3: TRANSMISSÃO 60FPS -->
                 <div class="settings-page" id="tab-page-stream">
                     <h2>Configurações de Transmissão</h2>
-                    <p class="modal-desc">Configure o codec, taxa de bits e isolamento da transmissão:</p>
+                    <p class="modal-desc">Edite resolução, FPS, bitrate ou troque a janela do jogo sem desligar a live:</p>
 
                     <div class="setting-group" style="margin-top: 16px;">
+                        <label>RESOLUÇÃO DA LIVE</label>
+                        <div class="option-cards" id="settings-opt-resolution">
+                            <div class="opt-card" data-res="720">720p (HD)</div>
+                            <div class="opt-card active" data-res="1080">1080p (FHD)</div>
+                            <div class="opt-card highlight" data-res="1440">1440p (2K)</div>
+                        </div>
+                    </div>
+
+                    <div class="setting-group" style="margin-top: 14px;">
+                        <label>TAXA DE QUADROS (FPS)</label>
+                        <div class="option-cards" id="settings-opt-fps">
+                            <div class="opt-card" data-fps="30">30 FPS</div>
+                            <div class="opt-card active highlight" data-fps="60">60 FPS (Fluido)</div>
+                        </div>
+                    </div>
+
+                    <div class="setting-group" style="margin-top: 14px;">
                         <label>TAXA MÁXIMA DE TRANSMISSÃO (BITRATE)</label>
                         <div class="option-cards" id="settings-opt-bitrate">
                             <div class="opt-card" data-bitrate="6000">6 Mbps</div>
                             <div class="opt-card active highlight" data-bitrate="12000">12 Mbps (Alta Qualidade)</div>
                             <div class="opt-card highlight" data-bitrate="20000">20 Mbps (2K Sem Perdas)</div>
                         </div>
+                    </div>
+
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px;">
+                        <button class="btn-start-stream" id="btn-settings-switch-screen" style="flex: 1; min-width: 180px; background: #5865F2;">
+                            <i class="fa-solid fa-repeat"></i> Trocar Tela / Jogo (Sem Desligar)
+                        </button>
+                        <button class="btn-start-stream" id="btn-settings-apply-live" style="flex: 1; min-width: 180px;">
+                            <i class="fa-solid fa-bolt"></i> Aplicar na Live Agora
+                        </button>
                     </div>
 
                     <div class="setting-checkbox highlight-box" style="margin-top: 16px;">

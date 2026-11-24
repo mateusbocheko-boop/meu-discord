@@ -1826,17 +1826,18 @@ async function startScreenShare() {
                 frameRate: { ideal: fps, min: Math.min(30, fps), max: fps },
                 width: { ideal: width, max: width },
                 height: { ideal: height, max: height },
-                cursor: 'always',
-                displaySurface: 'monitor'
+                cursor: 'always'
             },
             audio: {
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
                 channelCount: 2,
-                sampleRate: 48000
+                sampleRate: 48000,
+                suppressLocalAudioPlayback: false
             },
             systemAudio: 'include',
+            windowAudio: 'window',
             selfBrowserSurface: 'include',
             surfaceSwitching: 'include'
         };
@@ -2052,17 +2053,18 @@ async function switchLiveScreenSource() {
                 frameRate: { ideal: fps, min: Math.min(30, fps), max: fps },
                 width: { ideal: width, max: width },
                 height: { ideal: height, max: height },
-                cursor: 'always',
-                displaySurface: 'monitor'
+                cursor: 'always'
             },
             audio: {
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
                 channelCount: 2,
-                sampleRate: 48000
+                sampleRate: 48000,
+                suppressLocalAudioPlayback: false
             },
             systemAudio: 'include',
+            windowAudio: 'window',
             selfBrowserSurface: 'include',
             surfaceSwitching: 'include'
         });
@@ -3784,6 +3786,42 @@ function setupEventListeners() {
     on('btn-switch-screen-source', 'click', () => {
         if (streamModal) streamModal.style.display = 'none';
         switchLiveScreenSource();
+    });
+
+    // Controles de Transmissão dentro das Configurações (⚙️ -> Transmissão 60FPS)
+    document.querySelectorAll('#settings-opt-resolution .opt-card').forEach(c => {
+        c.onclick = () => {
+            document.querySelectorAll('#settings-opt-resolution .opt-card').forEach(x => x.classList.remove('active'));
+            c.classList.add('active');
+            state.streamConfig.resolution = parseInt(c.dataset.res);
+            if (state.isStreaming) updateLiveStreamSettings();
+        };
+    });
+    document.querySelectorAll('#settings-opt-fps .opt-card').forEach(c => {
+        c.onclick = () => {
+            document.querySelectorAll('#settings-opt-fps .opt-card').forEach(x => x.classList.remove('active'));
+            c.classList.add('active');
+            state.streamConfig.fps = parseInt(c.dataset.fps);
+            if (state.isStreaming) updateLiveStreamSettings();
+        };
+    });
+    on('btn-settings-apply-live', 'click', () => {
+        const settingsModal = document.getElementById('user-settings-modal');
+        if (settingsModal) settingsModal.style.display = 'none';
+        if (state.isStreaming) {
+            updateLiveStreamSettings();
+        } else {
+            showToast('✅ Configurações salvas para sua próxima transmissão!');
+        }
+    });
+    on('btn-settings-switch-screen', 'click', () => {
+        const settingsModal = document.getElementById('user-settings-modal');
+        if (settingsModal) settingsModal.style.display = 'none';
+        if (state.isStreaming) {
+            switchLiveScreenSource();
+        } else {
+            startScreenShare();
+        }
     });
 
     // 4. Convidar Amigos (Abre Modal de Convite)
