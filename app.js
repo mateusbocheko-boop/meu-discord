@@ -3586,15 +3586,8 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
         btnStreamToggle.style.display = (newChannel && newChannel.startsWith('cinema-')) ? 'none' : 'flex';
     }
 
-    // Verifica se a sala de cinema já possui transmissão ativa; se estiver vazia, já abre o catálogo IPTV na hora!
+    // Verifica se a sala de cinema já possui transmissão ativa; se estiver vazia, já abre o catálogo IPTV EMBUTIDO na área preta central!
     checkRoomCinemaStream(newChannel);
-    if (isVipRoom && !(state.cinemaRooms && state.cinemaRooms[newChannel])) {
-        setTimeout(() => {
-            if (state.currentVoiceChannel === newChannel && !(state.cinemaRooms && state.cinemaRooms[newChannel])) {
-                openIptvModal();
-            }
-        }, 120);
-    }
 
     const statusPanel = document.getElementById('voice-status-panel');
     if (statusPanel) statusPanel.style.display = 'flex';
@@ -5772,9 +5765,14 @@ function checkRoomCinemaStream(room) {
 
     const cinema = state.cinemaRooms ? state.cinemaRooms[room] : null;
     if (cinema) {
+        // Já tem filme/canal rodando: fecha o catálogo embutido e mostra o vídeo
+        const modal = document.getElementById('iptv-modal');
+        if (modal && modal.classList.contains('iptv-embedded')) closeIptvModal();
         playCinemaStream(cinema);
     } else {
         stopCinemaPlayback();
+        // Sala vazia: o catálogo IPTV aparece direto na área preta central
+        setTimeout(() => autoEmbedIptvForRoom(room), 150);
     }
 }
 
@@ -6164,9 +6162,12 @@ function stopCinemaStream() {
     });
 }
 
-function openIptvModal() {
+function openIptvModal(embedded = false) {
     const modal = document.getElementById('iptv-modal');
     const selectEl = document.getElementById('iptv-select-target-room');
+    const inVipRoom = !!(state.currentVoiceChannel && (String(state.currentVoiceChannel).toLowerCase().includes('cinema') || String(state.currentVoiceChannel).toLowerCase().includes('vip')));
+    const useEmbedded = embedded || inVipRoom;
+
     if (selectEl) {
         const currentCinemas = (state.channels?.voice || []).filter(c => c.type === 'cinema' || (c.id && c.id.includes('cinema-')));
         if (currentCinemas.length > 0) {
@@ -6178,12 +6179,59 @@ function openIptvModal() {
             selectEl.value = state.currentVoiceChannel;
         }
     }
+
+    // MODO EMBUTIDO: o catálogo IPTV ocupa a área preta central (onde ficam as mensagens),
+    // sem abrir janela/aba. A barra de digitar mensagem continua embaixo.
+    const chatContainer = document.querySelector('.chat-and-members-wrap .chat-container');
+    const msgList = document.getElementById('messages-list');
+
+    if (useEmbedded && chatContainer && msgList) {
+        if (modal.parentElement !== chatContainer) {
+            chatContainer.insertBefore(modal, msgList);
+        }
+        modal.classList.add('iptv-embedded');
+        msgList.style.display = 'none';
+    } else {
+        modal.classList.remove('iptv-embedded');
+        if (modal.parentElement !== document.body) {
+            document.body.appendChild(modal);
+        }
+        if (msgList) msgList.style.display = '';
+    }
+
+    const alreadyOpen = modal.style.display === 'flex';
     modal.style.display = 'flex';
-    loadIptvCategories(state.currentIptvType);
+    if (!alreadyOpen || !state.iptvCategories || !state.iptvCategories.length) {
+        loadIptvCategories(state.currentIptvType || 'live');
+    }
 }
 
 function closeIptvModal() {
-    document.getElementById('iptv-modal').style.display = 'none';
+    const modal = document.getElementById('iptv-modal');
+    const msgList = document.getElementById('messages-list');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('iptv-embedded');
+        if (modal.parentElement !== document.body) {
+            document.body.appendChild(modal);
+        }
+    }
+    if (msgList) {
+        msgList.style.display = '';
+    }
+}
+
+// Abre automaticamente o IPTV embutido quando o usuário VIP está numa sala de cinema sem transmissão
+function canUseCinemaRoom(room) {
+    return !!(state.isVip || state.isOwner || (state.vipGuestRoom && state.vipGuestRoom === room));
+}
+
+function autoEmbedIptvForRoom(room) {
+    if (!room || !String(room).startsWith('cinema-')) return;
+    if (state.currentVoiceChannel !== room) return;
+    if (state.cinemaRooms && state.cinemaRooms[room]) return;
+    if (!canUseCinemaRoom(room)) return;
+    openIptvModal(true);
 }
 
 async function loadIptvCategories(type = 'live') {

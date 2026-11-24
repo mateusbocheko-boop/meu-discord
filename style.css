@@ -1,4 +1,4 @@
-/* ========================================================
+﻿/* ========================================================
    KORD ULTRA 60FPS - IDENTITY & CYBER THEME
    ======================================================== */
 :root {
@@ -3081,6 +3081,46 @@ body, html {
     filter: brightness(1.14);
 }
 
+/* MODO EMBUTIDO DO CATÁLOGO IPTV NA ÁREA CENTRAL DA SALA VIP */
+#iptv-modal.iptv-embedded {
+    position: relative !important;
+    inset: auto !important;
+    flex: 1 !important;
+    width: auto !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    z-index: 2 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+}
+
+#iptv-modal.iptv-embedded .iptv-modal-box {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#iptv-modal.iptv-embedded .modal-header {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+#iptv-modal.iptv-embedded .iptv-modal-body {
+    flex: 1 !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
 .member-avatar {
     width: 28px !important;
     height: 28px !important;
@@ -3879,4 +3919,81 @@ body, html {
     gap: 4px !important;
     box-shadow: 0 0 8px rgba(234, 179, 8, 0.2) !important;
     letter-spacing: 0.5px !important;
+}
+
+/* ==================================================================
+   IPTV EMBUTIDO NA ÁREA PRETA CENTRAL (SALA VIP / CINEMA)
+   O catálogo ocupa o lugar da lista de mensagens, sem borda,
+   sem fundo escurecido e sem parecer uma janela/aba.
+   ================================================================== */
+.chat-container {
+    min-height: 0 !important;
+}
+
+#iptv-modal.iptv-embedded {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    background: #000000 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 1 !important;
+    animation: none !important;
+}
+
+#iptv-modal.iptv-embedded .iptv-modal-box {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    background: #000000 !important;
+    animation: none !important;
+    transform: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* Some com o cabeçalho "Catálogo IPTV" para não parecer uma janela */
+#iptv-modal.iptv-embedded .modal-header {
+    display: none !important;
+}
+
+#iptv-modal.iptv-embedded .iptv-modal-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 10px 14px !important;
+    background: transparent !important;
+}
+
+#iptv-modal.iptv-embedded .iptv-room-target-bar,
+#iptv-modal.iptv-embedded .iptv-toolbar,
+#iptv-modal.iptv-embedded .iptv-categories-sidebar,
+#iptv-modal.iptv-embedded .iptv-streams-main {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+    box-shadow: none !important;
+}
+
+#iptv-modal.iptv-embedded .iptv-content-area {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    border: none !important;
+    background: transparent !important;
 }
