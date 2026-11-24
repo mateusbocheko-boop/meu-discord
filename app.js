@@ -1181,6 +1181,10 @@ async function handleServerMessage(data) {
             if (data.member) {
                 state.serverMembers.set(data.user.id, data.member);
             }
+            if (data.vip && data.vip.isVip) {
+                if (!state.vips) state.vips = new Map();
+                state.vips.set(data.user.id, data.vip);
+            }
             renderVoiceUsers();
             renderMembersSidebar();
 

@@ -210,6 +210,8 @@ def _push_cloud_backup_now():
     except Exception as e:
         print(f"[CloudSync] Erro ao enviar backup para o GitHub Gist: {e}")
 
+import atexit
+
 def schedule_cloud_backup():
     global _cloud_sync_timer
     if not VOX_GIST_TOKEN or _cloud_restoring:
@@ -217,9 +219,11 @@ def schedule_cloud_backup():
     with _cloud_sync_lock:
         if _cloud_sync_timer is not None:
             _cloud_sync_timer.cancel()
-        _cloud_sync_timer = threading.Timer(3.0, _push_cloud_backup_now)
+        _cloud_sync_timer = threading.Timer(1.0, _push_cloud_backup_now)
         _cloud_sync_timer.daemon = True
         _cloud_sync_timer.start()
+
+atexit.register(_push_cloud_backup_now)
 
 # Restaura dados salvos na nuvem ANTES de carregar os JSONs locais
 restore_from_github_gist()
@@ -376,7 +380,20 @@ def load_vips():
     if VIPS_FILE.exists():
         try:
             with open(VIPS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # Garante que VIPs ativos (incluindo Trial 15 dias) sempre exibam o emblema
+                changed = False
+                for uid, v in data.items():
+                    if isinstance(v, dict) and v.get("isVip") and v.get("hideBadge"):
+                        v["hideBadge"] = False
+                        changed = True
+                if changed:
+                    try:
+                        with open(VIPS_FILE, "w", encoding="utf-8") as wf:
+                            json.dump(data, wf, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
+                return data
         except Exception:
             pass
     return {}
@@ -1091,7 +1108,7 @@ async def websocket_handler(request):
                         server_vips[user_id] = {
                             "isVip": True,
                             "isTrial": True,
-                            "hideBadge": True,
+                            "hideBadge": False,
                             "durationDays": 15,
                             "expiresAt": expires_at,
                             "grantedAt": time.time(),
@@ -1166,12 +1183,24 @@ async def websocket_handler(request):
                     "vips": {uid: {"isVip": v.get("isVip"), "isTrial": bool(v.get("isTrial", False)), "hideBadge": bool(v.get("hideBadge", False)), "expiresAt": v.get("expiresAt"), "durationDays": v.get("durationDays"), "isLifetime": bool(v.get("isLifetime", False))} for uid, v in server_vips.items() if v.get("isVip")}
                 }))
 
-                # Notifica todos os participantes em tempo real
+                # Notifica todos os participantes em tempo real (incluindo VIP 15D com emblema)
+                v_rec = server_vips.get(user_id)
+                vip_payload = None
+                if user_is_vip and isinstance(v_rec, dict):
+                    vip_payload = {
+                        "isVip": True,
+                        "isTrial": bool(v_rec.get("isTrial", False)),
+                        "hideBadge": False,
+                        "expiresAt": v_rec.get("expiresAt"),
+                        "durationDays": v_rec.get("durationDays"),
+                        "isLifetime": bool(v_rec.get("isLifetime", False))
+                    }
                 await broadcast({
                     "type": "user_joined",
                     "user": clients[ws],
                     "isNewMember": is_new_member,
-                    "member": server_members[user_id]
+                    "member": server_members[user_id],
+                    "vip": vip_payload
                 })
 
             # 1.1 Saída imediata (quando fecha a aba ou sai)
