@@ -140,7 +140,7 @@
                         <i class="fa-solid fa-display"></i>
                         <span id="btn-stream-text">Transmitir Tela</span>
                     </button>
-                    <button class="btn-stream-action" id="btn-stream-edit" style="display: none;" title="Editar resolução, FPS ou trocar tela sem desligar a live">
+                    <button class="btn-stream-action" id="btn-stream-edit" style="display: none; margin-top: 6px; background: #5865F2;" title="Editar resolução, FPS ou trocar tela sem desligar a live">
                         <i class="fa-solid fa-sliders"></i>
                         <span>Editar Live</span>
                     </button>
@@ -246,6 +246,10 @@
                         </div>
                         <div class="hud-right" style="display: flex; align-items: center; gap: 8px;">
                             <span class="streamer-name" id="hud-streamer-name">Transmitido por: Alguém</span>
+                            <button class="btn-hud-mute-stream" id="btn-hud-edit-stream" style="display: none; background: #5865F2; color: #fff; border: none;" title="Editar resolução, FPS ou trocar janela sem desligar a live">
+                                <i class="fa-solid fa-sliders"></i>
+                                <span>Editar Live</span>
+                            </button>
                             <button class="btn-hud-mute-stream" id="btn-hud-mute-stream" title="Mutar ou Desmutar Áudio da Transmissão">
                                 <i class="fa-solid fa-volume-high"></i>
                                 <span id="btn-hud-mute-text">Som da Live</span>
@@ -271,6 +275,10 @@
                             <input type="range" id="vid-volume-slider" min="0" max="1" step="0.05" value="1">
                         </div>
                         <div class="vc-right" style="display: flex; align-items: center; gap: 8px;">
+                            <button class="btn-stop-watching" id="btn-vc-edit-stream" style="display: none; background: #5865F2; color: #fff;" title="Editar resolução, FPS ou trocar janela sem desligar a live">
+                                <i class="fa-solid fa-sliders"></i>
+                                <span>Editar Live</span>
+                            </button>
                             <button class="btn-exit-fullscreen" id="btn-exit-fullscreen" title="Sair da Tela Cheia">
                                 <i class="fa-solid fa-compress"></i>
                                 <span>Sair da Tela Cheia</span>

@@ -1016,8 +1016,10 @@ async function handleServerMessage(data) {
             if (activeSt && data.streamInfo) {
                 activeSt.info = data.streamInfo;
                 if (state.currentlyWatchingUserId === data.userId) {
-                    const resBadge = document.getElementById('hud-resolution');
-                    if (resBadge) resBadge.textContent = `${data.streamInfo.resolution || '1080p'} • ${data.streamInfo.fps || 60} FPS`;
+                    const resBadge = document.getElementById('hud-res');
+                    if (resBadge) resBadge.textContent = `${data.streamInfo.resolution || '1080p'}`;
+                    const fpsBadge = document.getElementById('hud-fps');
+                    if (fpsBadge) fpsBadge.textContent = `${data.streamInfo.fps || 60}.0 FPS`;
                 }
             }
             renderVoiceUsers();
@@ -1903,8 +1905,14 @@ async function startScreenShare() {
         if (btn) btn.classList.add('streaming');
         const btnText = document.getElementById('btn-stream-text');
         if (btnText) btnText.textContent = 'Parar Tela';
-        const editBtn = document.getElementById('btn-stream-edit');
-        if (editBtn) editBtn.style.display = 'flex';
+        ['btn-stream-edit', 'btn-hud-edit-stream', 'btn-vc-edit-stream'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'inline-flex';
+        });
+        const hudRes = document.getElementById('hud-res');
+        if (hudRes) hudRes.textContent = `${res}p`;
+        const hudBitrate = document.getElementById('hud-bitrate');
+        if (hudBitrate) hudBitrate.textContent = `${(state.streamConfig.bitrate / 1000).toFixed(1)} Mbps`;
 
         // Envia para os peers com renegociação, codec de hardware (H264/VP8) e SDP otimizado
         for (const [targetId, pc] of state.peerConnections.entries()) {
@@ -2009,8 +2017,12 @@ async function updateLiveStreamSettings() {
     const mySt = state.activeStreams.get(state.userId);
     if (mySt) mySt.info = newInfo;
     if (state.currentlyWatchingUserId === state.userId) {
-        const resBadge = document.getElementById('hud-resolution');
-        if (resBadge) resBadge.textContent = `${res}p • ${fps} FPS`;
+        const resBadge = document.getElementById('hud-res');
+        if (resBadge) resBadge.textContent = `${res}p`;
+        const brBadge = document.getElementById('hud-bitrate');
+        if (brBadge) brBadge.textContent = `${(state.streamConfig.bitrate / 1000).toFixed(1)} Mbps`;
+        const fpsBadge = document.getElementById('hud-fps');
+        if (fpsBadge) fpsBadge.textContent = `${fps}.0 FPS`;
     }
 
     sendWs({
@@ -2119,8 +2131,10 @@ function stopScreenShare() {
     if (btn) btn.classList.remove('streaming');
     const btnText = document.getElementById('btn-stream-text');
     if (btnText) btnText.textContent = 'Transmitir Tela';
-    const editBtn = document.getElementById('btn-stream-edit');
-    if (editBtn) editBtn.style.display = 'none';
+    ['btn-stream-edit', 'btn-hud-edit-stream', 'btn-vc-edit-stream'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
 
     removeStream(state.userId);
     sendWs({ type: 'screen_stop' });
@@ -3715,6 +3729,16 @@ function setupEventListeners() {
         openStreamModal(false);
     });
     on('btn-stream-edit', 'click', () => {
+        if (!state.isStreaming) return;
+        openStreamModal(true);
+    });
+    on('btn-hud-edit-stream', 'click', (e) => {
+        e.stopPropagation();
+        if (!state.isStreaming) return;
+        openStreamModal(true);
+    });
+    on('btn-vc-edit-stream', 'click', (e) => {
+        e.stopPropagation();
         if (!state.isStreaming) return;
         openStreamModal(true);
     });
