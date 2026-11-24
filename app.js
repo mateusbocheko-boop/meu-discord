@@ -785,6 +785,13 @@ async function handleServerMessage(data) {
             } catch (e) {}
             break;
 
+        case 'vip_guest_pass':
+            state.vipGuestRoom = data.room || null;
+            if (data.room && data.message) {
+                showToast(data.message, 7000);
+            }
+            break;
+
         case 'vip_required':
             stopCinemaPlayback();
             openVipModal();
@@ -3039,19 +3046,19 @@ function leaveVoiceChannel(notifyServer = true) {
     if (!state.currentVoiceChannel) return;
     playDiscordVoiceLeaveSound();
     
-    // Limpa quaisquer transmissões ativas que estavam sendo assistidas nesta sala
+    // Ao desconectar da sala de voz, encerra SEMPRE qualquer IPTV/Cinema e limpa passe temporário VIP
+    state.vipGuestRoom = null;
+    stopCinemaPlayback();
     state.activeStreams.clear();
     state.currentlyWatchingUserId = null;
-    if (!state.currentCinemaStreamId) {
-        const stage = document.getElementById('video-stage');
-        const video = document.getElementById('stage-video');
-        if (video) {
-            try { video.pause(); } catch(e){}
-            video.srcObject = null;
-            video.src = '';
-        }
-        if (stage) stage.style.display = 'none';
+    const stage = document.getElementById('video-stage');
+    const video = document.getElementById('stage-video');
+    if (video) {
+        try { video.pause(); } catch(e){}
+        video.srcObject = null;
+        video.src = '';
     }
+    if (stage) stage.style.display = 'none';
     renderStreamTabs();
 
     state.currentVoiceChannel = null;
@@ -3099,13 +3106,21 @@ async function switchVoiceChannel(newChannel, notifyServer = true) {
     // BLOQUEIO ANTECIPADO DE SALAS VIP / CINEMA NO CLIENTE
     const chLower = String(newChannel).toLowerCase();
     const isVipRoom = chLower.startsWith('cinema') || chLower.includes('vip') || chLower.includes('cinema');
+    const hasGuestHere = (state.vipGuestRoom && state.vipGuestRoom === newChannel);
 
-    if (isVipRoom && !state.isVip && !state.isOwner) {
+    if (isVipRoom && !state.isVip && !state.isOwner && !hasGuestHere) {
         openVipModal();
         if (typeof showToast === 'function') {
             showToast('⭐ Esta sala é exclusiva para Membros VIP! Compre seu Passe VIP para liberar o acesso.', 'warning');
         }
         return; // NÃO PERMITE ENTRAR!
+    }
+
+    if (state.vipGuestRoom && newChannel !== state.vipGuestRoom) {
+        state.vipGuestRoom = null;
+    }
+    if (!chLower.includes('cinema-')) {
+        stopCinemaPlayback();
     }
 
     const oldChannel = state.currentVoiceChannel;
@@ -5271,8 +5286,17 @@ function fallbackMpegts(tsUrl, video) {
 }
 
 function playCinemaStream(cinema) {
-    // Bloqueio estrito: usuários sem VIP nunca reproduzem filmes, séries ou canais IPTV — abre o QR Code PIX!
-    if (!state.isVip && !state.isOwner) {
+    // 1. IPTV só pode rodar se o usuário estiver CONECTADO em uma call VIP (Cinema)
+    const curRoom = state.currentVoiceChannel || '';
+    const isInCinemaCall = curRoom.includes('cinema-');
+    if (!isInCinemaCall) {
+        stopCinemaPlayback();
+        showToast('🎬 Entre em uma Sala de Cinema VIP para assistir Filmes, Séries ou TV Ao Vivo!', 5000);
+        return;
+    }
+    // 2. Bloqueio estrito: precisa ser VIP, Dono Supremo (Mestre) ou ter passe temporário do Mestre NESTA sala!
+    const hasGuestPass = (state.vipGuestRoom && state.vipGuestRoom === curRoom);
+    if (!state.isVip && !state.isOwner && !hasGuestPass) {
         stopCinemaPlayback();
         openVipModal();
         showToast('👑 Conteúdo exclusivo VIP! Escaneie o QR Code Pix para liberar Filmes, Séries e TV Ao Vivo.', 6000);

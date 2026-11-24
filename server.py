@@ -1180,13 +1180,22 @@ async def websocket_handler(request):
 
                         if is_vip_channel:
                             user_is_vip = is_user_vip(user_id, clients[ws].get("username"))
-                            if not user_is_vip and not clients[ws].get("isOwner"):
+                            has_guest_pass = (clients[ws].get("vipGuestRoom") == new_ch)
+                            if not user_is_vip and not clients[ws].get("isOwner") and not has_guest_pass:
                                 await ws.send_str(json.dumps({
                                     "type": "vip_required",
                                     "channelId": new_ch,
                                     "message": "⭐ Esta sala é exclusiva para Membros VIP! Adquira seu Passe VIP para liberar Filmes, Séries e TV Ao Vivo."
                                 }))
                                 continue
+
+                    # Se saiu da sala VIP onde tinha passe temporário do Mestre, revoga o passe imediatamente
+                    if clients[ws].get("vipGuestRoom") and new_ch != clients[ws].get("vipGuestRoom"):
+                        clients[ws]["vipGuestRoom"] = None
+                        try:
+                            await ws.send_str(json.dumps({"type": "vip_guest_pass", "room": None}))
+                        except Exception:
+                            pass
 
                     clients[ws]["voiceChannel"] = new_ch
                     clients[ws]["last_voice_activity"] = time.time()
@@ -1223,7 +1232,7 @@ async def websocket_handler(request):
                     })
 
                     # Se entrou em sala de cinema com transmissão ativa, envia o estado na hora
-                    if new_ch and new_ch.startswith("cinema-") and new_ch in cinema_rooms and cinema_rooms[new_ch]:
+                    if new_ch and ("cinema-" in str(new_ch)) and new_ch in cinema_rooms and cinema_rooms[new_ch]:
                         await ws.send_str(json.dumps({
                             "type": "cinema_update",
                             "room": new_ch,
@@ -1238,21 +1247,68 @@ async def websocket_handler(request):
                 target_id = data.get("targetUserId")
                 new_channel = data.get("channelId")
                 moved_username = None
-                for target_ws, u in clients.items():
+                mover_is_master = bool(clients.get(ws, {}).get("isOwner", False))
+                is_target_vip_room = bool(new_channel and ("cinema" in str(new_channel).lower() or "vip" in str(new_channel).lower()))
+
+                target_ws_found = None
+                target_u_found = None
+                for t_ws, u in clients.items():
                     if u.get("id") == target_id:
-                        u["voiceChannel"] = new_channel
-                        u["last_voice_activity"] = time.time()
-                        moved_username = u.get("username")
-                        if new_channel == "afk":
-                            u["isMuted"] = True
-                        if u.get("isStreaming") and (new_channel is None or new_channel.startswith("cinema-") or new_channel == "afk"):
-                            u["isStreaming"] = False
-                            u["streamInfo"] = None
-                            await broadcast({
-                                "type": "stream_stopped",
-                                "userId": target_id
-                            })
+                        target_ws_found = t_ws
+                        target_u_found = u
                         break
+
+                if target_u_found and is_target_vip_room:
+                    target_has_vip = is_user_vip(target_id, target_u_found.get("username")) or bool(target_u_found.get("isOwner", False))
+                    if not target_has_vip:
+                        # Usuário sem VIP NÃO pode ser movido por ADM nem por Dono de servidor particular — APENAS pelo Mestre (DIM)!
+                        if not mover_is_master:
+                            await ws.send_str(json.dumps({
+                                "type": "error",
+                                "message": "🚫 Apenas o Mestre dos Magos (DIM) pode puxar um usuário sem VIP para uma Sala VIP!"
+                            }))
+                            continue
+                        # Mestre puxou usuário sem VIP -> concede acesso temporário APENAS até ele sair dessa sala!
+                        target_u_found["vipGuestRoom"] = new_channel
+                        try:
+                            await target_ws_found.send_str(json.dumps({
+                                "type": "vip_guest_pass",
+                                "room": new_channel,
+                                "message": "🧙‍♂️ O Mestre puxou você para a Sala VIP! Seu acesso vale enquanto você permanecer nesta sala."
+                            }))
+                        except Exception:
+                            pass
+
+                if target_u_found:
+                    if target_u_found.get("vipGuestRoom") and new_channel != target_u_found.get("vipGuestRoom"):
+                        target_u_found["vipGuestRoom"] = None
+                        try:
+                            await target_ws_found.send_str(json.dumps({"type": "vip_guest_pass", "room": None}))
+                        except Exception:
+                            pass
+                    target_u_found["voiceChannel"] = new_channel
+                    target_u_found["last_voice_activity"] = time.time()
+                    moved_username = target_u_found.get("username")
+                    if new_channel == "afk":
+                        target_u_found["isMuted"] = True
+                    if target_u_found.get("isStreaming") and (new_channel is None or "cinema-" in str(new_channel) or new_channel == "afk"):
+                        target_u_found["isStreaming"] = False
+                        target_u_found["streamInfo"] = None
+                        await broadcast({
+                            "type": "stream_stopped",
+                            "userId": target_id
+                        })
+                    # Se foi movido para uma sala de cinema com transmissão ativa, envia o estado do cinema imediatamente
+                    if new_channel and ("cinema-" in str(new_channel)) and new_channel in cinema_rooms and cinema_rooms[new_channel]:
+                        try:
+                            await target_ws_found.send_str(json.dumps({
+                                "type": "cinema_update",
+                                "room": new_channel,
+                                "cinema": get_cinema_state(new_channel)
+                            }))
+                        except Exception:
+                            pass
+
                 if target_id and new_channel:
                     mover_name = clients[ws]["username"] if ws in clients else "Alguém"
                     await broadcast({
@@ -1428,14 +1484,23 @@ async def websocket_handler(request):
             elif msg_type == "cinema_play":
                 room = data.get("room")
                 if room and (room in cinema_rooms or "cinema-" in str(room)):
-                    # Valida acesso VIP para iniciar IPTV em qualquer sala de cinema (principal ou servidor particular)
-                    if not is_user_vip(user_id, clients[ws].get("username")) and not clients[ws].get("isOwner"):
+                    # Valida acesso VIP (ou passe temporário concedido pelo Mestre nessa sala) para iniciar IPTV
+                    has_guest = (clients[ws].get("vipGuestRoom") == room)
+                    if not is_user_vip(user_id, clients[ws].get("username")) and not clients[ws].get("isOwner") and not has_guest:
                         await ws.send_str(json.dumps({
                             "type": "vip_required",
                             "channelId": room,
                             "message": "⭐ Apenas Membros VIP podem transmitir nas salas de Cinema!"
                         }))
                         continue
+                    # Garante que quem deu play seja puxado automaticamente para a call VIP no servidor
+                    if clients[ws].get("voiceChannel") != room:
+                        clients[ws]["voiceChannel"] = room
+                        await broadcast({
+                            "type": "user_voice_change",
+                            "userId": user_id,
+                            "channelId": room
+                        })
                     cinema_rooms[room] = {
                         "streamId": data.get("streamId"),
                         "streamName": data.get("streamName"),
