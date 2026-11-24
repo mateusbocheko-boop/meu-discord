@@ -53,9 +53,9 @@ function updateOwnerUI() {
     if (addTextBtn) addTextBtn.style.display = canManageServer ? 'block' : 'none';
     if (addVoiceBtn) addVoiceBtn.style.display = canManageServer ? 'block' : 'none';
 
-    // Em servidores isolados, oculta o botão IPTV/Cinema (exclusivo do servidor principal)
+    // Mantém o botão IPTV/Cinema visível tanto no servidor principal quanto nos servidores particulares (mesmo sistema VIP do VOX)
     const iptvBtn = document.getElementById('btn-open-iptv');
-    if (iptvBtn) iptvBtn.style.display = isCustomSrv ? 'none' : '';
+    if (iptvBtn) iptvBtn.style.display = '';
 
     renderBannedList();
 }
@@ -267,7 +267,7 @@ function renderChannels() {
         const iconClass = ch.icon || (ch.id.startsWith('cinema-') ? 'fa-film text-green' : 'fa-volume-high');
         
         const canDelVoice = hasCurrentServerOwnerPowers() && ch.id !== 'geral';
-        const isCinemaVip = ch.id.startsWith('cinema-') || ch.type === 'cinema' || ch.isVip;
+        const isCinemaVip = ch.id.includes('cinema-') || ch.type === 'cinema' || ch.isVip;
         const vipTagHtml = isCinemaVip
             ? `<span class="cinema-vip-badge" title="Sala Exclusiva VIP" style="background:linear-gradient(135deg,#ffd700,#f59e0b);color:#000;font-size:9px;font-weight:900;padding:2px 6px;border-radius:4px;margin-left:auto;margin-right:4px;display:inline-flex;align-items:center;gap:3px;flex-shrink:0;box-shadow:0 0 8px rgba(255,215,0,0.45);"><i class="fa-solid fa-crown" style="font-size:9px;color:#000;"></i> VIP</span>`
             : '';
@@ -315,11 +315,17 @@ function renderChannels() {
 
 
 
-// Modal de Convidar Amigos com link visível e cópia à prova de falhas
+// Modal de Convidar Amigos com link específico do servidor atual (igual ao Discord)
 function openInviteModal() {
     const modal = document.getElementById('invite-modal');
     const input = document.getElementById('invite-url-input');
-    const url = state.publicTunnelUrl || window.location.href;
+    const baseUrl = (state.publicTunnelUrl || window.location.origin).replace(/\/$/, '');
+    let url = baseUrl;
+    if (state.currentServerId && state.currentServerId !== 'default') {
+        const srvObj = (state.userServers || []).find(s => s.id === state.currentServerId);
+        const code = (srvObj && srvObj.inviteCode) ? srvObj.inviteCode : state.currentServerId;
+        url = `${baseUrl}/?invite=${encodeURIComponent(code)}`;
+    }
     if (input) input.value = url;
     if (modal) modal.style.display = 'flex';
     copyInviteLink();
@@ -726,7 +732,7 @@ async function handleServerMessage(data) {
             }
             if (data.trialGranted) {
                 setTimeout(() => {
-                    showToast('🎉 Parabéns! Você ganhou 30 Dias de Acesso VIP Grátis com selo [VIP] para curtir Cinema, Filmes e TV Ao Vivo!', 9000);
+                    showToast('🎉 Parabéns! Você ganhou 15 Dias de Acesso VIP Grátis para curtir Cinema, Filmes e TV Ao Vivo!', 9000);
                 }, 1000);
             }
             if (data.isOwner !== undefined) {
@@ -735,6 +741,15 @@ async function handleServerMessage(data) {
             }
             renderChannels();
             renderMembersSidebar();
+            // Auto-entrada em servidor particular via link de convite (?invite=CODIGO)
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const invCode = urlParams.get('invite');
+                if (invCode) {
+                    sendWs({ type: 'join_server_invite', inviteCode: invCode });
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            } catch (e) {}
             break;
 
         case 'vip_required':
@@ -781,6 +796,44 @@ async function handleServerMessage(data) {
                 renderUserServers();
                 switchServer(data.server.id);
                 showToast(`🎉 Servidor "${data.server.name}" criado com sucesso!`);
+            }
+            break;
+
+        case 'server_joined':
+            if (Array.isArray(data.servers)) {
+                state.userServers = data.servers;
+            }
+            if (data.server) {
+                state.currentServerId = data.server.id;
+                state.isCurrentServerOwner = !!data.server.isOwner;
+                state.bannedUsers = data.server.banned || [];
+                if (state.currentVoiceChannel) {
+                    leaveVoiceChannel(false);
+                }
+                const brandTitle = document.querySelector('.kord-brand-title');
+                if (brandTitle) brandTitle.textContent = (data.server.name || 'VOX').toUpperCase();
+                if (data.server.channels) {
+                    state.channels = data.server.channels;
+                    const firstText = (data.server.channels.text || [])[0];
+                    if (firstText) {
+                        state.currentTextChannel = firstText.id;
+                        const titleEl = document.getElementById('current-channel-title');
+                        if (titleEl) titleEl.textContent = firstText.name;
+                        const inputEl = document.getElementById('chat-input');
+                        if (inputEl) inputEl.placeholder = `Conversar em #${firstText.name}...`;
+                    }
+                    renderChannels();
+                }
+                const chatBox = document.getElementById('messages-list') || document.getElementById('chat-messages');
+                if (chatBox) {
+                    chatBox.innerHTML = '';
+                    if (Array.isArray(data.messages)) {
+                        data.messages.forEach(m => renderChatMessage(m));
+                    }
+                }
+                renderUserServers();
+                updateOwnerUI();
+                showToast(`🎉 Você entrou no servidor "${escapeHtml(data.server.name)}" pelo convite!`);
             }
             break;
 
@@ -4507,6 +4560,17 @@ function setupEventListeners() {
     on('btn-open-create-server', 'click', openCreateServerModal);
     on('btn-close-create-server-modal', 'click', closeCreateServerModal);
     on('btn-submit-create-server', 'click', submitCreateServer);
+    on('btn-submit-join-invite', 'click', () => {
+        const inp = document.getElementById('join-invite-code-input');
+        const code = inp ? inp.value.trim() : '';
+        if (!code) {
+            showToast('Cole o link ou código do convite primeiro!');
+            return;
+        }
+        sendWs({ type: 'join_server_invite', inviteCode: code });
+        if (inp) inp.value = '';
+        closeCreateServerModal();
+    });
 
     // Emojis de servidor
     document.querySelectorAll('.emoji-opt').forEach(opt => {
@@ -5183,7 +5247,7 @@ function applyCinemaSync(data) {
 
 function stopCinemaStream() {
     const room = state.currentVoiceChannel;
-    if (!room || !room.startsWith('cinema-')) {
+    if (!room || !room.includes('cinema-')) {
         showToast('Entre em uma das salas de cinema para parar a transmissão.');
         return;
     }
@@ -5197,10 +5261,19 @@ function stopCinemaStream() {
 
 function openIptvModal() {
     const modal = document.getElementById('iptv-modal');
-    modal.style.display = 'flex';
-    if (state.currentVoiceChannel && state.currentVoiceChannel.startsWith('cinema-')) {
-        document.getElementById('iptv-select-target-room').value = state.currentVoiceChannel;
+    const selectEl = document.getElementById('iptv-select-target-room');
+    if (selectEl) {
+        const currentCinemas = (state.channels?.voice || []).filter(c => c.type === 'cinema' || (c.id && c.id.includes('cinema-')));
+        if (currentCinemas.length > 0) {
+            selectEl.innerHTML = currentCinemas.map(c =>
+                `<option value="${escapeHtml(c.id)}">👑 ${escapeHtml(c.name)} (VIP)</option>`
+            ).join('');
+        }
+        if (state.currentVoiceChannel && state.currentVoiceChannel.includes('cinema-')) {
+            selectEl.value = state.currentVoiceChannel;
+        }
     }
+    modal.style.display = 'flex';
     loadIptvCategories(state.currentIptvType);
 }
 

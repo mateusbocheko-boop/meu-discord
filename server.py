@@ -471,10 +471,14 @@ def get_user_servers(uid):
     res = []
     for s_id, s_data in all_servers.items():
         if s_id == "default" or s_data.get("ownerId") == uid or uid in s_data.get("members", []):
+            if s_id != "default" and not s_data.get("inviteCode"):
+                s_data["inviteCode"] = uuid.uuid4().hex[:8].upper()
+                save_servers(all_servers)
             res.append({
                 "id": s_id,
                 "name": s_data.get("name", "Servidor"),
                 "icon": s_data.get("icon", "🎮"),
+                "inviteCode": s_data.get("inviteCode", ""),
                 "isOwner": (s_data.get("ownerId") == uid)
             })
     return res
@@ -1421,7 +1425,15 @@ async def websocket_handler(request):
 
             elif msg_type == "cinema_play":
                 room = data.get("room")
-                if room in cinema_rooms:
+                if room and (room in cinema_rooms or "cinema-" in str(room)):
+                    # Valida acesso VIP para iniciar IPTV em qualquer sala de cinema (principal ou servidor particular)
+                    if not is_user_vip(user_id, clients[ws].get("username")) and not clients[ws].get("isOwner"):
+                        await ws.send_str(json.dumps({
+                            "type": "vip_required",
+                            "channelId": room,
+                            "message": "⭐ Apenas Membros VIP podem transmitir nas salas de Cinema!"
+                        }))
+                        continue
                     cinema_rooms[room] = {
                         "streamId": data.get("streamId"),
                         "streamName": data.get("streamName"),
@@ -1610,8 +1622,9 @@ async def websocket_handler(request):
                 server_name = data.get("name", "").strip() or "Meu Servidor"
                 server_icon = data.get("icon", "🎮").strip() or "🎮"
                 new_id = f"srv_{uuid.uuid4().hex[:6]}"
+                invite_code = uuid.uuid4().hex[:8].upper()
 
-                # Servidor 100% isolado do principal: salas próprias com IDs únicos e SEM salas de cinema/VIP
+                # Servidor particular isolado com suas próprias salas + 3 Salas Cinema VIP abaixo do AFK (usando o sistema VIP do VOX)
                 new_channels = {
                     "text": [
                         {"id": f"{new_id}_geral", "name": "geral"},
@@ -1619,14 +1632,21 @@ async def websocket_handler(request):
                     ],
                     "voice": [
                         {"id": f"{new_id}_voz-1", "name": "Bate-Papo 1", "type": "voice", "icon": "fa-volume-high"},
-                        {"id": f"{new_id}_jogos", "name": "Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"}
+                        {"id": f"{new_id}_jogos", "name": "Jogos 60FPS", "type": "voice", "icon": "fa-gamepad"},
+                        {"id": f"{new_id}_afk", "name": "AFK / Ausente", "type": "voice", "icon": "fa-bed"},
+                        {"id": f"{new_id}_cinema-1", "name": "Cinema 1 • Filmes", "type": "cinema", "icon": "fa-film", "isVip": True},
+                        {"id": f"{new_id}_cinema-2", "name": "Cinema 2 • Séries", "type": "cinema", "icon": "fa-tv", "isVip": True},
+                        {"id": f"{new_id}_cinema-3", "name": "Cinema 3 • Futebol & TV", "type": "cinema", "icon": "fa-futbol", "isVip": True}
                     ]
                 }
+                for cid in (f"{new_id}_cinema-1", f"{new_id}_cinema-2", f"{new_id}_cinema-3"):
+                    cinema_rooms.setdefault(cid, None)
 
                 all_servers[new_id] = {
                     "id": new_id,
                     "name": server_name,
                     "icon": server_icon,
+                    "inviteCode": invite_code,
                     "ownerId": user_id,
                     "ownerName": username,
                     "channels": new_channels,
@@ -1643,12 +1663,90 @@ async def websocket_handler(request):
                         "id": new_id,
                         "name": server_name,
                         "icon": server_icon,
+                        "inviteCode": invite_code,
                         "ownerId": user_id,
                         "isOwner": True,
                         "isMainServer": False,
                         "channels": new_channels
                     }
                 }))
+
+            elif msg_type == "join_server_invite":
+                raw_code = str(data.get("inviteCode", "")).strip()
+                if "invite=" in raw_code:
+                    raw_code = raw_code.split("invite=", 1)[1].split("&", 1)[0].strip()
+                code_upper = raw_code.upper()
+                found_id = None
+                found_srv = None
+                for sid, sdata in all_servers.items():
+                    if sid == "default":
+                        continue
+                    if sid.upper() == code_upper or str(sdata.get("inviteCode", "")).upper() == code_upper:
+                        found_id = sid
+                        found_srv = sdata
+                        break
+
+                if not found_srv:
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "❌ Convite inválido ou servidor não encontrado!"
+                    }))
+                    continue
+
+                if user_id in found_srv.get("banned", []):
+                    await ws.send_str(json.dumps({
+                        "type": "error",
+                        "message": "🔨 Você foi banido deste servidor e não pode entrar pelo convite."
+                    }))
+                    continue
+
+                if user_id not in found_srv.get("members", []):
+                    found_srv.setdefault("members", []).append(user_id)
+                    save_servers(all_servers)
+
+                old_voice = clients[ws].get("voiceChannel")
+                clients[ws]["currentServerId"] = found_id
+                clients[ws]["voiceChannel"] = None
+                if old_voice:
+                    await broadcast({
+                        "type": "user_voice_change",
+                        "userId": user_id,
+                        "channelId": None
+                    })
+                    await check_empty_cinema_rooms()
+
+                is_srv_owner = is_current_server_owner(clients[ws], found_id)
+                is_srv_admin = is_current_server_admin(clients[ws], found_id)
+                srv_msgs = [m for m in server_messages if m.get("serverId", "default") == found_id][-100:]
+
+                await ws.send_str(json.dumps({
+                    "type": "server_joined",
+                    "servers": get_user_servers(user_id),
+                    "server": {
+                        "id": found_id,
+                        "name": found_srv.get("name", "Servidor"),
+                        "icon": found_srv.get("icon", "🎮"),
+                        "inviteCode": found_srv.get("inviteCode", ""),
+                        "ownerId": found_srv.get("ownerId"),
+                        "channels": found_srv.get("channels", server_channels),
+                        "isOwner": is_srv_owner,
+                        "isAdmin": is_srv_admin,
+                        "isMainServer": False,
+                        "banned": found_srv.get("banned", []),
+                        "admins": found_srv.get("admins", [])
+                    },
+                    "messages": srv_msgs
+                }))
+
+                await broadcast_to_server(found_id, {
+                    "type": "chat_message",
+                    "serverId": found_id,
+                    "senderId": "system",
+                    "username": "Convite VOX",
+                    "avatar": "#22c55e",
+                    "text": f"🎉 <b>{username}</b> entrou no servidor por convite!",
+                    "timestamp": now_brt("%H:%M")
+                })
 
             elif msg_type == "switch_server":
                 target_server_id = data.get("serverId", "default")
@@ -1691,6 +1789,7 @@ async def websocket_handler(request):
                         "id": sdata.get("id", target_server_id),
                         "name": sdata.get("name", "Servidor"),
                         "icon": sdata.get("icon", "🎮"),
+                        "inviteCode": sdata.get("inviteCode", ""),
                         "ownerId": sdata.get("ownerId"),
                         "channels": sdata.get("channels", server_channels),
                         "isOwner": is_srv_owner,
